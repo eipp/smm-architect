@@ -3,6 +3,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import winston from 'winston';
+import './config/sentry'; // Initialize Sentry
 import { authMiddleware } from './middleware/auth';
 import { errorHandler } from './middleware/error-handler';
 import { ingestRoutes } from './routes/ingest';

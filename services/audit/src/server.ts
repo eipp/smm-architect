@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
+import './config/sentry'; // Initialize Sentry
 import { AuditBundleAssembler } from './services/audit-bundle-assembler';
 import { KMSManager } from './kms/kms-manager';
 import { StorageService } from './services/storage-service';

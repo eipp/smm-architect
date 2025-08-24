@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import winston from 'winston';
+import { captureException } from '../../../shared/sentry-utils';
 
 const logger = winston.createLogger({
   level: process.env.LOG_LEVEL || 'info',
@@ -36,6 +37,14 @@ export function errorHandler(
   logger.error('API Error', {
     error: error.message,
     stack: error.stack,
+    url: req.url,
+    method: req.method,
+    userAgent: req.get('User-Agent'),
+    ip: req.ip
+  });
+  
+  // Capture exception with Sentry
+  captureException(error, {
     url: req.url,
     method: req.method,
     userAgent: req.get('User-Agent'),

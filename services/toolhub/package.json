@@ -32,7 +32,10 @@
     "@pinecone-database/pinecone": "^1.1.0",
     "openai": "^4.0.0",
     "express-validator": "^7.0.1",
-    "jsdom": "^22.1.0"
+    "jsdom": "^22.1.0",
+    "@sentry/node": "^7.99.0",
+    "@sentry/profiling-node": "^7.99.0",
+    "@sentry/integrations": "^7.99.0"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

@@ -5,6 +5,7 @@ import compression from 'compression';
 import rateLimit from 'express-rate-limit';
 import { body, param, query, validationResult } from 'express-validator';
 import dotenv from 'dotenv';
+import './config/sentry'; // Initialize Sentry
 import { ModelRegistry } from './services/ModelRegistry';
 import { ModelRouter } from './services/ModelRouter';
 import { ModelEvaluationFramework } from './services/ModelEvaluationFramework';

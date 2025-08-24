@@ -3,6 +3,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import winston from 'winston';
 import { v4 as uuidv4 } from 'uuid';
+import './config/sentry'; // Initialize Sentry
 import { MonteCarloEngine } from './services/monte-carlo-engine';
 import { 
   SimulationRequest, 

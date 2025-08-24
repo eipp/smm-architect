@@ -1,6 +1,8 @@
 import { api } from "encore.dev/api";
 import { SQLDatabase } from "encore.dev/storage/sqldb";
 import log from "encore.dev/log";
+import "./config/sentry"; // Initialize Sentry
+import { captureException } from "../shared/sentry-utils";
 import { 
   WorkspaceContract,
   CreateWorkspaceRequest,
@@ -69,6 +71,10 @@ export const createWorkspace = api(
 
     } catch (error) {
       log.error("Failed to create workspace", { error: error.message });
+      captureException(error, { 
+        endpoint: "createWorkspace",
+        tenantId: req.contract.tenantId 
+      });
       throw new Error(`Failed to create workspace: ${error.message}`);
     }
   }
@@ -101,6 +107,10 @@ export const getWorkspaceStatus = api(
       log.error("Failed to get workspace status", { 
         workspaceId: id, 
         error: error.message 
+      });
+      captureException(error, { 
+        endpoint: "getWorkspaceStatus",
+        workspaceId: id 
       });
       throw new Error(`Failed to get workspace status: ${error.message}`);
     }
@@ -144,6 +154,11 @@ export const approvePromotion = api(
         workspaceId: id, 
         error: error.message 
       });
+      captureException(error, { 
+        endpoint: "approvePromotion",
+        workspaceId: id,
+        action: req.action
+      });
       throw new Error(`Failed to process approval: ${error.message}`);
     }
   }
@@ -179,6 +194,10 @@ export const simulateCampaign = api(
         workspaceId: id, 
         error: error.message 
       });
+      captureException(error, { 
+        endpoint: "simulateCampaign",
+        workspaceId: id
+      });
       throw new Error(`Failed to run simulation: ${error.message}`);
     }
   }
@@ -211,6 +230,10 @@ export const getAuditBundle = api(
       log.error("Failed to retrieve audit bundle", { 
         workspaceId: id, 
         error: error.message 
+      });
+      captureException(error, { 
+        endpoint: "getAuditBundle",
+        workspaceId: id
       });
       throw new Error(`Failed to retrieve audit bundle: ${error.message}`);
     }
@@ -248,6 +271,10 @@ export const listWorkspaces = api(
         tenantId, 
         error: error.message 
       });
+      captureException(error, { 
+        endpoint: "listWorkspaces",
+        tenantId: tenantId
+      });
       throw new Error(`Failed to list workspaces: ${error.message}`);
     }
   }
@@ -273,6 +300,10 @@ export const updateWorkspace = api(
         workspaceId: id, 
         error: error.message 
       });
+      captureException(error, { 
+        endpoint: "updateWorkspace",
+        workspaceId: id
+      });
       throw new Error(`Failed to update workspace: ${error.message}`);
     }
   }
@@ -297,6 +328,10 @@ export const deleteWorkspace = api(
       log.error("Failed to decommission workspace", { 
         workspaceId: id, 
         error: error.message 
+      });
+      captureException(error, { 
+        endpoint: "deleteWorkspace",
+        workspaceId: id
       });
       throw new Error(`Failed to decommission workspace: ${error.message}`);
     }
