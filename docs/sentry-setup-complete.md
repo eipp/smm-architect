@@ -153,4 +153,5 @@ node sentry-express-example.js
 
 **Status**: ✅ **FULLY CONFIGURED AND TESTED**  
 **Last Updated**: 2025-08-24  
+**Repository**: https://github.com/eipp/smm-architect  
 **Configured By**: Qoder AI Assistant
