@@ -1,0 +1,446 @@
+// Prisma schema for SMM Architect
+// Consolidates all database tables across services
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "./generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Core workspace management
+model Workspace {
+  workspaceId           String   @id @map("workspace_id")
+  tenantId             String   @map("tenant_id")
+  createdBy            String   @map("created_by")
+  createdAt            DateTime @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+  lifecycle            String   @default("draft")
+  contractVersion      String   @map("contract_version")
+  goals                Json
+  primaryChannels      Json     @map("primary_channels")
+  budget               Json
+  approvalPolicy       Json     @map("approval_policy")
+  riskProfile          String   @map("risk_profile")
+  dataRetention        Json     @map("data_retention")
+  ttlHours             Int      @map("ttl_hours")
+  policyBundleRef      String   @map("policy_bundle_ref")
+  policyBundleChecksum String   @map("policy_bundle_checksum")
+  contractData         Json     @map("contract_data")
+
+  // Relations
+  runs             WorkspaceRun[]
+  auditBundles     AuditBundle[]
+  connectors       Connector[]
+  consentRecords   ConsentRecord[]
+  brandTwins       BrandTwin[]
+  decisionCards    DecisionCard[]
+  simulationResults SimulationResult[]
+  assetFingerprints AssetFingerprint[]
+  simulationReports SimulationReport[]
+  agentRuns        AgentRun[]
+
+  @@index([tenantId], map: "idx_workspace_tenant")
+  @@index([lifecycle], map: "idx_workspace_lifecycle")
+  @@index([createdAt], map: "idx_workspace_created")
+  @@index([createdAt, ttlHours], map: "idx_workspace_ttl")
+  @@map("workspaces")
+}
+
+model WorkspaceRun {
+  runId         String    @id @map("run_id")
+  workspaceId   String    @map("workspace_id")
+  status        String
+  startedAt     DateTime  @map("started_at")
+  finishedAt    DateTime? @map("finished_at")
+  costUsd       Decimal?  @map("cost_usd") @db.Decimal(10, 2)
+  readinessScore Decimal? @map("readiness_score") @db.Decimal(3, 2)
+  results       Json?
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [workspaceId], onDelete: Cascade)
+
+  @@index([workspaceId], map: "idx_run_workspace")
+  @@index([status], map: "idx_run_status")
+  @@index([startedAt], map: "idx_run_started")
+  @@map("workspace_runs")
+}
+
+model AuditBundle {
+  bundleId       String   @id @map("bundle_id")
+  workspaceId    String   @map("workspace_id")
+  bundleData     Json     @map("bundle_data")
+  signatureKeyId String   @map("signature_key_id")
+  signature      String
+  signedAt       DateTime @map("signed_at")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [workspaceId], onDelete: Cascade)
+
+  @@index([workspaceId], map: "idx_bundle_workspace")
+  @@index([signedAt], map: "idx_bundle_signed")
+  @@map("audit_bundles")
+}
+
+model Connector {
+  connectorId      String    @id @map("connector_id")
+  workspaceId      String    @map("workspace_id")
+  platform         String
+  accountId        String    @map("account_id")
+  displayName      String    @map("display_name")
+  status           String    @default("unconnected")
+  scopes           Json?
+  lastConnectedAt  DateTime? @map("last_connected_at")
+  ownerContact     String?   @map("owner_contact")
+  credentialsRef   String?   @map("credentials_ref")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [workspaceId], onDelete: Cascade)
+
+  @@unique([workspaceId, platform, accountId], map: "idx_workspace_platform")
+  @@index([workspaceId], map: "idx_connector_workspace")
+  @@index([platform], map: "idx_connector_platform")
+  @@index([status], map: "idx_connector_status")
+  @@map("connectors")
+}
+
+model ConsentRecord {
+  consentId         String   @id @map("consent_id")
+  workspaceId       String   @map("workspace_id")
+  consentType       String   @map("consent_type")
+  grantedBy         String   @map("granted_by")
+  grantedAt         DateTime @map("granted_at")
+  expiresAt         DateTime @map("expires_at")
+  documentRef       String?  @map("document_ref") @db.VarChar(500)
+  verifierSignature String?  @map("verifier_signature") @db.VarChar(1024)
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [workspaceId], onDelete: Cascade)
+
+  @@index([workspaceId], map: "idx_consent_workspace")
+  @@index([consentType], map: "idx_consent_type")
+  @@index([expiresAt], map: "idx_consent_expires")
+  @@index([grantedBy], map: "idx_consent_granted_by")
+  @@map("consent_records")
+}
+
+model BrandTwin {
+  brandId      String   @map("brand_id")
+  workspaceId  String   @map("workspace_id")
+  snapshotAt   DateTime @map("snapshot_at")
+  brandData    Json     @map("brand_data")
+  qualityScore Decimal? @map("quality_score") @db.Decimal(3, 2)
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [workspaceId], onDelete: Cascade)
+
+  @@id([brandId, snapshotAt])
+  @@index([workspaceId], map: "idx_brand_workspace")
+  @@index([snapshotAt], map: "idx_brand_snapshot")
+  @@index([qualityScore], map: "idx_brand_quality")
+  @@map("brand_twins")
+}
+
+model DecisionCard {
+  actionId       String    @id @map("action_id")
+  workspaceId    String    @map("workspace_id")
+  title          String    @db.VarChar(500)
+  oneLine        String    @map("one_line") @db.Text
+  readinessScore Decimal   @map("readiness_score") @db.Decimal(3, 2)
+  expiresAt      DateTime  @map("expires_at")
+  status         String    @default("pending")
+  approvedBy     String?   @map("approved_by")
+  approvedAt     DateTime? @map("approved_at")
+  cardData       Json      @map("card_data")
+  createdAt      DateTime  @default(now()) @map("created_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [workspaceId], onDelete: Cascade)
+
+  @@index([workspaceId], map: "idx_decision_workspace")
+  @@index([status], map: "idx_decision_status")
+  @@index([expiresAt], map: "idx_decision_expires")
+  @@index([readinessScore], map: "idx_decision_readiness")
+  @@map("decision_cards")
+}
+
+model SimulationResult {
+  simulationId      String   @id @map("simulation_id")
+  workspaceId       String   @map("workspace_id")
+  readinessScore    Decimal  @map("readiness_score") @db.Decimal(3, 2)
+  policyPassPct     Decimal  @map("policy_pass_pct") @db.Decimal(3, 2)
+  citationCoverage  Decimal  @map("citation_coverage") @db.Decimal(3, 2)
+  duplicationRisk   Decimal  @map("duplication_risk") @db.Decimal(3, 2)
+  costEstimateUsd   Decimal  @map("cost_estimate_usd") @db.Decimal(10, 2)
+  traces            Json?
+  simulationData    Json     @map("simulation_data")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [workspaceId], onDelete: Cascade)
+
+  @@index([workspaceId], map: "idx_simulation_workspace")
+  @@index([readinessScore], map: "idx_simulation_score")
+  @@index([createdAt], map: "idx_simulation_created")
+  @@map("simulation_results")
+}
+
+model AssetFingerprint {
+  assetId     String   @id @map("asset_id")
+  workspaceId String   @map("workspace_id")
+  assetType   String   @map("asset_type")
+  fingerprint String
+  license     String
+  url         String?  @db.VarChar(1000)
+  metadata    Json?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [workspaceId], onDelete: Cascade)
+
+  @@index([workspaceId], map: "idx_asset_workspace")
+  @@index([assetType], map: "idx_asset_type")
+  @@index([fingerprint], map: "idx_asset_fingerprint")
+  @@map("asset_fingerprints")
+}
+
+// Enhanced simulation reports table
+model SimulationReport {
+  id                   String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  simulationId         String   @unique @map("simulation_id")
+  workspaceId          String   @map("workspace_id")
+  tenantId             String   @map("tenant_id")
+  
+  // Simulation configuration for reproducibility
+  iterations           Int
+  randomSeed           Int      @map("random_seed")
+  rngAlgorithm         String   @default("seedrandom") @map("rng_algorithm")
+  rngLibraryVersion    String   @map("rng_library_version")
+  nodejsVersion        String   @map("nodejs_version")
+  engineVersion        String   @default("1.0.0") @map("engine_version")
+  
+  // Core simulation results
+  readinessScore       Decimal  @map("readiness_score") @db.Decimal(5, 4)
+  policyPassPct        Decimal  @map("policy_pass_pct") @db.Decimal(5, 4)
+  citationCoverage     Decimal  @map("citation_coverage") @db.Decimal(5, 4)
+  duplicationRisk      Decimal  @map("duplication_risk") @db.Decimal(5, 4)
+  costEstimateUsd      Decimal  @map("cost_estimate_usd") @db.Decimal(10, 2)
+  technicalReadiness   Decimal  @map("technical_readiness") @db.Decimal(5, 4)
+  
+  // Statistical metadata
+  confidenceBounds     Json?    @map("confidence_bounds")
+  percentiles          Json?
+  convergenceMetadata  Json?    @map("convergence_metadata")
+  
+  // Execution metadata
+  startedAt            DateTime @map("started_at") @db.Timestamptz(6)
+  completedAt          DateTime @map("completed_at") @db.Timestamptz(6)
+  durationMs           Int      @map("duration_ms")
+  
+  // Simulation input context
+  workspaceContext     Json     @map("workspace_context")
+  workflowManifest     Json     @map("workflow_manifest")
+  simulationConfig     Json     @map("simulation_config")
+  
+  // Simulation traces and debugging
+  traces               Json?
+  errorLog             Json?    @map("error_log")
+  
+  // Audit and lineage
+  createdBy            String   @map("created_by")
+  correlationId        String?  @map("correlation_id")
+  parentSimulationId   String?  @map("parent_simulation_id")
+  tags                 Json?
+  
+  // Timestamps
+  createdAt            DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  workspace Workspace @relation(fields: [workspaceId], references: [workspaceId], onDelete: Cascade)
+
+  @@index([workspaceId], map: "idx_simulation_reports_workspace_id")
+  @@index([tenantId], map: "idx_simulation_reports_tenant_id")
+  @@index([createdAt], map: "idx_simulation_reports_created_at")
+  @@index([readinessScore], map: "idx_simulation_reports_readiness_score")
+  @@index([randomSeed], map: "idx_simulation_reports_seed")
+  @@index([correlationId], map: "idx_simulation_reports_correlation_id")
+  @@index([workspaceId, createdAt(sort: Desc)], map: "idx_simulation_reports_workspace_created")
+  @@index([workspaceId, randomSeed, engineVersion], map: "idx_simulation_reports_baseline_lookup")
+  @@map("simulation_reports")
+}
+
+model AgentRun {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  jobId             String    @unique @map("job_id")
+  workspaceId       String    @map("workspace_id")
+  tenantId          String    @map("tenant_id")
+  agentType         String    @map("agent_type") @db.VarChar(100)
+  agentVersion      String    @map("agent_version") @db.VarChar(50)
+  
+  // Execution status and timing
+  status            String    // pending, running, completed, failed, cancelled
+  startedAt         DateTime? @map("started_at") @db.Timestamptz(6)
+  completedAt       DateTime? @map("completed_at") @db.Timestamptz(6)
+  durationMs        Int?      @map("duration_ms")
+  
+  // Input and output data
+  inputData         Json      @map("input_data")
+  outputData        Json?     @map("output_data")
+  errorMessage      String?   @map("error_message") @db.Text
+  
+  // Model usage tracking for cost attribution
+  modelUsage        Json?     @map("model_usage")
+  
+  // Agent execution metadata
+  executionContext  Json?     @map("execution_context")
+  vaultTokenRef     String?   @map("vault_token_ref")
+  executionNode     String?   @map("execution_node")
+  
+  // Quality and performance metrics
+  qualityScore      Decimal?  @map("quality_score") @db.Decimal(3, 2)
+  outputConfidence  Decimal?  @map("output_confidence") @db.Decimal(3, 2)
+  toolsUsed         Json?     @map("tools_used")
+  
+  // Audit and compliance
+  createdBy         String    @map("created_by")
+  correlationId     String?   @map("correlation_id")
+  parentJobId       String?   @map("parent_job_id")
+  retryCount        Int       @default(0) @map("retry_count")
+  
+  // Timestamps
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  workspace Workspace @relation(fields: [workspaceId], references: [workspaceId], onDelete: Cascade)
+
+  @@index([workspaceId], map: "idx_agent_runs_workspace_id")
+  @@index([tenantId], map: "idx_agent_runs_tenant_id")
+  @@index([agentType], map: "idx_agent_runs_agent_type")
+  @@index([status], map: "idx_agent_runs_status")
+  @@index([createdAt], map: "idx_agent_runs_created_at")
+  @@index([correlationId], map: "idx_agent_runs_correlation_id")
+  @@map("agent_runs")
+}
+
+// Additional production tables
+
+model User {
+  id            String   @id @default(cuid())
+  email         String   @unique
+  name          String?
+  tenantId      String   @map("tenant_id")
+  roles         Json     @default("[]")
+  isActive      Boolean  @default(true) @map("is_active")
+  lastLoginAt   DateTime? @map("last_login_at") @db.Timestamptz(6)
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  // Relations
+  sessions      UserSession[]
+  auditLogs     AuditLog[]
+
+  @@index([tenantId], map: "idx_users_tenant_id")
+  @@index([email], map: "idx_users_email")
+  @@map("users")
+}
+
+model UserSession {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  sessionId String   @unique @map("session_id")
+  expiresAt DateTime @map("expires_at") @db.Timestamptz(6)
+  userAgent String?  @map("user_agent") @db.Text
+  ipAddress String?  @map("ip_address")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId], map: "idx_user_sessions_user_id")
+  @@index([expiresAt], map: "idx_user_sessions_expires_at")
+  @@map("user_sessions")
+}
+
+model AuditLog {
+  id            String   @id @default(cuid())
+  tenantId      String   @map("tenant_id")
+  userId        String?  @map("user_id")
+  action        String
+  resource      String
+  resourceId    String?  @map("resource_id")
+  details       Json?
+  ipAddress     String?  @map("ip_address")
+  userAgent     String?  @map("user_agent") @db.Text
+  timestamp     DateTime @default(now()) @db.Timestamptz(6)
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId], map: "idx_audit_logs_tenant_id")
+  @@index([userId], map: "idx_audit_logs_user_id")
+  @@index([action], map: "idx_audit_logs_action")
+  @@index([timestamp], map: "idx_audit_logs_timestamp")
+  @@index([tenantId, timestamp(sort: Desc)], map: "idx_audit_logs_tenant_timestamp")
+  @@map("audit_logs")
+}
+
+model IngestionJob {
+  id            String   @id @default(cuid())
+  jobId         String   @unique @map("job_id")
+  workspaceId   String   @map("workspace_id")
+  tenantId      String   @map("tenant_id")
+  sourceUrl     String   @map("source_url") @db.Text
+  contentType   String   @map("content_type")
+  status        String   // pending, processing, completed, failed
+  priority      String   @default("medium") // low, medium, high
+  
+  // Processing results
+  extractedText String?  @map("extracted_text") @db.Text
+  metadata      Json?
+  claims        Json?    @default("[]")
+  contentHash   String?  @map("content_hash")
+  wordCount     Int?     @map("word_count")
+  
+  // Error handling
+  errorMessage  String?  @map("error_message") @db.Text
+  retryCount    Int      @default(0) @map("retry_count")
+  
+  // Timestamps
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  startedAt     DateTime? @map("started_at") @db.Timestamptz(6)
+  completedAt   DateTime? @map("completed_at") @db.Timestamptz(6)
+
+  @@index([workspaceId], map: "idx_ingestion_jobs_workspace_id")
+  @@index([status], map: "idx_ingestion_jobs_status")
+  @@index([priority], map: "idx_ingestion_jobs_priority")
+  @@index([createdAt], map: "idx_ingestion_jobs_created_at")
+  @@map("ingestion_jobs")
+}
+
+model VectorDocument {
+  id            String   @id @default(cuid())
+  documentId    String   @unique @map("document_id")
+  workspaceId   String   @map("workspace_id")
+  sourceId      String?  @map("source_id")
+  content       String   @db.Text
+  contentHash   String   @map("content_hash")
+  metadata      Json     @default("{}")
+  
+  // Vector embeddings (stored as JSON array)
+  embedding     Json?
+  embeddingModel String? @map("embedding_model")
+  
+  // Search and filtering
+  tags          Json     @default("[]")
+  contentType   String   @map("content_type")
+  language      String?
+  
+  // Timestamps
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([workspaceId], map: "idx_vector_documents_workspace_id")
+  @@index([contentHash], map: "idx_vector_documents_content_hash")
+  @@index([contentType], map: "idx_vector_documents_content_type")
+  @@index([sourceId], map: "idx_vector_documents_source_id")
+  @@map("vector_documents")
+}

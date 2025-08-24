@@ -1,0 +1,143 @@
+{
+  "workspaceId": "ws-icblabs-0001",
+  "tenantId": "tenant-icblabs",
+  "createdBy": "user:alice@icblabs.com",
+  "createdAt": "2025-08-24T10:00:00Z",
+  "lifecycle": "signed",
+  "contractVersion": "v1.1.0",
+  "previousContractRef": "sha256:a7f9d2e1c8b5f4g3h6j9k2l5m8n1p4q7r0s3t6u9v2w5x8y1z4a7b0c3d6e9f2g5h8",
+  "signedBy": {
+    "principal": "user:alice@icblabs.com",
+    "signedAt": "2025-08-24T10:30:00Z",
+    "signatureId": "sig-icb-002-b8g0e3f2d9c6h5j8"
+  },
+  "effectiveFrom": "2025-08-24T11:00:00Z",
+  "effectiveTo": "2026-02-24T11:00:00Z",
+  "goals": [
+    {
+      "key": "lead_gen",
+      "target": 250,
+      "unit": "leads_per_month"
+    },
+    {
+      "key": "brand_awareness",
+      "target": 120000,
+      "unit": "impressions_per_month"
+    },
+    {
+      "key": "engagement",
+      "target": 0.06,
+      "unit": "engagement_rate"
+    }
+  ],
+  "primaryChannels": ["linkedin", "x", "instagram"],
+  "connectors": [
+    {
+      "platform": "linkedin",
+      "connectorId": "conn-li-icb-001",
+      "accountId": "icb-labs-company",
+      "displayName": "ICB Labs Company Page",
+      "status": "connected",
+      "lastConnectedAt": "2025-08-24T09:45:00Z",
+      "scopes": ["w_member_social", "r_basicprofile", "r_organization_social"],
+      "ownerContact": "social@icblabs.com"
+    },
+    {
+      "platform": "x",
+      "connectorId": "conn-x-icb-001", 
+      "accountId": "@icblabs",
+      "displayName": "ICB Labs (@icblabs)",
+      "status": "connected",
+      "lastConnectedAt": "2025-08-24T09:50:00Z",
+      "scopes": ["tweet.read", "tweet.write", "users.read"],
+      "ownerContact": "social@icblabs.com"
+    },
+    {
+      "platform": "instagram",
+      "connectorId": "conn-ig-icb-001",
+      "accountId": "icb_labs_official",
+      "displayName": "ICB Labs Official",
+      "status": "connected",
+      "lastConnectedAt": "2025-08-24T10:25:00Z",
+      "scopes": ["instagram_basic", "instagram_content_publish"],
+      "ownerContact": "social@icblabs.com"
+    }
+  ],
+  "consentRecords": [
+    {
+      "consentId": "consent-icb-voice-001",
+      "type": "voice_likeness",
+      "grantedBy": "user:alice@icblabs.com",
+      "grantedAt": "2025-08-24T10:15:00Z",
+      "expiresAt": "2026-08-24T10:15:00Z",
+      "documentRef": "s3://icb-consents/voice-likeness-alice-2025-08-24.pdf",
+      "verifierSignature": "vault:sig:voice-consent-001:8f7e6d5c4b3a2918"
+    },
+    {
+      "consentId": "consent-icb-marketing-001",
+      "type": "marketing_use",
+      "grantedBy": "user:alice@icblabs.com",
+      "grantedAt": "2025-08-24T10:20:00Z",
+      "expiresAt": "2026-08-24T10:20:00Z",
+      "documentRef": "s3://icb-consents/marketing-use-alice-2025-08-24.pdf",
+      "verifierSignature": "vault:sig:marketing-consent-001:9g8f7e6d5c4b3a29"
+    }
+  ],
+  "budget": {
+    "currency": "USD",
+    "weeklyCap": 1200,
+    "hardCap": 5000,
+    "breakdown": {
+      "paidAds": 750,
+      "llmModelSpend": 250,
+      "rendering": 150,
+      "thirdPartyServices": 50
+    },
+    "forecast": {
+      "estimatedWeeklySpend": 1050,
+      "confidence": 0.89
+    }
+  },
+  "approvalPolicy": {
+    "autoApproveReadinessThreshold": 0.87,
+    "canaryInitialPct": 0.05,
+    "canaryWatchWindowHours": 48,
+    "manualApprovalForPaid": true,
+    "legalManualApproval": true
+  },
+  "riskProfile": "medium",
+  "dataRetention": {
+    "auditRetentionDays": 365
+  },
+  "ttlHours": 720,
+  "policyBundleRef": "policies/standard-corp-v1.1",
+  "policyBundleChecksum": "b8g0e3f2d9c6h5j8k1l4m7n0p3q6r9s2t5u8v1w4x7y0z3a6b9c2d5e8f1g4h7j0k3",
+  "lastRun": {
+    "runId": "run-icb-2025-08-24-002",
+    "status": "completed",
+    "startedAt": "2025-08-24T08:00:00Z",
+    "finishedAt": "2025-08-24T09:30:00Z"
+  },
+  "currentCanary": {
+    "pct": 0.05,
+    "startedAt": "2025-08-24T09:35:00Z",
+    "status": "monitoring"
+  },
+  "audit": {
+    "retentionDays": 365,
+    "storageRef": "s3://icb-audit-bundles/ws-icblabs-0001/",
+    "lastBundleId": "bundle-icb-2025-08-24-002"
+  },
+  "simulationConfig": {
+    "iterations": 1000,
+    "randomSeed": 42,
+    "timeoutSeconds": 120
+  },
+  "emergencyFlags": {
+    "pauseAll": false,
+    "budgetOverride": false,
+    "humanApprovalRequired": false
+  },
+  "kmsKeyRef": "projects/icb-labs-kms/locations/us-central1/keyRings/smm-keys/cryptoKeys/workspace-signing",
+  "vaultMount": "secret/workspaces/ws-icblabs-0001"
+}

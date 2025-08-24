@@ -31,6 +31,11 @@
       "type": "string",
       "description": "Semantic version of this contract (e.g., 'v1.2.3')"
     },
+    "previousContractRef": {
+      "type": "string",
+      "description": "SHA-256 hash reference to the previous contract version for immutable chaining",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
     "signedBy": {
       "type": "object",
       "properties": {

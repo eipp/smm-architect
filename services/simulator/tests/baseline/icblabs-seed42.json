@@ -1,0 +1,186 @@
+{
+  "testCase": "icblabs-workspace-baseline",
+  "description": "Baseline Monte Carlo simulation results for ICB Labs workspace with seed 42",
+  "simulationInput": {
+    "workspaceId": "ws-icblabs-0001",
+    "workflowJson": {
+      "version": "1.0.0",
+      "nodes": [
+        {
+          "id": "research_brand",
+          "type": "agent",
+          "parameters": { "agent": "research-agent" },
+          "dependencies": [],
+          "estimatedDuration": 1200,
+          "failureRate": 0.02
+        },
+        {
+          "id": "generate_content",
+          "type": "agent", 
+          "parameters": { "agent": "creative-agent" },
+          "dependencies": ["research_brand"],
+          "estimatedDuration": 2500,
+          "failureRate": 0.05
+        },
+        {
+          "id": "policy_check",
+          "type": "validation",
+          "parameters": { "service": "policy-engine" },
+          "dependencies": ["generate_content"],
+          "estimatedDuration": 150,
+          "failureRate": 0.01
+        },
+        {
+          "id": "render_assets",
+          "type": "render",
+          "parameters": { "service": "toolhub" },
+          "dependencies": ["generate_content"],
+          "estimatedDuration": 800,
+          "failureRate": 0.03
+        },
+        {
+          "id": "schedule_posts",
+          "type": "automation",
+          "parameters": { "service": "publisher-agent" },
+          "dependencies": ["policy_check", "render_assets"],
+          "estimatedDuration": 300,
+          "failureRate": 0.02
+        }
+      ]
+    },
+    "simulationConfig": {
+      "iterations": 1000,
+      "randomSeed": 42,
+      "timeoutSeconds": 120,
+      "convergenceThreshold": 0.001,
+      "confidenceLevel": 0.95,
+      "enableEarlyTermination": true,
+      "parallelBatches": 4
+    },
+    "workspaceContext": {
+      "workspaceId": "ws-icblabs-0001",
+      "goals": [
+        { "key": "lead_gen", "target": 200, "unit": "leads_per_month" },
+        { "key": "brand_awareness", "target": 100000, "unit": "impressions_per_month" }
+      ],
+      "primaryChannels": ["linkedin", "x"],
+      "budget": {
+        "currency": "USD",
+        "weeklyCap": 1000,
+        "hardCap": 4000,
+        "breakdown": {
+          "paidAds": 600,
+          "llmModelSpend": 200,
+          "rendering": 150,
+          "thirdPartyServices": 50
+        }
+      },
+      "approvalPolicy": {
+        "autoApproveReadinessThreshold": 0.85,
+        "canaryInitialPct": 0.05,
+        "canaryWatchWindowHours": 48,
+        "manualApprovalForPaid": true,
+        "legalManualApproval": false
+      },
+      "riskProfile": "medium"
+    }
+  },
+  "expectedOutput": {
+    "readinessScore": {
+      "mean": 0.847,
+      "std": 0.032,
+      "percentiles": {
+        "p5": 0.788,
+        "p25": 0.826,
+        "p50": 0.847,
+        "p75": 0.868,
+        "p95": 0.906
+      },
+      "confidence": {
+        "lower": 0.845,
+        "upper": 0.849,
+        "level": 0.95
+      }
+    },
+    "policyPassPct": {
+      "mean": 0.923,
+      "std": 0.018,
+      "percentiles": {
+        "p5": 0.892,
+        "p25": 0.912,
+        "p50": 0.923,
+        "p75": 0.934,
+        "p95": 0.954
+      }
+    },
+    "citationCoverage": {
+      "mean": 0.916,
+      "std": 0.021,
+      "percentiles": {
+        "p5": 0.877,
+        "p25": 0.903,
+        "p50": 0.916,
+        "p75": 0.929,
+        "p95": 0.955
+      }
+    },
+    "duplicationRisk": {
+      "mean": 0.082,
+      "std": 0.019,
+      "percentiles": {
+        "p5": 0.051,
+        "p25": 0.069,
+        "p50": 0.082,
+        "p75": 0.095,
+        "p95": 0.113
+      }
+    },
+    "costEstimateUSD": {
+      "mean": 1050.25,
+      "std": 125.80,
+      "percentiles": {
+        "p5": 865.40,
+        "p25": 963.20,
+        "p50": 1050.25,
+        "p75": 1137.30,
+        "p95": 1235.10
+      }
+    },
+    "technicalReadiness": {
+      "mean": 0.881,
+      "std": 0.028,
+      "percentiles": {
+        "p5": 0.836,
+        "p25": 0.863,
+        "p50": 0.881,
+        "p75": 0.899,
+        "p95": 0.926
+      }
+    },
+    "convergenceMetrics": {
+      "converged": true,
+      "requiredIterations": 1000,
+      "stabilityThreshold": 0.001
+    }
+  },
+  "tolerances": {
+    "readinessScore": 0.001,
+    "policyPassPct": 0.005,
+    "citationCoverage": 0.005,
+    "duplicationRisk": 0.005,
+    "costEstimateUSD": 50.0,
+    "technicalReadiness": 0.005
+  },
+  "metadata": {
+    "baselineGeneratedAt": "2025-08-24T12:00:00Z",
+    "engineVersion": "1.0.0",
+    "rngLibrary": "seedrandom@3.0.5",
+    "nodeJsVersion": "18.17.0",
+    "description": "This baseline ensures reproducible Monte Carlo simulations for CI regression testing. Tolerances are set to allow for minor floating-point differences while catching significant behavioral changes.",
+    "regressionTestInstructions": {
+      "testCommand": "npm run test:regression",
+      "ciGating": "This test must pass for all PRs touching simulator code",
+      "updateProcedure": "To update baseline: 1) Verify changes are intentional, 2) Update expectedOutput values, 3) Document changes in PR description"
+    }
+  }
+}

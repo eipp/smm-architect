@@ -11,16 +11,19 @@ import {
   ComplianceCheck,
   AuditTrailEntry
 } from '../types';
-import { KMSService } from './kms-service';
+import { KMSManager } from '../kms/kms-manager';
 import { StorageService } from './storage-service';
+import { ContractSnapshotter, ContractSnapshot } from './contract-snapshotter';
 
 export class AuditBundleAssembler {
-  private kmsService: KMSService;
+  private kmsManager: KMSManager;
   private storageService: StorageService;
+  private contractSnapshotter: ContractSnapshotter;
 
-  constructor(kmsService: KMSService, storageService: StorageService) {
-    this.kmsService = kmsService;
+  constructor(kmsManager: KMSManager, storageService: StorageService) {
+    this.kmsManager = kmsManager;
     this.storageService = storageService;
+    this.contractSnapshotter = new ContractSnapshotter(storageService);
   }
 
   /**
@@ -137,16 +140,16 @@ export class AuditBundleAssembler {
 
       // Sign the bundle
       const signatureData = Buffer.from(canonicalBundle);
-      const signature = await this.kmsService.sign(signatureData, keyId);
+      const signatureResult = await this.kmsManager.sign(signatureData, keyId);
 
       // Create cryptographic signature object
       const cryptographicSignature: CryptographicSignature = {
-        algorithm: 'RS256',
-        keyId,
-        signature,
-        signedAt: new Date().toISOString(),
+        algorithm: signatureResult.algorithm,
+        keyId: signatureResult.keyId,
+        signature: signatureResult.signature,
+        signedAt: signatureResult.signedAt,
         signedBy,
-        timestampToken: await this.generateTimestampToken(signatureData, signature)
+        timestampToken: await this.generateTimestampToken(signatureData, signatureResult.signature)
       };
 
       // Create initial custody record
@@ -263,23 +266,40 @@ export class AuditBundleAssembler {
   // Mock data retrieval methods (in production, these would call actual services)
 
   private async getWorkspaceContractSnapshot(workspaceId: string): Promise<WorkspaceContractSnapshot> {
-    // Mock implementation - would fetch from SMM Architect service
-    const contractData = {
-      workspaceId,
-      tenantId: 'tenant-example',
-      lifecycle: 'active',
-      contractVersion: 'v1.0.0',
-      // ... other contract fields
-    };
+    try {
+      // Get the latest contract snapshot from the snapshotter
+      const contractSnapshot = await this.contractSnapshotter.getLatestSnapshot(workspaceId);
+      
+      if (!contractSnapshot) {
+        throw new Error(`No contract snapshot found for workspace ${workspaceId}`);
+      }
 
-    return {
-      workspaceId,
-      contractVersion: 'v1.0.0',
-      lifecycle: 'active',
-      snapshotAt: new Date().toISOString(),
-      contractData,
-      checksumSHA256: crypto.createHash('sha256').update(JSON.stringify(contractData)).digest('hex')
-    };
+      // Verify immutability chain
+      const chainValid = await this.contractSnapshotter.verifyImmutabilityChain(
+        workspaceId, 
+        contractSnapshot.contractVersion
+      );
+      
+      if (!chainValid) {
+        throw new Error(`Contract immutability chain verification failed for workspace ${workspaceId}`);
+      }
+
+      return {
+        workspaceId,
+        contractVersion: contractSnapshot.contractVersion,
+        lifecycle: contractSnapshot.contractContent.lifecycle,
+        snapshotAt: contractSnapshot.snapshotAt,
+        contractData: contractSnapshot.contractContent,
+        checksumSHA256: contractSnapshot.contractHash,
+        previousContractRef: contractSnapshot.previousContractRef,
+        policyBundleChecksum: contractSnapshot.policyBundleChecksum,
+        kmsKeyRef: contractSnapshot.kmsKeyRef,
+        isImmutable: contractSnapshot.isImmutable
+      };
+
+    } catch (error) {
+      throw new Error(`Failed to get workspace contract snapshot: ${error.message}`);
+    }
   }
 
   private async getBrandTwinSnapshotId(workspaceId: string): Promise<string | undefined> {

@@ -1,0 +1,250 @@
+# AlertManager configuration for SMM Architect
+global:
+  smtp_smarthost: 'localhost:587'
+  smtp_from: 'alerts@smmarchitect.com'
+  smtp_auth_username: ''
+  smtp_auth_password: ''
+  smtp_require_tls: true
+
+# Alert routing rules
+route:
+  group_by: ['alertname', 'cluster', 'service']
+  group_wait: 10s
+  group_interval: 10s
+  repeat_interval: 1h
+  receiver: 'default'
+  routes:
+    # Critical alerts go to multiple channels
+    - match:
+        severity: critical
+      receiver: 'critical-alerts'
+      group_wait: 5s
+      repeat_interval: 15m
+    
+    # Security alerts go to security team
+    - match:
+        team: security
+      receiver: 'security-team'
+      group_wait: 5s
+      repeat_interval: 30m
+    
+    # Platform alerts go to platform team
+    - match:
+        team: platform
+      receiver: 'platform-team'
+      repeat_interval: 30m
+    
+    # Product alerts go to product team
+    - match:
+        team: product
+      receiver: 'product-team'
+      repeat_interval: 1h
+    
+    # Finance alerts go to finance team
+    - match:
+        team: finance
+      receiver: 'finance-team'
+      repeat_interval: 2h
+    
+    # Engineering alerts go to engineering team
+    - match:
+        team: engineering
+      receiver: 'engineering-team'
+      repeat_interval: 45m
+    
+    # Content team alerts
+    - match:
+        team: content
+      receiver: 'content-team'
+      repeat_interval: 45m
+
+# Alert receivers (notification channels)
+receivers:
+  # Default receiver
+  - name: 'default'
+    slack_configs:
+      - api_url: '${SLACK_WEBHOOK_URL_DEFAULT}'
+        channel: '#alerts-general'
+        title: 'SMM Architect Alert'
+        text: |
+          {{ range .Alerts }}
+          *Alert:* {{ .Annotations.summary }}
+          *Severity:* {{ .Labels.severity }}
+          *Description:* {{ .Annotations.description }}
+          *Labels:* {{ range .Labels.SortedPairs }}{{ .Name }}={{ .Value }} {{ end }}
+          {{ end }}
+
+  # Critical alerts - multiple channels
+  - name: 'critical-alerts'
+    slack_configs:
+      - api_url: '${SLACK_WEBHOOK_URL_CRITICAL}'
+        channel: '#alerts-critical'
+        title: '🚨 CRITICAL: SMM Architect Alert'
+        text: |
+          {{ range .Alerts }}
+          *🚨 CRITICAL ALERT 🚨*
+          *Service:* {{ .Labels.service }}
+          *Alert:* {{ .Annotations.summary }}
+          *Description:* {{ .Annotations.description }}
+          *Time:* {{ .StartsAt.Format "2006-01-02 15:04:05" }}
+          {{ end }}
+        actions:
+          - type: button
+            text: 'View in Grafana'
+            url: '${GRAFANA_URL}/dashboards'
+          - type: button
+            text: 'View in Prometheus'
+            url: '${PROMETHEUS_URL}/alerts'
+    
+    email_configs:
+      - to: 'oncall@smmarchitect.com'
+        subject: '🚨 CRITICAL: SMM Architect Alert - {{ .GroupLabels.alertname }}'
+        body: |
+          Critical alert triggered in SMM Architect:
+          
+          {{ range .Alerts }}
+          Alert: {{ .Annotations.summary }}
+          Severity: {{ .Labels.severity }}
+          Service: {{ .Labels.service }}
+          Description: {{ .Annotations.description }}
+          Started: {{ .StartsAt.Format "2006-01-02 15:04:05 UTC" }}
+          
+          Labels:
+          {{ range .Labels.SortedPairs }}  {{ .Name }}: {{ .Value }}
+          {{ end }}
+          {{ end }}
+          
+          Grafana: ${GRAFANA_URL}/dashboards
+          Prometheus: ${PROMETHEUS_URL}/alerts
+    
+    webhook_configs:
+      - url: '${PAGERDUTY_WEBHOOK_URL}'
+        send_resolved: true
+
+  # Security team alerts
+  - name: 'security-team'
+    slack_configs:
+      - api_url: '${SLACK_WEBHOOK_URL_SECURITY}'
+        channel: '#security-alerts'
+        title: '🔒 Security Alert: SMM Architect'
+        text: |
+          {{ range .Alerts }}
+          *🔒 SECURITY ALERT*
+          *Alert:* {{ .Annotations.summary }}
+          *Severity:* {{ .Labels.severity }}
+          *Service:* {{ .Labels.service }}
+          *Description:* {{ .Annotations.description }}
+          {{ end }}
+    
+    email_configs:
+      - to: 'security@smmarchitect.com'
+        subject: '🔒 Security Alert: {{ .GroupLabels.alertname }}'
+        body: |
+          Security alert in SMM Architect:
+          
+          {{ range .Alerts }}
+          Alert: {{ .Annotations.summary }}
+          Severity: {{ .Labels.severity }}
+          Description: {{ .Annotations.description }}
+          Time: {{ .StartsAt.Format "2006-01-02 15:04:05 UTC" }}
+          {{ end }}
+
+  # Platform team alerts
+  - name: 'platform-team'
+    slack_configs:
+      - api_url: '${SLACK_WEBHOOK_URL_PLATFORM}'
+        channel: '#platform-alerts'
+        title: '⚙️ Platform Alert: SMM Architect'
+        text: |
+          {{ range .Alerts }}
+          *Alert:* {{ .Annotations.summary }}
+          *Severity:* {{ .Labels.severity }}
+          *Service:* {{ .Labels.service }}
+          *Description:* {{ .Annotations.description }}
+          {{ end }}
+
+  # Product team alerts
+  - name: 'product-team'
+    slack_configs:
+      - api_url: '${SLACK_WEBHOOK_URL_PRODUCT}'
+        channel: '#product-alerts'
+        title: '📊 Product Alert: SMM Architect'
+        text: |
+          {{ range .Alerts }}
+          *Alert:* {{ .Annotations.summary }}
+          *Description:* {{ .Annotations.description }}
+          *Workspace:* {{ .Labels.workspace_id }}
+          {{ end }}
+
+  # Finance team alerts
+  - name: 'finance-team'
+    slack_configs:
+      - api_url: '${SLACK_WEBHOOK_URL_FINANCE}'
+        channel: '#finance-alerts'
+        title: '💰 Cost Alert: SMM Architect'
+        text: |
+          {{ range .Alerts }}
+          *Alert:* {{ .Annotations.summary }}
+          *Description:* {{ .Annotations.description }}
+          *Workspace:* {{ .Labels.workspace_id }}
+          {{ end }}
+    
+    email_configs:
+      - to: 'finance@smmarchitect.com'
+        subject: '💰 Cost Alert: {{ .GroupLabels.alertname }}'
+        body: |
+          Cost-related alert in SMM Architect:
+          
+          {{ range .Alerts }}
+          Alert: {{ .Annotations.summary }}
+          Description: {{ .Annotations.description }}
+          Time: {{ .StartsAt.Format "2006-01-02 15:04:05 UTC" }}
+          {{ end }}
+
+  # Engineering team alerts
+  - name: 'engineering-team'
+    slack_configs:
+      - api_url: '${SLACK_WEBHOOK_URL_ENGINEERING}'
+        channel: '#engineering-alerts'
+        title: '🔧 Engineering Alert: SMM Architect'
+        text: |
+          {{ range .Alerts }}
+          *Alert:* {{ .Annotations.summary }}
+          *Severity:* {{ .Labels.severity }}
+          *Service:* {{ .Labels.service }}
+          *Description:* {{ .Annotations.description }}
+          {{ end }}
+
+  # Content team alerts
+  - name: 'content-team'
+    slack_configs:
+      - api_url: '${SLACK_WEBHOOK_URL_CONTENT}'
+        channel: '#content-alerts'
+        title: '📄 Content Alert: SMM Architect'
+        text: |
+          {{ range .Alerts }}
+          *Alert:* {{ .Annotations.summary }}
+          *Description:* {{ .Annotations.description }}
+          *Content Type:* {{ .Labels.content_type }}
+          {{ end }}
+
+# Inhibition rules - suppress certain alerts when others are firing
+inhibit_rules:
+  # Suppress warning alerts when critical alerts are firing for the same service
+  - source_match:
+      severity: 'critical'
+    target_match:
+      severity: 'warning'
+    equal: ['service', 'instance']
+  
+  # Suppress individual service alerts when the whole system is down
+  - source_match:
+      alertname: 'ServiceDown'
+      service: 'smm-architect'
+    target_match_re:
+      alertname: '.*'
+    equal: ['instance']
+
+# Templates for custom formatting
+templates:
+  - '/etc/alertmanager/templates/*.tmpl'

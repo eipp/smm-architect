@@ -2,8 +2,39 @@ import log from "encore.dev/log";
 import { v4 as uuidv4 } from "uuid";
 import crypto from "crypto";
 import { AuditBundleResponse } from "../types";
+import { KMSManager } from '../../../audit/src/kms/kms-manager';
 
 export class AuditService {
+  private kmsManager: KMSManager;
+
+  constructor() {
+    // Initialize KMS manager based on environment
+    if (process.env.NODE_ENV === 'production') {
+      // Use Vault in production
+      this.kmsManager = KMSManager.forVault({
+        vaultUrl: process.env.VAULT_ADDR || 'http://localhost:8200',
+        vaultToken: process.env.VAULT_TOKEN,
+        transitMount: 'transit',
+        keyPrefix: 'smm-audit'
+      });
+    } else if (process.env.AWS_KMS_KEY_ID) {
+      // Use AWS KMS if configured
+      this.kmsManager = KMSManager.forAWS({
+        region: process.env.AWS_REGION || 'us-east-1',
+        keyId: process.env.AWS_KMS_KEY_ID
+      });
+    } else {
+      // Fall back to local KMS for development
+      this.kmsManager = KMSManager.forTesting({
+        keyDir: './keys',
+        algorithm: 'rsa'
+      });
+    }
+  }
+
+  async initialize(): Promise<void> {
+    await this.kmsManager.initialize();
+  }
   
   async getAuditBundle(workspaceId: string): Promise<AuditBundleResponse> {
     try {
@@ -123,24 +154,43 @@ export class AuditService {
   }
 
   private async signBundle(bundle: any, kmsKeyRef?: string): Promise<{ keyId: string; signature: string; signedAt: string }> {
-    // Create canonical digest of the bundle
-    const bundleString = JSON.stringify(bundle, Object.keys(bundle).sort());
-    const digest = crypto.createHash('sha256').update(bundleString).digest('hex');
+    try {
+      // Create canonical digest of the bundle
+      const bundleString = JSON.stringify(bundle, Object.keys(bundle).sort());
+      const bundleData = Buffer.from(bundleString, 'utf8');
 
-    // In real implementation, this would use KMS or Vault to sign
-    const mockSignature = this.generateMockSignature(digest, kmsKeyRef);
+      // Use real KMS to sign the bundle
+      const keyId = kmsKeyRef || 'workspace-audit-key';
+      
+      // Ensure key exists
+      try {
+        await this.kmsManager.createKey(keyId);
+      } catch (error) {
+        // Key might already exist, continue
+        log.debug('Key creation failed (might already exist)', { keyId, error: error instanceof Error ? error.message : error });
+      }
 
-    return {
-      keyId: kmsKeyRef || "projects/default-kms/key1",
-      signature: mockSignature,
-      signedAt: new Date().toISOString()
-    };
-  }
+      // Sign the bundle data
+      const signature = await this.kmsManager.sign(bundleData, keyId);
+      
+      log.info('Bundle signed successfully', { 
+        bundleId: bundle.bundleId, 
+        keyId, 
+        signatureLength: signature.length 
+      });
 
-  private generateMockSignature(digest: string, keyRef?: string): string {
-    // Mock signature - in real implementation would use actual cryptographic signing
-    const data = `${digest}:${keyRef || 'default'}:${Date.now()}`;
-    return Buffer.from(crypto.createHash('sha256').update(data).digest()).toString('base64');
+      return {
+        keyId,
+        signature,
+        signedAt: new Date().toISOString()
+      };
+    } catch (error) {
+      log.error('Bundle signing failed', { 
+        bundleId: bundle.bundleId, 
+        error: error instanceof Error ? error.message : error 
+      });
+      throw new Error(`Failed to sign bundle: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
   }
 
   private generateSHA256(content: string): string {
@@ -185,21 +235,39 @@ export class AuditService {
     };
   }
 
-  async verifyBundleSignature(bundleId: string, signature: string): Promise<boolean> {
+  async verifyBundleSignature(bundleId: string, signature: string, bundleData?: any): Promise<boolean> {
     try {
-      log.info("Verifying bundle signature", { bundleId });
+      log.info('Verifying bundle signature', { bundleId });
 
-      // In real implementation, would:
-      // 1. Fetch the bundle from storage
-      // 2. Recreate the canonical digest
-      // 3. Verify signature using public key from KMS
-      // 4. Check signature timestamp and validity
+      if (!bundleData) {
+        // In real implementation, would fetch bundle from storage
+        log.warn('Bundle data not provided for verification', { bundleId });
+        return false;
+      }
 
-      // Mock verification - always returns true for demo
-      return true;
+      // Recreate canonical bundle data
+      const bundleString = JSON.stringify(bundleData, Object.keys(bundleData).sort());
+      const data = Buffer.from(bundleString, 'utf8');
+
+      // Extract key ID from bundle or use default
+      const keyId = bundleData.signature?.keyId || 'workspace-audit-key';
+
+      // Verify signature using KMS
+      const isValid = await this.kmsManager.verify(data, signature, keyId);
+
+      log.info('Bundle signature verification completed', { 
+        bundleId, 
+        keyId, 
+        isValid 
+      });
+
+      return isValid;
 
     } catch (error) {
-      log.error("Signature verification failed", { bundleId, error: error.message });
+      log.error('Signature verification failed', { 
+        bundleId, 
+        error: error instanceof Error ? error.message : error 
+      });
       return false;
     }
   }

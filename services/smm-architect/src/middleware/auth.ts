@@ -1,5 +1,29 @@
 import { Header } from "encore.dev/api";
 import log from "encore.dev/log";
+import { AuthenticationService } from '../../../shared/auth-service';
+import { VaultClient } from '../../../shared/vault-client';
+
+// Initialize authentication service
+const authService = new AuthenticationService(
+  {
+    address: process.env.VAULT_ADDR || 'http://localhost:8200',
+    token: process.env.VAULT_TOKEN
+  },
+  {
+    secret: process.env.JWT_SECRET || 'dev-secret',
+    issuer: 'smm-architect',
+    audience: 'smm-architect'
+  }
+);
+
+// Initialize once
+let authServiceInitialized = false;
+const initAuthService = async () => {
+  if (!authServiceInitialized) {
+    await authService.initialize();
+    authServiceInitialized = true;
+  }
+};
 
 export interface AuthContext {
   userId: string;
@@ -44,63 +68,15 @@ export async function authMiddleware(
 }
 
 async function validateToken(token: string): Promise<AuthContext> {
-  // Check if it's a Vault token
-  if (token.startsWith("vault:")) {
-    return await validateVaultToken(token);
-  }
+  // Ensure auth service is initialized
+  await initAuthService();
 
-  // Check if it's a JWT token
-  if (token.includes(".")) {
-    return await validateJWTToken(token);
-  }
-
-  throw new Error("Unrecognized token format");
-}
-
-async function validateVaultToken(token: string): Promise<AuthContext> {
-  // Parse vault token format: vault:<token>
-  const vaultToken = token.substring(6); // Remove "vault:" prefix
-
-  // In real implementation, would validate with Vault API
-  // For now, mock validation
-  
-  if (vaultToken.length < 20) {
-    throw new Error("Invalid Vault token format");
-  }
-
-  // Mock: decode basic info from token (in real implementation would call Vault)
-  const mockPayload = {
-    userId: "vault-service-account",
-    tenantId: "system",
-    roles: ["workspace-operator"],
-    scopes: ["workspace:read", "workspace:write", "simulate", "audit"]
-  };
-
-  return mockPayload;
-}
-
-async function validateJWTToken(token: string): Promise<AuthContext> {
   try {
-    // In real implementation, would verify JWT signature and decode payload
-    // For now, mock validation
-    
-    const parts = token.split(".");
-    if (parts.length !== 3) {
-      throw new Error("Invalid JWT format");
-    }
-
-    // Mock decode payload (in real implementation would verify signature first)
-    const mockPayload = {
-      userId: "user:alice@example.com",
-      tenantId: "tenant-example",
-      roles: ["workspace-admin"],
-      scopes: ["workspace:*", "audit:read"]
-    };
-
-    return mockPayload;
-
+    // Use real authentication service for validation
+    const authContext = await authService.validateToken(token);
+    return authContext;
   } catch (error) {
-    throw new Error(`JWT validation failed: ${error.message}`);
+    throw new Error(`Token validation failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 }
 

@@ -3,7 +3,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import { AuditBundleAssembler } from './services/audit-bundle-assembler';
-import { KMSService } from './services/kms-service';
+import { KMSManager } from './kms/kms-manager';
 import { StorageService } from './services/storage-service';
 import {
   BundleAssemblyRequest,
@@ -74,9 +74,12 @@ const config: AuditBundleConfig = {
 };
 
 // Initialize services
-const kmsService = new KMSService(config.kms.provider, config.kms.config);
+const kmsManager = new KMSManager({
+  provider: config.kms.provider,
+  config: config.kms.config
+});
 const storageService = new StorageService(config.storage.provider, config.storage.config);
-const assembler = new AuditBundleAssembler(kmsService, storageService, config);
+const assembler = new AuditBundleAssembler(kmsManager, storageService, config);
 
 // Authentication middleware
 const authenticate = (req: express.Request, res: express.Response, next: express.NextFunction) => {
@@ -234,6 +237,42 @@ app.post('/verify', async (req: express.Request, res: express.Response) => {
   }
 });
 
+// GET endpoint for bundle verification (for easy testing)
+app.get('/bundles/:bundleId/verify', async (req: express.Request, res: express.Response) => {
+  try {
+    const { bundleId } = req.params;
+    const {
+      verifySignatures = 'true',
+      verifyIntegrity = 'true', 
+      verifyCompliance = 'true'
+    } = req.query;
+    
+    const user = (req as any).user;
+    const verification = await assembler.verifyBundle(bundleId, {
+      verifySignatures: verifySignatures === 'true',
+      verifyIntegrity: verifyIntegrity === 'true',
+      verifyCompliance: verifyCompliance === 'true',
+      verifiedBy: user.id
+    });
+    
+    res.json({
+      bundleId,
+      verified: verification.isValid,
+      verificationResults: verification.verificationResults,
+      verifiedAt: verification.verifiedAt,
+      verifiedBy: verification.verifiedBy,
+      kmsProvider: kmsManager.getProvider()
+    });
+    
+  } catch (error) {
+    console.error('Bundle verification failed:', error);
+    res.status(500).json({
+      error: 'Failed to verify audit bundle',
+      details: error.message
+    });
+  }
+});
+
 // Delete audit bundle
 app.delete('/bundles/:bundleId', async (req: express.Request, res: express.Response) => {
   try {
@@ -261,7 +300,7 @@ app.delete('/bundles/:bundleId', async (req: express.Request, res: express.Respo
 // Key management endpoints
 app.get('/keys', async (req: express.Request, res: express.Response) => {
   try {
-    const keys = await kmsService.listKeys();
+    const keys = await kmsManager.listKeys();
     res.json({ keys });
   } catch (error) {
     console.error('Key listing failed:', error);
@@ -285,7 +324,7 @@ app.post('/keys', async (req: express.Request, res: express.Response) => {
       return res.status(403).json({ error: 'Insufficient permissions for key creation' });
     }
     
-    const keyId = await kmsService.createKey(alias);
+    const keyId = await kmsManager.createKey(alias);
     
     res.status(201).json({ keyId, alias });
     
@@ -301,7 +340,7 @@ app.post('/keys', async (req: express.Request, res: express.Response) => {
 app.get('/keys/:keyId/metadata', async (req: express.Request, res: express.Response) => {
   try {
     const { keyId } = req.params;
-    const metadata = await kmsService.getKeyMetadata(keyId);
+    const metadata = await kmsManager.getKeyMetadata(keyId);
     res.json(metadata);
   } catch (error) {
     console.error('Key metadata retrieval failed:', error);

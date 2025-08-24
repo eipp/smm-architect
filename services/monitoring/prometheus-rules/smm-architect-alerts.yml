@@ -1,0 +1,235 @@
+# Prometheus alerting rules for SMM Architect
+groups:
+  - name: smm-architect-services
+    interval: 30s
+    rules:
+      # Service availability alerts
+      - alert: ServiceDown
+        expr: up == 0
+        for: 1m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "Service {{ $labels.job }} is down"
+          description: "Service {{ $labels.job }} on {{ $labels.instance }} has been down for more than 1 minute."
+
+      - alert: HighErrorRate
+        expr: rate(smm_http_requests_total{status_code=~"5.."}[5m]) > 0.1
+        for: 2m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "High error rate on {{ $labels.service }}"
+          description: "{{ $labels.service }} has error rate above 10% for the last 5 minutes."
+
+      - alert: HighResponseTime
+        expr: histogram_quantile(0.95, rate(smm_http_request_duration_seconds_bucket[5m])) > 2
+        for: 3m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "High response time on {{ $labels.service }}"
+          description: "95th percentile response time on {{ $labels.service }} is above 2 seconds."
+
+  - name: smm-architect-business
+    interval: 60s
+    rules:
+      # Business logic alerts
+      - alert: LowSimulationReadinessScore
+        expr: smm_simulation_readiness_score < 0.5
+        for: 5m
+        labels:
+          severity: warning
+          team: product
+        annotations:
+          summary: "Low readiness score for workspace {{ $labels.workspace_id }}"
+          description: "Workspace {{ $labels.workspace_id }} has readiness score below 0.5 for 5 minutes."
+
+      - alert: HighModelUsageCost
+        expr: increase(smm_model_usage_cost_usd_total[1h]) > 100
+        for: 0m
+        labels:
+          severity: warning
+          team: finance
+        annotations:
+          summary: "High model usage cost in workspace {{ $labels.workspace_id }}"
+          description: "Model usage cost in workspace {{ $labels.workspace_id }} exceeded $100 in the last hour."
+
+      - alert: LongRunningSimulation
+        expr: smm_simulation_duration_seconds > 600
+        for: 0m
+        labels:
+          severity: warning
+          team: engineering
+        annotations:
+          summary: "Long running simulation in workspace {{ $labels.workspace_id }}"
+          description: "Simulation in workspace {{ $labels.workspace_id }} has been running for more than 10 minutes."
+
+      - alert: FailedAgentExecutions
+        expr: increase(smm_agent_execution_duration_seconds{status="failed"}[10m]) > 5
+        for: 2m
+        labels:
+          severity: warning
+          team: engineering
+        annotations:
+          summary: "High number of failed agent executions"
+          description: "More than 5 agent executions failed in the last 10 minutes."
+
+  - name: smm-architect-infrastructure
+    interval: 30s
+    rules:
+      # Infrastructure alerts
+      - alert: DatabaseConnectionsHigh
+        expr: smm_database_connections_active > 80
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "High number of database connections"
+          description: "Database has more than 80 active connections for 5 minutes."
+
+      - alert: DatabaseQuerySlow
+        expr: histogram_quantile(0.95, rate(smm_database_query_duration_seconds_bucket[5m])) > 1
+        for: 3m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "Slow database queries"
+          description: "95th percentile database query time is above 1 second."
+
+      - alert: VaultOperationFailures
+        expr: increase(smm_vault_operations_total{status="failed"}[10m]) > 10
+        for: 2m
+        labels:
+          severity: critical
+          team: security
+        annotations:
+          summary: "High number of Vault operation failures"
+          description: "More than 10 Vault operations failed in the last 10 minutes."
+
+      - alert: HighMemoryUsage
+        expr: (node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes) / node_memory_MemTotal_bytes > 0.9
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "High memory usage on {{ $labels.instance }}"
+          description: "Memory usage on {{ $labels.instance }} is above 90%."
+
+      - alert: HighCPUUsage
+        expr: 100 - (avg by(instance) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 90
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "High CPU usage on {{ $labels.instance }}"
+          description: "CPU usage on {{ $labels.instance }} is above 90%."
+
+      - alert: DiskSpaceLow
+        expr: (node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"}) * 100 < 10
+        for: 2m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "Low disk space on {{ $labels.instance }}"
+          description: "Disk space on {{ $labels.instance }} is below 10%."
+
+  - name: smm-architect-content
+    interval: 60s
+    rules:
+      # Content processing alerts
+      - alert: HighContentIngestionQueue
+        expr: smm_content_ingestion_jobs_active{status="pending"} > 100
+        for: 10m
+        labels:
+          severity: warning
+          team: content
+        annotations:
+          summary: "High content ingestion queue"
+          description: "More than 100 content ingestion jobs are pending for 10 minutes."
+
+      - alert: FailedContentIngestion
+        expr: smm_content_ingestion_jobs_active{status="failed"} > 10
+        for: 5m
+        labels:
+          severity: warning
+          team: content
+        annotations:
+          summary: "Multiple failed content ingestion jobs"
+          description: "More than 10 content ingestion jobs have failed."
+
+      - alert: VectorOperationFailures
+        expr: increase(smm_vector_operations_total{status="failed"}[10m]) > 20
+        for: 5m
+        labels:
+          severity: warning
+          team: content
+        annotations:
+          summary: "High number of vector operation failures"
+          description: "More than 20 vector operations failed in the last 10 minutes."
+
+  - name: smm-architect-security
+    interval: 30s
+    rules:
+      # Security alerts
+      - alert: FailedAuditSignatures
+        expr: increase(smm_audit_bundle_signatures_total{status="failed"}[10m]) > 5
+        for: 2m
+        labels:
+          severity: critical
+          team: security
+        annotations:
+          summary: "Multiple failed audit bundle signatures"
+          description: "More than 5 audit bundle signatures failed in the last 10 minutes."
+
+      - alert: UnauthorizedAccess
+        expr: increase(smm_http_requests_total{status_code="401"}[5m]) > 50
+        for: 2m
+        labels:
+          severity: warning
+          team: security
+        annotations:
+          summary: "High number of unauthorized access attempts"
+          description: "More than 50 unauthorized access attempts in the last 5 minutes."
+
+      - alert: SuspiciousActivity
+        expr: increase(smm_http_requests_total{status_code="403"}[5m]) > 20
+        for: 2m
+        labels:
+          severity: warning
+          team: security
+        annotations:
+          summary: "Suspicious activity detected"
+          description: "More than 20 forbidden access attempts in the last 5 minutes."
+
+  - name: smm-architect-provisioning
+    interval: 120s
+    rules:
+      # Infrastructure provisioning alerts
+      - alert: FailedWorkspaceProvisioning
+        expr: increase(smm_infrastructure_resources_total{resource_type="workspace"}[30m]) == 0 and increase(smm_http_requests_total{service="workspace-provisioning",status_code=~"5.."}[30m]) > 0
+        for: 5m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "Workspace provisioning failures detected"
+          description: "Workspace provisioning has been failing for the last 30 minutes."
+
+      - alert: HighInfrastructureCost
+        expr: sum(smm_infrastructure_resources_total) > 1000
+        for: 60m
+        labels:
+          severity: warning
+          team: finance
+        annotations:
+          summary: "High infrastructure resource count"
+          description: "Total infrastructure resource count is above 1000 for 1 hour."

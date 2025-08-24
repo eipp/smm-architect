@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import { KMSProvider } from '../types';
 import * as forge from 'node-forge';
+import { VaultKMSAdapter } from '../kms/adapters/vault';
 
 /**
  * KMS Service for cryptographic operations
@@ -9,10 +10,30 @@ import * as forge from 'node-forge';
 export class KMSService implements KMSProvider {
   private provider: 'aws' | 'gcp' | 'vault' | 'local';
   private config: any;
+  private vaultAdapter?: VaultKMSAdapter;
 
   constructor(provider: 'aws' | 'gcp' | 'vault' | 'local', config: any = {}) {
     this.provider = provider;
     this.config = config;
+    
+    // Initialize Vault adapter if using Vault provider
+    if (provider === 'vault') {
+      this.vaultAdapter = new VaultKMSAdapter({
+        vaultUrl: config.vaultUrl || process.env.VAULT_ADDR || 'http://localhost:8200',
+        vaultToken: config.vaultToken || process.env.VAULT_TOKEN,
+        transitMount: config.transitMount || 'transit',
+        keyPrefix: config.keyPrefix || 'smm-audit'
+      });
+    }
+  }
+
+  /**
+   * Initialize the KMS service (required for Vault)
+   */
+  async initialize(): Promise<void> {
+    if (this.provider === 'vault' && this.vaultAdapter) {
+      await this.vaultAdapter.initialize();
+    }
   }
 
   /**
@@ -139,29 +160,33 @@ export class KMSService implements KMSProvider {
     return `projects/test-project/locations/global/keyRings/smm-keys/cryptoKeys/${alias}`;
   }
 
-  // Vault Implementation
+  // Vault Implementation (using real VaultKMSAdapter)
   private async signWithVault(data: Buffer, keyId: string): Promise<string> {
-    // Mock implementation - in production, use Vault Transit API
-    const hash = crypto.createHash('sha256').update(data).digest();
-    const mockSignature = crypto.createHmac('sha256', keyId).update(hash).digest();
-    return `vault:v1:${mockSignature.toString('base64')}`;
+    if (!this.vaultAdapter) {
+      throw new Error('Vault adapter not initialized');
+    }
+    return await this.vaultAdapter.sign(data, keyId);
   }
 
   private async verifyWithVault(data: Buffer, signature: string, keyId: string): Promise<boolean> {
-    try {
-      const expectedSignature = await this.signWithVault(data, keyId);
-      return signature === expectedSignature;
-    } catch {
-      return false;
+    if (!this.vaultAdapter) {
+      throw new Error('Vault adapter not initialized');
     }
+    return await this.vaultAdapter.verify(data, signature, keyId);
   }
 
   private async getPublicKeyVault(keyId: string): Promise<string> {
-    return `-----BEGIN PUBLIC KEY-----\nMOCK_VAULT_PUBLIC_KEY_${keyId}\n-----END PUBLIC KEY-----`;
+    if (!this.vaultAdapter) {
+      throw new Error('Vault adapter not initialized');
+    }
+    return await this.vaultAdapter.getPublicKey(keyId);
   }
 
   private async createKeyVault(alias: string): Promise<string> {
-    return `transit/keys/${alias}`;
+    if (!this.vaultAdapter) {
+      throw new Error('Vault adapter not initialized');
+    }
+    return await this.vaultAdapter.createKey(alias);
   }
 
   // Local Implementation (for development/testing)

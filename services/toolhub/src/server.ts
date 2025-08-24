@@ -10,6 +10,8 @@ import { vectorRoutes } from './routes/vector';
 import { simulateRoutes } from './routes/simulate';
 import { renderRoutes } from './routes/render';
 import { oauthRoutes } from './routes/oauth';
+import { VaultClient } from '../../shared/vault-client';
+import { checkDatabaseHealth } from '../../shared/database/client';
 
 // Configure logging
 const logger = winston.createLogger({
@@ -27,6 +29,12 @@ const logger = winston.createLogger({
 
 const app = express();
 const PORT = process.env.PORT || 8080;
+
+// Initialize Vault client for health checks
+const vaultClient = new VaultClient({
+  address: process.env.VAULT_ADDR || 'http://localhost:8200',
+  token: process.env.VAULT_TOKEN
+});
 
 // Security middleware
 app.use(helmet());
@@ -62,16 +70,48 @@ app.use((req, res, next) => {
 });
 
 // Health check endpoint (no auth required)
-app.get('/health', (req, res) => {
-  res.json({
-    status: 'healthy',
+app.get('/health', async (req, res) => {
+  const healthChecks = {
+    database: 'unknown',
+    vectorDb: 'unknown',
+    vault: 'unknown'
+  };
+
+  // Check database health
+  try {
+    const dbHealth = await checkDatabaseHealth();
+    healthChecks.database = dbHealth.status;
+  } catch (error) {
+    healthChecks.database = 'unhealthy';
+    logger.warn('Database health check failed', { error: error instanceof Error ? error.message : error });
+  }
+
+  // Check Vault health
+  try {
+    const vaultHealth = await vaultClient.getHealth();
+    const isAuthenticated = await vaultClient.isAuthenticated();
+    healthChecks.vault = vaultHealth.initialized && !vaultHealth.sealed && isAuthenticated ? 'healthy' : 'unhealthy';
+  } catch (error) {
+    healthChecks.vault = 'unhealthy';
+    logger.warn('Vault health check failed', { error: error instanceof Error ? error.message : error });
+  }
+
+  // Vector DB health check (simplified)
+  try {
+    // For now, assume healthy if we can reach this point
+    // In production, would check actual vector database connection
+    healthChecks.vectorDb = 'healthy';
+  } catch (error) {
+    healthChecks.vectorDb = 'unhealthy';
+  }
+
+  const overallStatus = Object.values(healthChecks).every(status => status === 'healthy') ? 'healthy' : 'degraded';
+
+  res.status(overallStatus === 'healthy' ? 200 : 503).json({
+    status: overallStatus,
     timestamp: new Date().toISOString(),
     version: process.env.APP_VERSION || '1.0.0',
-    checks: {
-      database: 'healthy', // TODO: Implement actual health checks
-      vectorDb: 'healthy',
-      vault: 'healthy'
-    }
+    checks: healthChecks
   });
 });
 

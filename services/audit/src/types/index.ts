@@ -33,6 +33,10 @@ export interface WorkspaceContractSnapshot {
   snapshotAt: string;
   contractData: any; // Full contract JSON
   checksumSHA256: string;
+  previousContractRef?: string; // SHA-256 hash of previous contract for immutable chaining
+  policyBundleChecksum: string; // SHA-256 hash of OPA policy bundle
+  kmsKeyRef?: string; // KMS key reference for signing
+  isImmutable: boolean; // Confirms this is an immutable snapshot
 }
 
 export interface SimulationReport {
