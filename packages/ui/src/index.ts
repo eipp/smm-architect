@@ -30,6 +30,8 @@ export {
   ModalClose,
 } from "./components/modal"
 export { Badge, badgeVariants, type BadgeProps } from "./components/badge"
+export { Tabs, TabsList, TabsTrigger, TabsContent } from "./components/tabs"
+export { Label } from "./components/label"
 export {
   type ToastProps,
   type ToastActionElement,
@@ -56,6 +58,29 @@ export {
   type MicroGraphProps, 
   type Step 
 } from "./components/micro-graph"
+export {
+  ContentEditor,
+  type StructuredContent,
+  type Platform,
+  type MediaAsset,
+  type CallToAction
+} from "./components/content-editor"
+export {
+  PermissionGate,
+  TenantAdminPanel,
+  ProtectedRoute,
+  type TeamMember,
+  type Invitation
+} from "./components/rbac"
+export {
+  MonitoringDashboard,
+  AlertBanner,
+  MetricCardComponent,
+  EmergencyControlPanel,
+  type MonitoringData,
+  type Alert,
+  type MetricCard
+} from "./components/monitoring-dashboard"
 
 // Utilities
 export { cn } from "./lib/utils"
