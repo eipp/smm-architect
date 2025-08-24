@@ -178,6 +178,48 @@ export function getCurrentHub(): Sentry.Hub {
   return Sentry.getCurrentHub();
 }
 
+/**
+ * Create a span for AI model interactions
+ * @param modelName The AI model being used (e.g., 'gpt-4o', 'claude-3')
+ * @param operation The operation being performed (e.g., 'Generate Text', 'Create Content')
+ * @param callback The AI function to execute within the span
+ * @returns The result of the callback function
+ */
+export async function withAISpan<T>(
+  modelName: string,
+  operation: string,
+  callback: (span: Sentry.Span) => Promise<T>
+): Promise<T> {
+  return Sentry.startSpan({
+    op: "gen_ai.request",
+    name: operation,
+  }, async (span) => {
+    // Set AI-specific attributes
+    span.setAttribute("ai.model", modelName);
+    span.setAttribute("ai.operation", operation);
+    span.setAttribute("service.name", "smm-architect");
+    
+    try {
+      const startTime = Date.now();
+      const result = await callback(span);
+      
+      // Track success metrics
+      const duration = Date.now() - startTime;
+      span.setAttribute("ai.duration_ms", duration);
+      span.setAttribute("ai.status", "success");
+      
+      return result;
+    } catch (error) {
+      // Track error metrics
+      span.setAttribute("ai.status", "error");
+      span.setAttribute("ai.error", error instanceof Error ? error.message : String(error));
+      
+      // Re-throw the error for proper error handling
+      throw error;
+    }
+  });
+}
+
 export default {
   initializeSentry,
   captureException,
@@ -186,4 +228,60 @@ export default {
   startSpan,
   closeSentry,
   getCurrentHub,
+  withAISpan,
+  withAgentSpan,
 };
+
+/**
+ * Create a span for AI agent interactions specifically
+ * @param agentName The name of the agent (e.g., 'research-agent', 'creative-agent')
+ * @param modelName The AI model being used
+ * @param task The task being performed
+ * @param callback The AI function to execute within the span
+ * @returns The result of the callback function
+ */
+export async function withAgentSpan<T>(
+  agentName: string,
+  modelName: string,
+  task: string,
+  callback: (span: Sentry.Span) => Promise<T>
+): Promise<T> {
+  return Sentry.startSpan({
+    op: "gen_ai.agent",
+    name: `${agentName}: ${task}`,
+  }, async (span) => {
+    // Set agent-specific attributes
+    span.setAttribute("ai.model", modelName);
+    span.setAttribute("ai.agent", agentName);
+    span.setAttribute("ai.task", task);
+    span.setAttribute("service.name", "smm-architect");
+    span.setAttribute("service.component", "agent-layer");
+    
+    try {
+      const startTime = Date.now();
+      const result = await callback(span);
+      
+      // Track success metrics
+      const duration = Date.now() - startTime;
+      span.setAttribute("ai.duration_ms", duration);
+      span.setAttribute("ai.status", "success");
+      
+      return result;
+    } catch (error) {
+      // Track error metrics
+      span.setAttribute("ai.status", "error");
+      span.setAttribute("ai.error", error instanceof Error ? error.message : String(error));
+      
+      // Capture the error for this specific agent
+      Sentry.captureException(error, {
+        tags: {
+          agent: agentName,
+          model: modelName,
+          task: task
+        }
+      });
+      
+      throw error;
+    }
+  });
+}
