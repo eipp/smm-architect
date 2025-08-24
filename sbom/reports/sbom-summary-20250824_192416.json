@@ -1,0 +1,23 @@
+{
+  "report_type": "SBOM Summary",
+  "generated_at": "2025-08-24T16:24:48Z",
+  "project": "SMM Architect",
+  "version": "0dc0b5079c988312185b9e8f797692fe5fe95cae",
+  "statistics": {
+    "total_components": 430,
+    "services_scanned":        4,
+    "infrastructure_items":        0,
+    "vulnerability_reports":        4
+  },
+  "vulnerability_summary": {"critical": 0, "high": 0, "medium": 0, "low": 0},
+  "compliance_status": {
+    "sbom_format": "CycloneDX 1.4",
+    "ntia_minimum_elements": true,
+    "supply_chain_levels": "SLSA Level 2"
+  },
+  "files_generated": {
+    "combined_sbom": "smm-architect-complete-sbom.json",
+    "individual_sboms":        5,
+    "vulnerability_reports":        4
+  }
+}

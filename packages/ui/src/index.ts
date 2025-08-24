@@ -9,6 +9,7 @@ export {
   CardContent 
 } from "./components/card"
 export { Input, type InputProps } from "./components/input"
+export { Textarea, type TextareaProps } from "./components/textarea"
 export { 
   Dialog,
   DialogPortal,
@@ -32,6 +33,26 @@ export {
 export { Badge, badgeVariants, type BadgeProps } from "./components/badge"
 export { Tabs, TabsList, TabsTrigger, TabsContent } from "./components/tabs"
 export { Label } from "./components/label"
+export { Checkbox } from "./components/checkbox"
+export { Progress } from "./components/progress"
+export {
+  Select,
+  SelectGroup,
+  SelectValue,
+  SelectTrigger,
+  SelectContent,
+  SelectLabel,
+  SelectItem,
+  SelectSeparator,
+  SelectScrollUpButton,
+  SelectScrollDownButton,
+} from "./components/select"
+export {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+  TooltipProvider,
+} from "./components/tooltip"
 export {
   type ToastProps,
   type ToastActionElement,
@@ -52,7 +73,13 @@ export {
   type ProvenanceLink, 
   type CostBreakdown 
 } from "./components/decision-card"
-export { CanvasSkeleton, type CanvasSkeletonProps } from "./components/canvas-skeleton"
+export { 
+  Skeleton,
+  CanvasLoadingSkeleton,
+  DecisionCardSkeleton,
+  WorkspaceCardSkeleton,
+  DashboardSkeleton
+} from "./components/skeleton"
 export { 
   MicroGraph, 
   type MicroGraphProps, 
@@ -83,4 +110,13 @@ export {
 } from "./components/monitoring-dashboard"
 
 // Utilities
-export { cn } from "./lib/utils"
+export { 
+  cn, 
+  formatCurrency, 
+  formatDateTime, 
+  formatPercentage, 
+  generateId, 
+  sleep, 
+  debounce, 
+  throttle 
+} from "./lib/utils"

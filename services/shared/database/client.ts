@@ -133,17 +133,82 @@ export async function checkDatabaseHealth(): Promise<{
 }
 
 /**
- * Transaction helper with retry logic
+ * Set tenant context for Row Level Security (RLS)
+ * This MUST be called before any database operations to ensure tenant isolation
+ */
+export async function setTenantContext(
+  client: PrismaClient, 
+  tenantId: string
+): Promise<void> {
+  if (!tenantId || tenantId.trim() === '') {
+    throw new Error('Tenant ID is required for database operations');
+  }
+
+  try {
+    // Set the tenant context for RLS policies
+    await client.$executeRaw`SELECT set_config('app.current_tenant_id', ${tenantId}, true)`;
+    
+    logger.debug('Tenant context set', { tenantId });
+  } catch (error) {
+    logger.error('Failed to set tenant context', {
+      tenantId,
+      error: error instanceof Error ? error.message : error
+    });
+    throw new Error(`Failed to set tenant context for tenant ${tenantId}: ${error}`);
+  }
+}
+
+/**
+ * Clear tenant context (for system operations)
+ */
+export async function clearTenantContext(client: PrismaClient): Promise<void> {
+  try {
+    await client.$executeRaw`SELECT set_config('app.current_tenant_id', NULL, true)`;
+    logger.debug('Tenant context cleared');
+  } catch (error) {
+    logger.error('Failed to clear tenant context', {
+      error: error instanceof Error ? error.message : error
+    });
+    throw error;
+  }
+}
+
+/**
+ * Get current tenant context
+ */
+export async function getCurrentTenantContext(client: PrismaClient): Promise<string | null> {
+  try {
+    const result = await client.$queryRaw<{ current_setting: string }[]>`
+      SELECT current_setting('app.current_tenant_id', true) as current_setting
+    `;
+    
+    const tenantId = result[0]?.current_setting;
+    return tenantId && tenantId !== '' ? tenantId : null;
+  } catch (error) {
+    logger.error('Failed to get tenant context', {
+      error: error instanceof Error ? error.message : error
+    });
+    return null;
+  }
+}
+
+/**
+ * Transaction helper with retry logic and optional tenant context
  */
 export async function withRetryTransaction<T>(
   operation: (client: PrismaClient) => Promise<T>,
-  maxRetries: number = 3
+  maxRetries: number = 3,
+  tenantId?: string
 ): Promise<T> {
   const client = getPrismaClient();
   
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
       return await client.$transaction(async (tx) => {
+        // Set tenant context within transaction if provided
+        if (tenantId) {
+          await setTenantContext(tx as PrismaClient, tenantId);
+        }
         return await operation(tx as PrismaClient);
       });
     } catch (error) {
@@ -196,6 +261,139 @@ export async function initializeDatabase(): Promise<void> {
       error: error instanceof Error ? error.message : error
     });
     throw error;
+  }
+}
+
+/**
+ * Execute operation with tenant context set
+ * This is the primary function for tenant-scoped database operations
+ */
+export async function withTenantContext<T>(
+  tenantId: string,
+  operation: (client: PrismaClient) => Promise<T>
+): Promise<T> {
+  if (!tenantId || tenantId.trim() === '') {
+    throw new Error('Tenant ID is required for database operations');
+  }
+
+  const client = getPrismaClient();
+  
+  try {
+    // Set tenant context before operation
+    await setTenantContext(client, tenantId);
+    
+    // Execute the operation
+    const result = await operation(client);
+    
+    return result;
+  } catch (error) {
+    logger.error('Tenant-scoped operation failed', {
+      tenantId,
+      error: error instanceof Error ? error.message : error
+    });
+    throw error;
+  }
+}
+
+/**
+ * Execute system operation without tenant context (admin/migration use)
+ * WARNING: This bypasses RLS - use only for admin operations
+ */
+export async function withSystemContext<T>(
+  operation: (client: PrismaClient) => Promise<T>
+): Promise<T> {
+  const client = getPrismaClient();
+  
+  try {
+    // Clear any existing tenant context for system operations
+    await clearTenantContext(client);
+    
+    // Execute operation as system user
+    const result = await operation(client);
+    
+    return result;
+  } catch (error) {
+    logger.error('System operation failed', {
+      error: error instanceof Error ? error.message : error
+    });
+    throw error;
+  }
+}
+
+/**
+ * Validate RLS is properly configured
+ */
+export async function validateRLSConfiguration(): Promise<{
+  isConfigured: boolean;
+  tables: Array<{ tableName: string; rlsEnabled: boolean; policyCount: number }>;
+  errors?: string[];
+}> {
+  try {
+    const client = getPrismaClient();
+    const errors: string[] = [];
+    
+    // Check RLS status on all tenant-scoped tables
+    const rlsStatus = await client.$queryRaw<Array<{
+      tablename: string;
+      rowsecurity: boolean;
+    }>>`
+      SELECT tablename, rowsecurity 
+      FROM pg_tables 
+      WHERE schemaname = 'public' 
+      AND tablename IN (
+        'workspaces', 'workspace_runs', 'audit_bundles', 'connectors',
+        'consent_records', 'brand_twins', 'decision_cards', 
+        'simulation_results', 'asset_fingerprints'
+      )
+    `;
+    
+    // Check policy count for each table
+    const policyStatus = await client.$queryRaw<Array<{
+      tablename: string;
+      policy_count: bigint;
+    }>>`
+      SELECT tablename, COUNT(*) as policy_count
+      FROM pg_policies 
+      WHERE schemaname = 'public'
+      GROUP BY tablename
+    `;
+    
+    const policyMap = new Map(
+      policyStatus.map(p => [p.tablename, Number(p.policy_count)])
+    );
+    
+    const tables = rlsStatus.map(table => {
+      const policyCount = policyMap.get(table.tablename) || 0;
+      
+      if (!table.rowsecurity) {
+        errors.push(`Table ${table.tablename} does not have RLS enabled`);
+      }
+      
+      if (policyCount === 0) {
+        errors.push(`Table ${table.tablename} has no RLS policies`);
+      }
+      
+      return {
+        tableName: table.tablename,
+        rlsEnabled: table.rowsecurity,
+        policyCount
+      };
+    });
+    
+    return {
+      isConfigured: errors.length === 0,
+      tables,
+      errors: errors.length > 0 ? errors : undefined
+    };
+  } catch (error) {
+    logger.error('Failed to validate RLS configuration', {
+      error: error instanceof Error ? error.message : error
+    });
+    return {
+      isConfigured: false,
+      tables: [],
+      errors: [`Validation failed: ${error}`]
+    };
   }
 }
 

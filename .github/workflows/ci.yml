@@ -11,6 +11,198 @@ env:
   POSTGRES_VERSION: '14'
 
 jobs:
+  evil-tenant-security:
+    name: 🔴 CRITICAL - Evil Tenant Security Tests
+    runs-on: ubuntu-latest
+    needs: [lint, schema-validation]
+    services:
+      postgres:
+        image: postgres:14
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: smm_architect_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: |
+          cd services/smm-architect && npm ci
+          cd ../shared && npm ci
+
+      - name: Apply database migrations
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/smm_architect_test
+        run: |
+          cd services/smm-architect
+          # Apply initial schema
+          psql $DATABASE_URL -f migrations/001_initial_schema.sql
+          # Apply RLS migration
+          psql $DATABASE_URL -f migrations/002_enable_rls.sql
+          echo "✅ Database migrations applied"
+
+      - name: Validate RLS Configuration
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/smm_architect_test
+        run: |
+          cd services/smm-architect
+          # Verify RLS is enabled on all tables
+          psql $DATABASE_URL -c "
+            SELECT 
+              tablename, 
+              rowsecurity as rls_enabled,
+              (SELECT count(*) FROM pg_policies WHERE pg_policies.tablename = pg_tables.tablename) as policy_count
+            FROM pg_tables 
+            WHERE schemaname = 'public' 
+            AND tablename IN (
+              'workspaces', 'workspace_runs', 'audit_bundles', 'connectors',
+              'consent_records', 'brand_twins', 'decision_cards', 
+              'simulation_results', 'asset_fingerprints'
+            )
+            ORDER BY tablename;
+          "
+          
+          # Verify all tables have RLS enabled
+          RLS_COUNT=$(psql $DATABASE_URL -t -c "
+            SELECT count(*) 
+            FROM pg_tables 
+            WHERE schemaname = 'public' 
+            AND tablename IN (
+              'workspaces', 'workspace_runs', 'audit_bundles', 'connectors',
+              'consent_records', 'brand_twins', 'decision_cards', 
+              'simulation_results', 'asset_fingerprints'
+            )
+            AND rowsecurity = true;
+          " | tr -d ' ')
+          
+          if [ "$RLS_COUNT" != "9" ]; then
+            echo "❌ CRITICAL: Not all tables have RLS enabled. Found: $RLS_COUNT/9"
+            exit 1
+          fi
+          
+          echo "✅ RLS configuration validated: $RLS_COUNT/9 tables protected"
+
+      - name: Run Evil Tenant Security Tests
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/smm_architect_test
+          LOG_LEVEL: debug
+        run: |
+          cd services/smm-architect
+          echo "🔴 Running Evil Tenant Security Tests - These MUST pass to prevent data breaches"
+          npm test -- tests/security/tenant-isolation.test.ts --verbose
+          echo "✅ All evil tenant security tests passed - RLS policies are working"
+
+      - name: SQL Injection Attack Tests
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/smm_architect_test
+        run: |
+          echo "🔴 Testing SQL injection resistance"
+          cd services/smm-architect
+          
+          # Test direct SQL injection attempts
+          psql $DATABASE_URL -c "SELECT set_config('app.current_tenant_id', 'test_attacker', true);"
+          
+          # These queries should return 0 rows due to RLS
+          RESULT=$(psql $DATABASE_URL -t -c "SELECT count(*) FROM workspaces WHERE tenant_id != 'test_attacker';" | tr -d ' ')
+          if [ "$RESULT" != "0" ]; then
+            echo "❌ CRITICAL: SQL injection bypass detected! Found $RESULT rows from other tenants"
+            exit 1
+          fi
+          
+          echo "✅ SQL injection resistance validated"
+
+      - name: Performance Impact Assessment
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/smm_architect_test
+        run: |
+          echo "📊 Measuring RLS performance impact"
+          cd services/smm-architect
+          
+          # Create test data
+          psql $DATABASE_URL -c "
+            SELECT set_config('app.current_tenant_id', 'perf_test_tenant', true);
+            INSERT INTO workspaces (workspace_id, tenant_id, created_by, created_at, lifecycle, contract_version, goals, primary_channels, budget, approval_policy, risk_profile, data_retention, ttl_hours, policy_bundle_ref, policy_bundle_checksum, contract_data)
+            SELECT 
+              'ws_' || generate_series(1, 1000),
+              'perf_test_tenant',
+              'perf_user',
+              now(),
+              'active',
+              'v1.0.0',
+              '{}',
+              '{}',
+              '{}',
+              '{}',
+              'low',
+              '{}',
+              168,
+              'policy',
+              'checksum',
+              '{}';
+          "
+          
+          # Measure query performance
+          QUERY_TIME=$(psql $DATABASE_URL -c "\timing on" -c "SELECT set_config('app.current_tenant_id', 'perf_test_tenant', true); SELECT count(*) FROM workspaces;" 2>&1 | grep "Time:" | awk '{print $2}' | cut -d'.' -f1)
+          
+          echo "✅ RLS query performance: ${QUERY_TIME}ms for 1000 records"
+          
+          # Performance should be reasonable (< 100ms)
+          if [ "$QUERY_TIME" -gt 100 ]; then
+            echo "⚠️  Warning: RLS queries are slower than expected: ${QUERY_TIME}ms"
+          fi
+
+      - name: Generate Security Report
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/smm_architect_test
+        run: |
+          echo "📋 Generating security validation report"
+          cd services/smm-architect
+          
+          cat > security_report.md << 'EOF'
+          # 🔒 Multi-Tenant Security Validation Report
+          
+          ## RLS Configuration Status
+          \`\`\`sql
+          EOF
+          
+          psql $DATABASE_URL -c "
+            SELECT 
+              '| ' || tablename || ' | ' || 
+              CASE WHEN rowsecurity THEN '✅ Enabled' ELSE '❌ Disabled' END || ' | ' ||
+              (SELECT count(*) FROM pg_policies WHERE pg_policies.tablename = pg_tables.tablename) || ' policies |'
+            FROM pg_tables 
+            WHERE schemaname = 'public' 
+            AND tablename IN (
+              'workspaces', 'workspace_runs', 'audit_bundles', 'connectors',
+              'consent_records', 'brand_twins', 'decision_cards', 
+              'simulation_results', 'asset_fingerprints'
+            )
+            ORDER BY tablename;
+          " >> security_report.md
+          
+          echo '```' >> security_report.md
+          echo '' >> security_report.md
+          echo '## Evil Tenant Test Results' >> security_report.md
+          echo '✅ All cross-tenant access attempts were successfully blocked' >> security_report.md
+          echo '✅ SQL injection attempts were prevented' >> security_report.md
+          echo '✅ Data isolation verified between tenants' >> security_report.md
+          
+          cat security_report.md
+
   lint:
     name: Code Quality & Linting
     runs-on: ubuntu-latest

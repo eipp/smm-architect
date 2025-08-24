@@ -2,6 +2,7 @@ import { Header } from "encore.dev/api";
 import log from "encore.dev/log";
 import { AuthenticationService } from '../../../shared/auth-service';
 import { VaultClient } from '../../../shared/vault-client';
+import { setTenantContext, getPrismaClient } from '../../../shared/database/client';
 
 // Initialize authentication service
 const authService = new AuthenticationService(
@@ -54,7 +55,10 @@ export async function authMiddleware(
     // Validate the token
     const authContext = await validateToken(token);
     
-    log.info("User authenticated", { 
+    // CRITICAL: Set tenant context for RLS immediately after authentication
+    await setTenantContextForRequest(authContext.tenantId);
+    
+    log.info("User authenticated and tenant context set", { 
       userId: authContext.userId, 
       tenantId: authContext.tenantId 
     });
@@ -64,6 +68,29 @@ export async function authMiddleware(
   } catch (error) {
     log.error("Authentication failed", { error: error.message });
     throw new Error(`Authentication failed: ${error.message}`);
+  }
+}
+
+/**
+ * Set tenant context for the current request
+ * This ensures all database operations are properly isolated to the tenant
+ */
+async function setTenantContextForRequest(tenantId: string): Promise<void> {
+  if (!tenantId || tenantId.trim() === '') {
+    throw new Error('Valid tenant ID is required for database operations');
+  }
+
+  try {
+    const client = getPrismaClient();
+    await setTenantContext(client, tenantId);
+    
+    log.debug('Tenant context set for request', { tenantId });
+  } catch (error) {
+    log.error('Failed to set tenant context for request', {
+      tenantId,
+      error: error instanceof Error ? error.message : error
+    });
+    throw new Error(`Critical security error: Failed to set tenant context for ${tenantId}`);
   }
 }
 

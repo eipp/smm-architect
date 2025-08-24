@@ -1,14 +1,17 @@
 import type { NextConfig } from "next";
 import { withSentryConfig } from "@sentry/nextjs";
-import { generateCSP } from "./src/lib/security";
+
+// Bundle analyzer (optional)
+const withBundleAnalyzer = (() => {
+  try {
+    return require('@next/bundle-analyzer')({ enabled: process.env.ANALYZE === 'true' })
+  } catch {
+    return (config: any) => config
+  }
+})()
 
 const nextConfig: NextConfig = {
-  experimental: {
-    // Enable instrumentation for better error tracking
-    instrumentationHook: true,
-  },
-  
-  // Source maps for better error reporting
+  // Performance optimizations
   productionBrowserSourceMaps: true,
   
   // Environment variables
@@ -16,6 +19,16 @@ const nextConfig: NextConfig = {
     NEXT_PUBLIC_APP_VERSION: process.env.npm_package_version || '1.0.0',
   },
   
+  // Webpack configuration
+  webpack: (config, { isServer }) => {
+    if (!isServer) {
+      config.resolve.fallback = {
+        ...config.resolve.fallback,
+        fs: false,
+      };
+    }
+    return config;
+  },
   // Security headers
   async headers() {
     return [
@@ -24,28 +37,36 @@ const nextConfig: NextConfig = {
         headers: [
           {
             key: 'Content-Security-Policy',
-            value: generateCSP(),
+            value: `
+              default-src 'self';
+              script-src 'self' 'unsafe-eval' 'unsafe-inline';
+              style-src 'self' 'unsafe-inline';
+              img-src 'self' data: https:;
+              font-src 'self';
+              connect-src 'self' ${process.env.NEXT_PUBLIC_API_BASE_URL || ''} wss:;
+              frame-ancestors 'none';
+            `.replace(/\s{2,}/g, ' ').trim()
           },
           {
             key: 'X-Frame-Options',
-            value: 'DENY',
+            value: 'DENY'
           },
           {
             key: 'X-Content-Type-Options',
-            value: 'nosniff',
+            value: 'nosniff'
           },
           {
             key: 'Referrer-Policy',
-            value: 'strict-origin-when-cross-origin',
+            value: 'origin-when-cross-origin'
           },
           {
             key: 'Permissions-Policy',
-            value: 'camera=(), microphone=(), geolocation=()',
-          },
-        ],
-      },
+            value: 'camera=(), microphone=(), geolocation=()'
+          }
+        ]
+      }
     ];
-  },
+  }
 };
 
 // Sentry configuration options
@@ -70,4 +91,4 @@ const sentryWebpackPluginOptions = {
   disableSourceMapUpload: !process.env.SENTRY_AUTH_TOKEN,
 };
 
-export default withSentryConfig(nextConfig, sentryWebpackPluginOptions);
+export default withBundleAnalyzer(withSentryConfig(nextConfig, sentryWebpackPluginOptions));

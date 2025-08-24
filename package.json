@@ -20,6 +20,10 @@
     "performance:ci": "./scripts/run-performance-tests.sh ci",
     "performance:staging": "./scripts/run-performance-tests.sh staging",
     "performance:production": "./scripts/run-performance-tests.sh production",
+    "sbom:generate": "./scripts/generate-sbom.sh",
+    "sbom:check": "./scripts/generate-sbom.sh && echo 'SBOM generation completed. Check ./sbom/ directory for results.'",
+    "security:sbom": "npm run sbom:generate",
+    "supply-chain:scan": "./scripts/generate-sbom.sh && echo 'Supply chain security scan completed.'",
     "lint": "eslint tests/ --ext .ts,.js",
     "lint:fix": "eslint tests/ --ext .ts,.js --fix"
   },

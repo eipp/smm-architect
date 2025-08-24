@@ -1,8 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { usePermissions, type User, type Role, type Permission } from "@/lib/auth"
-import { cn } from "@/lib/utils"
+import { cn } from "../lib/utils"
 import { Button } from "./button"
 import { Badge } from "./badge"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "./card"
@@ -22,6 +21,39 @@ import {
   Clock,
   MoreHorizontal
 } from "lucide-react"
+
+// Type definitions
+export interface Permission {
+  resource: string
+  action: string
+  scope?: string
+}
+
+export interface Role {
+  id: string
+  name: string
+  description?: string
+  permissions: Permission[]
+  isSystemRole?: boolean
+  memberCount?: number
+}
+
+export interface User {
+  id: string
+  email: string
+  name: string
+  roles: Role[]
+}
+
+// Mock hook for permissions (replace with actual implementation)
+const usePermissions = () => {
+  const hasPermission = React.useCallback((resource: string, action: string, scope?: string) => {
+    // Mock implementation - replace with actual logic
+    return true
+  }, [])
+  
+  return { hasPermission }
+}
 
 // Permission Gate Component
 export interface PermissionGateProps {

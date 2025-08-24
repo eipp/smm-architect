@@ -3,6 +3,9 @@ import { Inter, JetBrains_Mono } from "next/font/google"
 import "./globals.css"
 import { Navigation } from "@/components/navigation"
 import { Toaster } from "@/components/ui/toaster"
+import { ErrorBoundary } from "@/components/error-boundary"
+import { TooltipProvider } from "@smm-architect/ui"
+import { I18nProvider } from "@/lib/i18n"
 
 const inter = Inter({
   subsets: ["latin"],
@@ -61,13 +64,19 @@ export default function RootLayout({
       <body
         className={`${inter.variable} ${jetbrainsMono.variable} font-sans antialiased bg-background text-foreground`}
       >
-        <div className="relative min-h-screen flex flex-col">
-          <Navigation />
-          <main className="flex-1">
-            {children}
-          </main>
-        </div>
-        <Toaster />
+        <ErrorBoundary>
+          <I18nProvider>
+            <TooltipProvider>
+              <div className="relative min-h-screen flex flex-col">
+                <Navigation />
+                <main className="flex-1">
+                  {children}
+                </main>
+              </div>
+              <Toaster />
+            </TooltipProvider>
+          </I18nProvider>
+        </ErrorBoundary>
       </body>
     </html>
   )

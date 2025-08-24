@@ -1,0 +1,32 @@
+{
+  "$schema": "http://cyclonedx.org/schema/bom-1.6.schema.json",
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.6",
+  "serialNumber": "urn:uuid:896daad4-4af9-4ff1-a41e-9143c7d7bd61",
+  "version": 1,
+  "metadata": {
+    "timestamp": "2025-08-24T16:24:40Z",
+    "tools": {
+      "components": [
+        {
+          "type": "application",
+          "author": "anchore",
+          "name": "syft",
+          "version": "1.31.0"
+        }
+      ]
+    },
+    "component": {
+      "bom-ref": "578aa5ccde41f5fa",
+      "type": "file",
+      "name": "dsr-service",
+      "version": "0dc0b5079c988312185b9e8f797692fe5fe95cae"
+    },
+    "supplier": {
+      "name": "SMM Architect",
+      "url": [
+        "https://smm-architect.com"
+      ]
+    }
+  }
+}

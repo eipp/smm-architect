@@ -61,7 +61,7 @@ interface AuthConfig {
 }
 
 const defaultConfig: AuthConfig = {
-  apiBaseUrl: process.env.NEXT_PUBLIC_API_BASE_URL || '',
+  apiBaseUrl: process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:4000',
   tokenKey: 'smm_auth_token',
   refreshThreshold: 300, // 5 minutes
   maxAge: 24 * 60 * 60, // 24 hours
@@ -88,6 +88,28 @@ export function AuthProvider({
     if (typeof window === 'undefined') return null
     return sessionStorage.getItem(fullConfig.tokenKey)
   }, [fullConfig.tokenKey])
+
+  // Enhanced token storage with refresh token support
+  const storeRefreshToken = useCallback((refreshToken: string) => {
+    if (typeof window === 'undefined') return;
+    
+    // Store refresh token in httpOnly cookie (more secure)
+    document.cookie = `smm_refresh_token=${refreshToken}; Secure; SameSite=Strict; Path=/; Max-Age=2592000`; // 30 days
+  }, []);
+  
+  const getStoredRefreshToken = useCallback(() => {
+    if (typeof window === 'undefined') return null;
+    
+    const cookies = document.cookie.split(';');
+    const refreshCookie = cookies.find(cookie => cookie.trim().startsWith('smm_refresh_token='));
+    return refreshCookie ? refreshCookie.split('=')[1] : null;
+  }, []);
+  
+  const clearRefreshToken = useCallback(() => {
+    if (typeof window === 'undefined') return;
+    
+    document.cookie = 'smm_refresh_token=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/';
+  }, []);
 
   const storeToken = useCallback((token: string, expiresAt: number) => {
     if (typeof window === 'undefined') return
@@ -140,17 +162,26 @@ export function AuthProvider({
     try {
       const response = await fetch(`${fullConfig.apiBaseUrl}/api/auth/login`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'X-Trace-ID': generateTraceId()
+        },
+        credentials: 'include',
         body: JSON.stringify({ email, password }),
       })
 
       if (!response.ok) {
-        throw new Error('Invalid credentials')
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(errorData.error || 'Invalid credentials')
       }
 
-      const { token, user, expiresAt } = await response.json()
+      const { token, user, expiresAt, refreshToken: refToken } = await response.json()
       
       storeToken(token, expiresAt)
+      if (refToken) {
+        storeRefreshToken(refToken)
+      }
+      
       setState({
         user,
         token,
@@ -158,31 +189,72 @@ export function AuthProvider({
         isAuthenticated: true,
         error: null,
       })
+      
+      console.log('✅ Login successful', { userId: user.id, tenantId: user.tenantId })
+      
     } catch (error) {
+      console.error('Login failed:', error)
       setState(prev => ({
         ...prev,
         isLoading: false,
         error: error instanceof Error ? error.message : 'Login failed',
       }))
+      throw error // Re-throw for component handling
     }
-  }, [fullConfig.apiBaseUrl, storeToken])
+  }, [fullConfig.apiBaseUrl, storeToken, storeRefreshToken])
 
-  const logout = useCallback(() => {
-    clearToken()
-    setState({
-      user: null,
-      token: null,
-      isLoading: false,
-      isAuthenticated: false,
-      error: null,
-    })
-  }, [clearToken])
+  const logout = useCallback(async () => {
+    try {
+      // Call backend logout if we have a token
+      if (state.token) {
+        await fetch(`${fullConfig.apiBaseUrl}/api/auth/logout`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${state.token}`,
+            'Content-Type': 'application/json',
+            'X-Trace-ID': generateTraceId()
+          },
+          credentials: 'include'
+        }).catch(error => {
+          // Ignore logout API errors - still clear local state
+          console.warn('Logout API call failed:', error)
+        })
+      }
+    } finally {
+      // Always clear local state regardless of API call result
+      clearToken()
+      clearRefreshToken()
+      setState({
+        user: null,
+        token: null,
+        isLoading: false,
+        isAuthenticated: false,
+        error: null,
+      })
+      
+      // Broadcast logout to other tabs
+      if (typeof window !== 'undefined' && window.BroadcastChannel) {
+        const channel = new BroadcastChannel('auth')
+        channel.postMessage({ type: 'logout' })
+        channel.close()
+      }
+      
+      console.log('✅ Logout completed')
+    }
+  }, [clearToken, clearRefreshToken, state.token, fullConfig.apiBaseUrl])
 
   const refreshToken = useCallback(async () => {
     try {
+      const refreshTokenValue = getStoredRefreshToken()
+      
       const response = await fetch(`${fullConfig.apiBaseUrl}/api/auth/refresh`, {
         method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'X-Trace-ID': generateTraceId()
+        },
         credentials: 'include',
+        body: JSON.stringify({ refreshToken: refreshTokenValue }),
       })
 
       if (!response.ok) {
@@ -197,11 +269,17 @@ export function AuthProvider({
         user,
         token,
         isAuthenticated: true,
+        error: null
       }))
+      
+      console.log('✅ Token refreshed successfully')
+      
     } catch (error) {
+      console.error('Token refresh failed:', error)
+      // Clear everything and force re-login
       logout()
     }
-  }, [fullConfig.apiBaseUrl, storeToken, logout])
+  }, [fullConfig.apiBaseUrl, storeToken, logout, getStoredRefreshToken])
 
   const updateUser = useCallback((updates: Partial<User>) => {
     setState(prev => ({
