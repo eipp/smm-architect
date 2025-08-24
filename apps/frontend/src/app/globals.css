@@ -49,12 +49,9 @@
 }
 
 @layer base {
-  * {
-    @apply border-border;
-  }
-  
   body {
-    @apply bg-background text-foreground;
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
     font-feature-settings: "rlig" 1, "calt" 1;
   }
   
@@ -65,20 +62,22 @@
   }
   
   ::-webkit-scrollbar-track {
-    @apply bg-muted;
+    background-color: hsl(var(--muted));
   }
   
   ::-webkit-scrollbar-thumb {
-    @apply bg-muted-foreground rounded-md;
+    background-color: hsl(var(--muted-foreground));
+    border-radius: 6px;
   }
   
   ::-webkit-scrollbar-thumb:hover {
-    @apply bg-foreground;
+    background-color: hsl(var(--foreground));
   }
   
   /* Focus styles */
   [data-focus-visible-added] {
-    @apply ring-2 ring-ring ring-offset-2 ring-offset-background outline-none;
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 2px;
   }
 }
 
