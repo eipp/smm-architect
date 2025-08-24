@@ -1,0 +1,389 @@
+{
+  "datasetInfo": {
+    "name": "SMM Architect Model Evaluation Golden Dataset",
+    "version": "v1.0.0",
+    "createdAt": "2024-01-15T10:00:00Z",
+    "description": "Curated dataset for evaluating model performance across all agent types",
+    "totalSamples": 150,
+    "humanVerified": true,
+    "lastUpdated": "2024-01-15T10:00:00Z"
+  },
+  "researchAgent": {
+    "samples": [
+      {
+        "id": "research-001",
+        "input": {
+          "prompt": "Research current AI marketing automation trends for B2B SaaS companies",
+          "constraints": {
+            "sources": ["industry-reports", "expert-analysis", "competitor-intel"],
+            "timeframe": "last-6-months",
+            "targetAudience": "enterprise-decision-makers"
+          },
+          "brandContext": {
+            "industry": "technology",
+            "companySize": "mid-market",
+            "voice": "authoritative-yet-approachable"
+          }
+        },
+        "expectedOutput": {
+          "insights": [
+            {
+              "title": "AI-Driven Personalization at Scale",
+              "relevanceScore": 0.92,
+              "sourceQuality": 0.89,
+              "keyPoints": [
+                "76% of B2B marketers report improved conversion rates with AI personalization",
+                "Real-time content adaptation increases engagement by 3.2x",
+                "Integration challenges remain the top barrier to adoption"
+              ]
+            }
+          ],
+          "qualityMetrics": {
+            "citationCoverage": 0.85,
+            "sourceCredibility": 0.88,
+            "insightDepth": 0.91,
+            "relevanceToGoals": 0.94
+          }
+        },
+        "humanEvaluation": {
+          "overallQuality": "excellent",
+          "accuracy": 0.93,
+          "usefulness": 0.91,
+          "brandAlignment": 0.89,
+          "reviewedBy": "expert-researcher-001",
+          "reviewDate": "2024-01-10T14:30:00Z"
+        }
+      },
+      {
+        "id": "research-002",
+        "input": {
+          "prompt": "Analyze competitor social media strategies in the marketing automation space",
+          "constraints": {
+            "competitors": ["HubSpot", "Marketo", "Pardot"],
+            "platforms": ["LinkedIn", "Twitter"],
+            "analysisDepth": "comprehensive"
+          }
+        },
+        "expectedOutput": {
+          "competitorAnalysis": {
+            "HubSpot": {
+              "contentThemes": ["thought-leadership", "educational", "product-demos"],
+              "engagementRate": 0.047,
+              "postFrequency": "daily",
+              "uniqueValue": "community-building-focus"
+            }
+          },
+          "qualityMetrics": {
+            "competitorCoverage": 0.89,
+            "insightActionability": 0.87,
+            "dataAccuracy": 0.94
+          }
+        },
+        "humanEvaluation": {
+          "overallQuality": "good",
+          "accuracy": 0.89,
+          "usefulness": 0.85,
+          "brandAlignment": 0.87
+        }
+      }
+    ]
+  },
+  "creativeAgent": {
+    "samples": [
+      {
+        "id": "creative-001",
+        "input": {
+          "prompt": "Generate LinkedIn post about AI marketing trends",
+          "brandVoice": "professional-thought-leadership",
+          "constraints": {
+            "maxLength": 3000,
+            "includeHashtags": true,
+            "callToAction": true,
+            "targetAudience": "marketing-executives"
+          },
+          "contentRequirements": {
+            "tone": "confident-but-not-arrogant",
+            "includeStatistics": true,
+            "visualElements": "suggested"
+          }
+        },
+        "expectedOutput": {
+          "content": "🚀 AI is transforming marketing at unprecedented speed. Our latest analysis shows 73% of B2B marketers now leverage AI for personalization, yet most are only scratching the surface.\n\nThe game-changers we're seeing:\n• Real-time content adaptation (3.2x engagement boost)\n• Predictive customer journey mapping\n• Automated A/B testing at scale\n\nBut here's what separates leaders from followers: integration strategy. The most successful teams aren't just adopting AI tools—they're reimagining their entire marketing operations.\n\nWhat's your biggest AI marketing challenge? Let's discuss in the comments. 👇\n\n#AIMarketing #MarTech #B2BMarketing #MarketingAutomation #DigitalTransformation",
+          "metadata": {
+            "hashtags": ["#AIMarketing", "#MarTech", "#B2BMarketing", "#MarketingAutomation", "#DigitalTransformation"],
+            "wordCount": 134,
+            "readabilityScore": 0.78,
+            "sentimentScore": 0.82,
+            "callToActionPresent": true
+          },
+          "qualityMetrics": {
+            "brandAlignment": 0.94,
+            "engagementPotential": 0.89,
+            "professionalTone": 0.91,
+            "informationValue": 0.88
+          }
+        },
+        "humanEvaluation": {
+          "overallQuality": "excellent",
+          "brandAlignment": 0.92,
+          "engagementPotential": 0.88,
+          "professionalAppropriate": 0.95,
+          "contentValue": 0.91,
+          "approved": true,
+          "reviewedBy": "content-expert-001"
+        }
+      },
+      {
+        "id": "creative-002", 
+        "input": {
+          "prompt": "Create Instagram post for product launch announcement",
+          "brandVoice": "enthusiastic-innovative",
+          "constraints": {
+            "platform": "instagram",
+            "includeEmojis": true,
+            "visualSuggestion": true,
+            "hashtagLimit": 10
+          }
+        },
+        "expectedOutput": {
+          "content": "✨ The future of marketing is here! ✨\n\nIntroducing SMM Architect - the first truly autonomous marketing platform that thinks, creates, and optimizes like your best marketing strategist. 🧠🚀\n\n🎯 AI-powered campaign strategy\n📊 Real-time performance optimization  \n🎨 Dynamic content generation\n📈 Predictive analytics\n\nReady to 10x your marketing results? Join the beta! Link in bio. 👆\n\n#MarketingAI #ProductLaunch #Innovation #MarTech #Automation #Beta #FutureOfMarketing #SMM #DigitalMarketing #Startup",
+          "visualSuggestion": {
+            "type": "carousel",
+            "slides": [
+              "Hero shot with product interface",
+              "Feature highlights infographic", 
+              "Before/after results visualization"
+            ]
+          },
+          "qualityMetrics": {
+            "brandAlignment": 0.87,
+            "platformOptimization": 0.93,
+            "visualAppeal": 0.89,
+            "callToActionClarity": 0.91
+          }
+        },
+        "humanEvaluation": {
+          "overallQuality": "good",
+          "brandAlignment": 0.85,
+          "platformAppropriate": 0.92,
+          "engagementPotential": 0.87,
+          "approved": true
+        }
+      }
+    ]
+  },
+  "plannerAgent": {
+    "samples": [
+      {
+        "id": "planner-001",
+        "input": {
+          "campaignObjectives": {
+            "primary": "lead-generation",
+            "secondary": "brand-awareness",
+            "kpis": ["leads-generated", "cost-per-lead", "brand-recall"]
+          },
+          "constraints": {
+            "budget": {
+              "total": 50000,
+              "currency": "USD",
+              "timeframe": "quarterly"
+            },
+            "channels": ["linkedin", "google-ads", "content-marketing"],
+            "timeline": "12-weeks"
+          },
+          "targetAudience": {
+            "personas": ["marketing-director", "cmo", "marketing-manager"],
+            "industries": ["technology", "saas", "fintech"],
+            "companySize": ["mid-market", "enterprise"]
+          }
+        },
+        "expectedOutput": {
+          "campaignPlan": {
+            "phases": [
+              {
+                "name": "Awareness & Education",
+                "duration": "4-weeks",
+                "budget": 15000,
+                "channels": ["linkedin", "content-marketing"],
+                "deliverables": ["thought-leadership-content", "webinar-series", "case-studies"]
+              },
+              {
+                "name": "Consideration & Nurturing", 
+                "duration": "6-weeks",
+                "budget": 25000,
+                "channels": ["linkedin", "google-ads", "email-marketing"],
+                "deliverables": ["demo-videos", "comparison-guides", "roi-calculators"]
+              },
+              {
+                "name": "Conversion & Optimization",
+                "duration": "2-weeks", 
+                "budget": 10000,
+                "channels": ["google-ads", "retargeting"],
+                "deliverables": ["free-trial-campaigns", "sales-enablement-content"]
+              }
+            ],
+            "resourceAllocation": {
+              "contentCreation": 0.4,
+              "paidMedia": 0.45,
+              "toolsAndSoftware": 0.15
+            },
+            "expectedResults": {
+              "leadsGenerated": 450,
+              "costPerLead": 111,
+              "conversionRate": 0.034
+            }
+          },
+          "qualityMetrics": {
+            "budgetEfficiency": 0.89,
+            "channelSynergy": 0.92,
+            "timelineRealism": 0.87,
+            "goalAlignment": 0.94
+          }
+        },
+        "humanEvaluation": {
+          "overallQuality": "excellent",
+          "strategicSoundness": 0.91,
+          "executability": 0.88,
+          "budgetRealism": 0.89,
+          "expectedROI": 0.92,
+          "approved": true
+        }
+      }
+    ]
+  },
+  "legalAgent": {
+    "samples": [
+      {
+        "id": "legal-001",
+        "input": {
+          "contentToReview": "Our AI platform increases marketing ROI by 300% guaranteed. Used by Fortune 500 companies including Google, Microsoft, and Apple. Sign up now for exclusive early access!",
+          "jurisdiction": "US",
+          "industry": "technology",
+          "complianceRequirements": ["FTC", "CAN-SPAM", "GDPR", "advertising-standards"]
+        },
+        "expectedOutput": {
+          "complianceAssessment": {
+            "overallRisk": "high",
+            "violations": [
+              {
+                "type": "unsubstantiated-claims",
+                "regulation": "FTC-Section-5",
+                "description": "300% ROI guarantee cannot be substantiated",
+                "severity": "high",
+                "recommendation": "Remove guarantee language or provide substantiation"
+              },
+              {
+                "type": "false-endorsement",
+                "regulation": "FTC-endorsement-guidelines", 
+                "description": "Implies endorsement by named companies without permission",
+                "severity": "high",
+                "recommendation": "Remove company names or obtain proper permissions"
+              }
+            ],
+            "suggestedRevisions": [
+              "Replace 'guaranteed' with 'up to' and add disclaimers",
+              "Use 'leading technology companies' instead of specific names",
+              "Add required disclosures for marketing claims"
+            ]
+          },
+          "qualityMetrics": {
+            "riskDetectionAccuracy": 0.95,
+            "recommendationQuality": 0.91,
+            "complianceCoverage": 0.88
+          }
+        },
+        "humanEvaluation": {
+          "overallQuality": "excellent", 
+          "accuracyOfRiskAssessment": 0.94,
+          "qualityOfRecommendations": 0.89,
+          "completenessOfReview": 0.92,
+          "approved": true
+        }
+      }
+    ]
+  },
+  "publisherAgent": {
+    "samples": [
+      {
+        "id": "publisher-001",
+        "input": {
+          "content": {
+            "text": "🚀 AI is transforming marketing at unprecedented speed...",
+            "media": [],
+            "hashtags": ["#AIMarketing", "#MarTech"]
+          },
+          "platform": "linkedin",
+          "scheduling": {
+            "targetTime": "2024-01-16T09:00:00Z",
+            "timezone": "America/New_York",
+            "optimizeForEngagement": true
+          },
+          "targetAudience": {
+            "demographics": ["marketing-professionals"],
+            "interests": ["ai", "marketing-automation"]
+          }
+        },
+        "expectedOutput": {
+          "publishResult": {
+            "status": "scheduled",
+            "platformPostId": "urn:li:activity:7123456789",
+            "scheduledTime": "2024-01-16T14:00:00Z",
+            "optimizationApplied": {
+              "timeAdjustment": "+5-hours-for-peak-engagement",
+              "hashtagOptimization": "added-trending-hashtags",
+              "audienceTargeting": "expanded-to-include-related-interests"
+            },
+            "estimatedReach": {
+              "organic": 2500,
+              "confidence": 0.78
+            }
+          },
+          "qualityMetrics": {
+            "schedulingOptimization": 0.91,
+            "audienceTargeting": 0.87,
+            "platformCompliance": 0.95
+          }
+        },
+        "humanEvaluation": {
+          "overallQuality": "good",
+          "schedulingAccuracy": 0.89,
+          "optimizationEffectiveness": 0.85,
+          "platformAppropriate": 0.93,
+          "approved": true
+        }
+      }
+    ]
+  },
+  "evaluationMetrics": {
+    "qualityThresholds": {
+      "minimum": {
+        "overallQuality": 0.7,
+        "accuracy": 0.75,
+        "brandAlignment": 0.8,
+        "usefulness": 0.7
+      },
+      "target": {
+        "overallQuality": 0.85,
+        "accuracy": 0.9, 
+        "brandAlignment": 0.9,
+        "usefulness": 0.85
+      },
+      "excellent": {
+        "overallQuality": 0.95,
+        "accuracy": 0.95,
+        "brandAlignment": 0.95,
+        "usefulness": 0.9
+      }
+    },
+    "automaticMetrics": {
+      "textQuality": ["readability", "sentiment", "coherence"],
+      "brandAlignment": ["tone-consistency", "voice-matching", "guideline-adherence"],
+      "technicalAccuracy": ["fact-checking", "citation-verification", "data-validation"]
+    },
+    "humanReviewProcess": {
+      "samplingRate": 0.1,
+      "reviewerQualifications": ["domain-expertise", "brand-knowledge", "quality-standards"],
+      "reviewCriteria": ["accuracy", "usefulness", "brand-fit", "user-experience"]
+    }
+  }
+}

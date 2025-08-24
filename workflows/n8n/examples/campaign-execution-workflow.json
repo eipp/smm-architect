@@ -1,0 +1,324 @@
+{
+  "name": "SMM Architect Campaign Execution",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "campaign-trigger",
+        "responseMode": "responseNode"
+      },
+      "id": "webhook-trigger",
+      "name": "Campaign Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "url": "http://smm-architect:4000/workspaces/{{ $json.workspaceId }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "httpHeaderAuth": "smmArchitectAuth"
+      },
+      "id": "get-workspace",
+      "name": "Get Workspace",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "url": "http://research-agent:3001/research/start",
+        "requestMethod": "POST",
+        "jsonParameters": true,
+        "parametersJson": {
+          "workspace_id": "{{ $('Campaign Trigger').first().json.workspaceId }}",
+          "brand_info": "{{ $('Get Workspace').first().json.brandInfo }}",
+          "research_scope": {
+            "depth": "comprehensive",
+            "focus_areas": ["brand_voice", "competitor_analysis", "market_positioning"]
+          }
+        }
+      },
+      "id": "research-agent",
+      "name": "Research Agent", 
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [680, 200]
+    },
+    {
+      "parameters": {
+        "url": "http://planner-agent:3002/planner/generate",
+        "requestMethod": "POST",
+        "jsonParameters": true,
+        "parametersJson": {
+          "workspace_id": "{{ $('Campaign Trigger').first().json.workspaceId }}",
+          "brand_twin": "{{ $('Research Agent').first().json.brand_twin }}",
+          "campaign_goals": "{{ $('Get Workspace').first().json.goals }}",
+          "constraints": "{{ $('Get Workspace').first().json }}"
+        }
+      },
+      "id": "planner-agent",
+      "name": "Planner Agent",
+      "type": "n8n-nodes-base.httpRequest", 
+      "typeVersion": 4.1,
+      "position": [900, 200]
+    },
+    {
+      "parameters": {
+        "url": "http://simulator:3003/simulate",
+        "requestMethod": "POST",
+        "jsonParameters": true,
+        "parametersJson": {
+          "workspace": "{{ $('Get Workspace').first().json }}",
+          "request": {
+            "dryRun": true,
+            "targetChannels": "{{ $('Get Workspace').first().json.primaryChannels }}"
+          }
+        }
+      },
+      "id": "simulate-campaign",
+      "name": "Simulate Campaign",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1120, 200]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "{{ $('Simulate Campaign').first().json.readinessScore }}",
+              "rightValue": 0.85,
+              "operator": {
+                "type": "number",
+                "operation": "gte"
+              }
+            }
+          ],
+          "combineOperation": "all"
+        }
+      },
+      "id": "check-readiness",
+      "name": "Check Readiness Score",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1340, 200]
+    },
+    {
+      "parameters": {
+        "url": "http://legal-agent:3005/legal/review",
+        "requestMethod": "POST",
+        "jsonParameters": true,
+        "parametersJson": {
+          "workspace_id": "{{ $('Campaign Trigger').first().json.workspaceId }}",
+          "review_request": {
+            "request_id": "{{ $runIndex }}-{{ $now }}",
+            "review_type": "campaign_review",
+            "content": "{{ $('Planner Agent').first().json.campaign_plan }}"
+          }
+        }
+      },
+      "id": "legal-review",
+      "name": "Legal Review",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1560, 100]
+    },
+    {
+      "parameters": {
+        "url": "http://creative-agent:3006/creative/generate", 
+        "requestMethod": "POST",
+        "jsonParameters": true,
+        "parametersJson": {
+          "workspace_id": "{{ $('Campaign Trigger').first().json.workspaceId }}",
+          "content_briefs": "{{ $('Planner Agent').first().json.campaign_plan.content_calendar }}",
+          "brand_assets": "{{ $('Research Agent').first().json.brand_twin }}"
+        }
+      },
+      "id": "creative-agent",
+      "name": "Creative Agent",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1780, 100]
+    },
+    {
+      "parameters": {
+        "url": "http://publisher-agent:3007/publisher/execute",
+        "requestMethod": "POST", 
+        "jsonParameters": true,
+        "parametersJson": {
+          "workspace_id": "{{ $('Campaign Trigger').first().json.workspaceId }}",
+          "publication_batch": {
+            "batch_id": "{{ $runIndex }}-{{ $now }}",
+            "execution_mode": "scheduled",
+            "publications": "{{ $('Creative Agent').first().json.created_content }}"
+          }
+        }
+      },
+      "id": "publisher-agent",
+      "name": "Publisher Agent",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [2000, 100]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseJson": {
+          "status": "success",
+          "campaignId": "{{ $('Campaign Trigger').first().json.workspaceId }}-{{ $runIndex }}",
+          "readinessScore": "{{ $('Simulate Campaign').first().json.readinessScore }}",
+          "legalStatus": "{{ $('Legal Review').first().json.status }}",
+          "contentGenerated": "{{ $('Creative Agent').first().json.created_content.length }}",
+          "publishingResults": "{{ $('Publisher Agent').first().json.publication_results }}"
+        }
+      },
+      "id": "success-response",
+      "name": "Success Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [2220, 100]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseJson": {
+          "status": "rejected",
+          "reason": "Readiness score below threshold",
+          "readinessScore": "{{ $('Simulate Campaign').first().json.readinessScore }}",
+          "threshold": 0.85
+        }
+      },
+      "id": "rejection-response", 
+      "name": "Rejection Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1560, 300]
+    }
+  ],
+  "connections": {
+    "Campaign Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get Workspace",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Workspace": {
+      "main": [
+        [
+          {
+            "node": "Research Agent",
+            "type": "main", 
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Research Agent": {
+      "main": [
+        [
+          {
+            "node": "Planner Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Planner Agent": {
+      "main": [
+        [
+          {
+            "node": "Simulate Campaign",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simulate Campaign": {
+      "main": [
+        [
+          {
+            "node": "Check Readiness Score",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Readiness Score": {
+      "main": [
+        [
+          {
+            "node": "Legal Review",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Rejection Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Legal Review": {
+      "main": [
+        [
+          {
+            "node": "Creative Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Creative Agent": {
+      "main": [
+        [
+          {
+            "node": "Publisher Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Publisher Agent": {
+      "main": [
+        [
+          {
+            "node": "Success Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1.0.0",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "smm-architect-template"
+  },
+  "id": "smm-campaign-workflow",
+  "tags": ["smm-architect", "campaign", "automation"]
+}

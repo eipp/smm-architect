@@ -1,0 +1,655 @@
+{
+  "dashboards": [
+    {
+      "id": "smm-connector-health",
+      "uid": "smm-connector-health",
+      "title": "SMM Architect - Connector Health Dashboard",
+      "description": "Real-time monitoring of social media platform connector health and performance",
+      "tags": ["smm", "connectors", "health"],
+      "timezone": "UTC",
+      "refresh": "30s",
+      "time": {
+        "from": "now-1h",
+        "to": "now"
+      },
+      "panels": [
+        {
+          "id": 1,
+          "title": "Connector Status Overview",
+          "type": "stat",
+          "gridPos": { "h": 6, "w": 24, "x": 0, "y": 0 },
+          "targets": [
+            {
+              "expr": "sum(smm_connector_status{status=\"connected\"})",
+              "legendFormat": "Connected",
+              "refId": "A"
+            },
+            {
+              "expr": "sum(smm_connector_status{status=\"degraded\"})",
+              "legendFormat": "Degraded",
+              "refId": "B"
+            },
+            {
+              "expr": "sum(smm_connector_status{status=\"error\"})",
+              "legendFormat": "Error",
+              "refId": "C"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "thresholds"
+              },
+              "thresholds": {
+                "steps": [
+                  { "color": "green", "value": null },
+                  { "color": "yellow", "value": 1 },
+                  { "color": "red", "value": 5 }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "id": 2,
+          "title": "Connector Health by Platform",
+          "type": "timeseries",
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
+          "targets": [
+            {
+              "expr": "smm_connector_health_score by (platform)",
+              "legendFormat": "{{platform}} Health Score",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "min": 0,
+              "max": 100,
+              "unit": "percent"
+            }
+          }
+        },
+        {
+          "id": 3,
+          "title": "API Rate Limits",
+          "type": "timeseries",
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
+          "targets": [
+            {
+              "expr": "smm_connector_rate_limit_remaining by (platform)",
+              "legendFormat": "{{platform}} Remaining",
+              "refId": "A"
+            },
+            {
+              "expr": "smm_connector_rate_limit_total by (platform)",
+              "legendFormat": "{{platform}} Total",
+              "refId": "B"
+            }
+          ]
+        },
+        {
+          "id": 4,
+          "title": "Authentication Status",
+          "type": "table",
+          "gridPos": { "h": 8, "w": 24, "x": 0, "y": 14 },
+          "targets": [
+            {
+              "expr": "smm_connector_auth_status",
+              "format": "table",
+              "refId": "A"
+            }
+          ],
+          "transformations": [
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {},
+                "indexByName": {},
+                "renameByName": {
+                  "platform": "Platform",
+                  "status": "Auth Status",
+                  "expires_at": "Token Expires",
+                  "last_refresh": "Last Refresh"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": 5,
+          "title": "Request Success Rate",
+          "type": "timeseries",
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 22 },
+          "targets": [
+            {
+              "expr": "rate(smm_connector_requests_total{status=\"success\"}[5m]) / rate(smm_connector_requests_total[5m]) * 100",
+              "legendFormat": "{{platform}} Success Rate",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "min": 0,
+              "max": 100,
+              "unit": "percent",
+              "thresholds": {
+                "steps": [
+                  { "color": "red", "value": 0 },
+                  { "color": "yellow", "value": 95 },
+                  { "color": "green", "value": 99 }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "id": 6,
+          "title": "Response Time P95",
+          "type": "timeseries",
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 22 },
+          "targets": [
+            {
+              "expr": "histogram_quantile(0.95, rate(smm_connector_request_duration_seconds_bucket[5m]))",
+              "legendFormat": "{{platform}} P95 Latency",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "ms",
+              "thresholds": {
+                "steps": [
+                  { "color": "green", "value": 0 },
+                  { "color": "yellow", "value": 1000 },
+                  { "color": "red", "value": 5000 }
+                ]
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "smm-agent-performance",
+      "uid": "smm-agent-performance",
+      "title": "SMM Architect - Agent Performance Dashboard",
+      "description": "Performance monitoring for research, creative, legal, and other agents",
+      "tags": ["smm", "agents", "performance"],
+      "timezone": "UTC",
+      "refresh": "30s",
+      "time": {
+        "from": "now-1h",
+        "to": "now"
+      },
+      "panels": [
+        {
+          "id": 1,
+          "title": "Agent Execution Times",
+          "type": "timeseries",
+          "gridPos": { "h": 8, "w": 24, "x": 0, "y": 0 },
+          "targets": [
+            {
+              "expr": "histogram_quantile(0.50, rate(smm_agent_execution_duration_seconds_bucket[5m]))",
+              "legendFormat": "{{agent_type}} P50",
+              "refId": "A"
+            },
+            {
+              "expr": "histogram_quantile(0.95, rate(smm_agent_execution_duration_seconds_bucket[5m]))",
+              "legendFormat": "{{agent_type}} P95",
+              "refId": "B"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "s",
+              "thresholds": {
+                "steps": [
+                  { "color": "green", "value": 0 },
+                  { "color": "yellow", "value": 30 },
+                  { "color": "red", "value": 60 }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "id": 2,
+          "title": "Agent Queue Depth",
+          "type": "timeseries",
+          "gridPos": { "h": 6, "w": 12, "x": 0, "y": 8 },
+          "targets": [
+            {
+              "expr": "smm_agent_queue_depth by (agent_type)",
+              "legendFormat": "{{agent_type}} Queue",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "thresholds": {
+                "steps": [
+                  { "color": "green", "value": 0 },
+                  { "color": "yellow", "value": 10 },
+                  { "color": "red", "value": 50 }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "id": 3,
+          "title": "Agent Success Rate",
+          "type": "stat",
+          "gridPos": { "h": 6, "w": 12, "x": 12, "y": 8 },
+          "targets": [
+            {
+              "expr": "rate(smm_agent_executions_total{status=\"success\"}[5m]) / rate(smm_agent_executions_total[5m]) * 100",
+              "legendFormat": "{{agent_type}} Success Rate",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "min": 0,
+              "max": 100,
+              "unit": "percent",
+              "thresholds": {
+                "steps": [
+                  { "color": "red", "value": 0 },
+                  { "color": "yellow", "value": 95 },
+                  { "color": "green", "value": 99 }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "id": 4,
+          "title": "Agent Output Quality Scores",
+          "type": "timeseries",
+          "gridPos": { "h": 8, "w": 24, "x": 0, "y": 14 },
+          "targets": [
+            {
+              "expr": "smm_agent_output_quality_score by (agent_type)",
+              "legendFormat": "{{agent_type}} Quality Score",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "min": 0,
+              "max": 1,
+              "unit": "percentunit",
+              "thresholds": {
+                "steps": [
+                  { "color": "red", "value": 0 },
+                  { "color": "yellow", "value": 0.7 },
+                  { "color": "green", "value": 0.9 }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "id": 5,
+          "title": "Resource Utilization",
+          "type": "timeseries",
+          "gridPos": { "h": 6, "w": 12, "x": 0, "y": 22 },
+          "targets": [
+            {
+              "expr": "smm_agent_cpu_usage by (agent_type)",
+              "legendFormat": "{{agent_type}} CPU",
+              "refId": "A"
+            },
+            {
+              "expr": "smm_agent_memory_usage by (agent_type)",
+              "legendFormat": "{{agent_type}} Memory",
+              "refId": "B"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "min": 0,
+              "max": 100,
+              "unit": "percent"
+            }
+          }
+        },
+        {
+          "id": 6,
+          "title": "Agent Error Rate",
+          "type": "timeseries",
+          "gridPos": { "h": 6, "w": 12, "x": 12, "y": 22 },
+          "targets": [
+            {
+              "expr": "rate(smm_agent_executions_total{status=\"error\"}[5m]) * 100",
+              "legendFormat": "{{agent_type}} Error Rate",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percent",
+              "thresholds": {
+                "steps": [
+                  { "color": "green", "value": 0 },
+                  { "color": "yellow", "value": 1 },
+                  { "color": "red", "value": 5 }
+                ]
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "smm-simulation-performance",
+      "uid": "smm-simulation-performance", 
+      "title": "SMM Architect - Simulation Performance Dashboard",
+      "description": "Monte Carlo simulation performance and accuracy monitoring",
+      "tags": ["smm", "simulation", "monte-carlo"],
+      "timezone": "UTC",
+      "refresh": "1m",
+      "time": {
+        "from": "now-6h",
+        "to": "now"
+      },
+      "panels": [
+        {
+          "id": 1,
+          "title": "Simulation Execution Time",
+          "type": "timeseries",
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+          "targets": [
+            {
+              "expr": "histogram_quantile(0.50, rate(smm_simulation_duration_seconds_bucket[10m]))",
+              "legendFormat": "P50 Duration",
+              "refId": "A"
+            },
+            {
+              "expr": "histogram_quantile(0.95, rate(smm_simulation_duration_seconds_bucket[10m]))",
+              "legendFormat": "P95 Duration",
+              "refId": "B"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "s",
+              "thresholds": {
+                "steps": [
+                  { "color": "green", "value": 0 },
+                  { "color": "yellow", "value": 30 },
+                  { "color": "red", "value": 300 }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "id": 2,
+          "title": "Readiness Score Distribution",
+          "type": "histogram",
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+          "targets": [
+            {
+              "expr": "increase(smm_simulation_readiness_score_bucket[1h])",
+              "legendFormat": "Readiness Score",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "min": 0,
+              "max": 1
+            }
+          }
+        },
+        {
+          "id": 3,
+          "title": "Simulation Convergence Rate",
+          "type": "timeseries",
+          "gridPos": { "h": 6, "w": 24, "x": 0, "y": 8 },
+          "targets": [
+            {
+              "expr": "smm_simulation_convergence_iterations",
+              "legendFormat": "Iterations to Convergence",
+              "refId": "A"
+            },
+            {
+              "expr": "smm_simulation_target_iterations",
+              "legendFormat": "Target Iterations",
+              "refId": "B"
+            }
+          ]
+        },
+        {
+          "id": 4,
+          "title": "Policy Pass Rate",
+          "type": "gauge",
+          "gridPos": { "h": 6, "w": 8, "x": 0, "y": 14 },
+          "targets": [
+            {
+              "expr": "avg(smm_simulation_policy_pass_rate)",
+              "legendFormat": "Policy Pass Rate",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "min": 0,
+              "max": 1,
+              "unit": "percentunit",
+              "thresholds": {
+                "steps": [
+                  { "color": "red", "value": 0 },
+                  { "color": "yellow", "value": 0.8 },
+                  { "color": "green", "value": 0.95 }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "id": 5,
+          "title": "Cost Estimates",
+          "type": "stat",
+          "gridPos": { "h": 6, "w": 8, "x": 8, "y": 14 },
+          "targets": [
+            {
+              "expr": "smm_simulation_cost_estimate_mean",
+              "legendFormat": "Mean Cost",
+              "refId": "A"
+            },
+            {
+              "expr": "smm_simulation_cost_estimate_p95",
+              "legendFormat": "P95 Cost",
+              "refId": "B"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "currencyUSD"
+            }
+          }
+        },
+        {
+          "id": 6,
+          "title": "Confidence Interval Width",
+          "type": "timeseries",
+          "gridPos": { "h": 6, "w": 8, "x": 16, "y": 14 },
+          "targets": [
+            {
+              "expr": "smm_simulation_confidence_interval_width",
+              "legendFormat": "CI Width",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "thresholds": {
+                "steps": [
+                  { "color": "green", "value": 0 },
+                  { "color": "yellow", "value": 0.1 },
+                  { "color": "red", "value": 0.2 }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "id": 7,
+          "title": "Simulation Accuracy vs Baseline",
+          "type": "timeseries",
+          "gridPos": { "h": 8, "w": 24, "x": 0, "y": 20 },
+          "targets": [
+            {
+              "expr": "abs(smm_simulation_readiness_score - smm_simulation_baseline_readiness_score)",
+              "legendFormat": "Readiness Score Deviation",
+              "refId": "A"
+            },
+            {
+              "expr": "abs(smm_simulation_cost_estimate - smm_simulation_baseline_cost_estimate) / smm_simulation_baseline_cost_estimate",
+              "legendFormat": "Cost Estimate Deviation %",
+              "refId": "B"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "thresholds": {
+                "steps": [
+                  { "color": "green", "value": 0 },
+                  { "color": "yellow", "value": 0.05 },
+                  { "color": "red", "value": 0.1 }
+                ]
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "smm-system-overview",
+      "uid": "smm-system-overview",
+      "title": "SMM Architect - System Overview Dashboard",
+      "description": "High-level system health and performance overview",
+      "tags": ["smm", "overview", "system"],
+      "timezone": "UTC",
+      "refresh": "30s",
+      "time": {
+        "from": "now-1h",
+        "to": "now"
+      },
+      "panels": [
+        {
+          "id": 1,
+          "title": "Service Health Status",
+          "type": "stat",
+          "gridPos": { "h": 4, "w": 24, "x": 0, "y": 0 },
+          "targets": [
+            {
+              "expr": "up{job=~\"smm-.*\"}",
+              "legendFormat": "{{job}}",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "mappings": [
+                { "options": { "0": { "text": "DOWN", "color": "red" } } },
+                { "options": { "1": { "text": "UP", "color": "green" } } }
+              ],
+              "noValue": "Unknown"
+            }
+          }
+        },
+        {
+          "id": 2,
+          "title": "Request Rate",
+          "type": "timeseries",
+          "gridPos": { "h": 6, "w": 12, "x": 0, "y": 4 },
+          "targets": [
+            {
+              "expr": "sum(rate(smm_http_requests_total[5m])) by (service)",
+              "legendFormat": "{{service}} RPS",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "id": 3,
+          "title": "Error Rate",
+          "type": "timeseries", 
+          "gridPos": { "h": 6, "w": 12, "x": 12, "y": 4 },
+          "targets": [
+            {
+              "expr": "sum(rate(smm_http_requests_total{status=~\"5..\"}[5m])) by (service) / sum(rate(smm_http_requests_total[5m])) by (service) * 100",
+              "legendFormat": "{{service}} Error Rate",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percent",
+              "thresholds": {
+                "steps": [
+                  { "color": "green", "value": 0 },
+                  { "color": "yellow", "value": 1 },
+                  { "color": "red", "value": 5 }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "id": 4,
+          "title": "Active Workspaces",
+          "type": "stat",
+          "gridPos": { "h": 4, "w": 6, "x": 0, "y": 10 },
+          "targets": [
+            {
+              "expr": "smm_active_workspaces_total",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "id": 5,
+          "title": "Running Simulations",
+          "type": "stat",
+          "gridPos": { "h": 4, "w": 6, "x": 6, "y": 10 },
+          "targets": [
+            {
+              "expr": "smm_running_simulations_total",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "id": 6,
+          "title": "Agent Jobs Queued",
+          "type": "stat",
+          "gridPos": { "h": 4, "w": 6, "x": 12, "y": 10 },
+          "targets": [
+            {
+              "expr": "sum(smm_agent_queue_depth)",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "id": 7,
+          "title": "Connected Platforms",
+          "type": "stat",
+          "gridPos": { "h": 4, "w": 6, "x": 18, "y": 10 },
+          "targets": [
+            {
+              "expr": "sum(smm_connector_status{status=\"connected\"})",
+              "refId": "A"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

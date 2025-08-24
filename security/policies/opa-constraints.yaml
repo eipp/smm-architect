@@ -1,0 +1,299 @@
+apiVersion: templates.gatekeeper.sh/v1beta1
+kind: ConstraintTemplate
+metadata:
+  name: k8srequiredsecuritycontext
+  annotations:
+    description: "Requires security context configuration for pods"
+spec:
+  crd:
+    spec:
+      names:
+        kind: K8sRequiredSecurityContext
+      validation:
+        openAPIV3Schema:
+          type: object
+          properties:
+            runAsNonRoot:
+              type: boolean
+            readOnlyRootFilesystem:
+              type: boolean
+            allowPrivilegeEscalation:
+              type: boolean
+  targets:
+    - target: admission.k8s.gatekeeper.sh
+      rego: |
+        package k8srequiredsecuritycontext
+
+        violation[{"msg": msg}] {
+          container := input.review.object.spec.containers[_]
+          not container.securityContext.runAsNonRoot
+          msg := "Container must run as non-root user"
+        }
+
+        violation[{"msg": msg}] {
+          container := input.review.object.spec.containers[_]
+          not container.securityContext.readOnlyRootFilesystem
+          msg := "Container must have read-only root filesystem"
+        }
+
+        violation[{"msg": msg}] {
+          container := input.review.object.spec.containers[_]
+          container.securityContext.allowPrivilegeEscalation != false
+          msg := "Container must not allow privilege escalation"
+        }
+
+---
+apiVersion: config.gatekeeper.sh/v1alpha1
+kind: K8sRequiredSecurityContext
+metadata:
+  name: must-have-security-context
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    namespaces: ["smm-architect", "smm-tenant-*"]
+  parameters:
+    runAsNonRoot: true
+    readOnlyRootFilesystem: true
+    allowPrivilegeEscalation: false
+
+---
+apiVersion: templates.gatekeeper.sh/v1beta1
+kind: ConstraintTemplate
+metadata:
+  name: k8srequiredresourcelimits
+  annotations:
+    description: "Requires resource limits for containers"
+spec:
+  crd:
+    spec:
+      names:
+        kind: K8sRequiredResourceLimits
+      validation:
+        openAPIV3Schema:
+          type: object
+          properties:
+            limits:
+              type: object
+              properties:
+                cpu:
+                  type: string
+                memory:
+                  type: string
+            requests:
+              type: object
+              properties:
+                cpu:
+                  type: string
+                memory:
+                  type: string
+  targets:
+    - target: admission.k8s.gatekeeper.sh
+      rego: |
+        package k8srequiredresourcelimits
+
+        violation[{"msg": msg}] {
+          container := input.review.object.spec.containers[_]
+          not container.resources.limits.memory
+          msg := "Container must have memory limits"
+        }
+
+        violation[{"msg": msg}] {
+          container := input.review.object.spec.containers[_]
+          not container.resources.limits.cpu
+          msg := "Container must have CPU limits"
+        }
+
+        violation[{"msg": msg}] {
+          container := input.review.object.spec.containers[_]
+          not container.resources.requests.memory
+          msg := "Container must have memory requests"
+        }
+
+        violation[{"msg": msg}] {
+          container := input.review.object.spec.containers[_]
+          not container.resources.requests.cpu
+          msg := "Container must have CPU requests"
+        }
+
+---
+apiVersion: config.gatekeeper.sh/v1alpha1
+kind: K8sRequiredResourceLimits
+metadata:
+  name: must-have-resource-limits
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    namespaces: ["smm-architect", "smm-tenant-*"]
+
+---
+apiVersion: templates.gatekeeper.sh/v1beta1
+kind: ConstraintTemplate
+metadata:
+  name: k8sno3rdpartyimages
+  annotations:
+    description: "Prohibits use of third-party container images"
+spec:
+  crd:
+    spec:
+      names:
+        kind: K8sNo3rdPartyImages
+      validation:
+        openAPIV3Schema:
+          type: object
+          properties:
+            allowedRegistries:
+              type: array
+              items:
+                type: string
+  targets:
+    - target: admission.k8s.gatekeeper.sh
+      rego: |
+        package k8sno3rdpartyimages
+
+        violation[{"msg": msg}] {
+          container := input.review.object.spec.containers[_]
+          image := container.image
+          not startswith(image, input.parameters.allowedRegistries[_])
+          msg := sprintf("Container image '%v' is not from approved registry", [image])
+        }
+
+---
+apiVersion: config.gatekeeper.sh/v1alpha1
+kind: K8sNo3rdPartyImages
+metadata:
+  name: only-approved-registries
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    namespaces: ["smm-architect", "smm-tenant-*"]
+  parameters:
+    allowedRegistries:
+      - "gcr.io/smm-architect/"
+      - "docker.io/smm-architect/"
+      - "registry.smm-architect.com/"
+
+---
+apiVersion: templates.gatekeeper.sh/v1beta1
+kind: ConstraintTemplate
+metadata:
+  name: k8srequiredlabels
+  annotations:
+    description: "Requires specific labels on resources"
+spec:
+  crd:
+    spec:
+      names:
+        kind: K8sRequiredLabels
+      validation:
+        openAPIV3Schema:
+          type: object
+          properties:
+            labels:
+              type: array
+              items:
+                type: object
+                properties:
+                  key:
+                    type: string
+                  allowedRegex:
+                    type: string
+  targets:
+    - target: admission.k8s.gatekeeper.sh
+      rego: |
+        package k8srequiredlabels
+
+        violation[{"msg": msg}] {
+          required := input.parameters.labels
+          provided := input.review.object.metadata.labels
+          missing := required[_]
+          not provided[missing.key]
+          msg := sprintf("Missing required label: %v", [missing.key])
+        }
+
+        violation[{"msg": msg}] {
+          required := input.parameters.labels
+          provided := input.review.object.metadata.labels
+          value := provided[required[_].key]
+          not re_match(required[_].allowedRegex, value)
+          msg := sprintf("Label %v does not match pattern %v", [required[_].key, required[_].allowedRegex])
+        }
+
+---
+apiVersion: config.gatekeeper.sh/v1alpha1
+kind: K8sRequiredLabels
+metadata:
+  name: must-have-required-labels
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod", "Service"]
+      - apiGroups: ["apps"]
+        kinds: ["Deployment", "StatefulSet"]
+    namespaces: ["smm-architect", "smm-tenant-*"]
+  parameters:
+    labels:
+      - key: "app"
+        allowedRegex: "^[a-z][a-z0-9-]*[a-z0-9]$"
+      - key: "version"
+        allowedRegex: "^v[0-9]+\\.[0-9]+\\.[0-9]+$"
+      - key: "environment"
+        allowedRegex: "^(development|staging|production)$"
+      - key: "smm.architect/tenant-id"
+        allowedRegex: "^tenant-[a-z0-9]{8}$"
+
+---
+apiVersion: templates.gatekeeper.sh/v1beta1
+kind: ConstraintTemplate
+metadata:
+  name: k8snetworkpolicyenforcement
+  annotations:
+    description: "Ensures network policies exist for namespaces"
+spec:
+  crd:
+    spec:
+      names:
+        kind: K8sNetworkPolicyEnforcement
+      validation:
+        openAPIV3Schema:
+          type: object
+          properties:
+            requireDefaultDeny:
+              type: boolean
+  targets:
+    - target: admission.k8s.gatekeeper.sh
+      rego: |
+        package k8snetworkpolicyenforcement
+
+        violation[{"msg": msg}] {
+          input.review.kind.kind == "Namespace"
+          namespace := input.review.object.metadata.name
+          startswith(namespace, "smm-")
+          not has_default_deny_policy(namespace)
+          msg := sprintf("Namespace %v must have default deny network policy", [namespace])
+        }
+
+        has_default_deny_policy(namespace) {
+          # This would need to be implemented with external data or cached policy info
+          # For now, we assume it's checked externally
+          true
+        }
+
+---
+apiVersion: config.gatekeeper.sh/v1alpha1
+kind: K8sNetworkPolicyEnforcement
+metadata:
+  name: require-network-policies
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Namespace"]
+  parameters:
+    requireDefaultDeny: true

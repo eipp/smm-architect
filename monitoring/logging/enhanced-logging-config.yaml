@@ -1,0 +1,481 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fluentd-enhanced-config
+  namespace: logging
+  labels:
+    app: fluentd
+    component: enhanced-logging
+data:
+  fluent.conf: |
+    # Input sources
+    <source>
+      @type tail
+      @id smm_model_router_logs
+      path /var/log/containers/*model-router*.log
+      pos_file /var/log/fluentd-smm-model-router.log.pos
+      tag smm.model-router
+      read_from_head true
+      <parse>
+        @type json
+        time_key timestamp
+        time_format %Y-%m-%dT%H:%M:%S.%LZ
+      </parse>
+    </source>
+
+    <source>
+      @type tail
+      @id smm_canary_logs
+      path /var/log/containers/*canary*.log
+      pos_file /var/log/fluentd-smm-canary.log.pos
+      tag smm.canary
+      read_from_head true
+      <parse>
+        @type json
+        time_key timestamp
+        time_format %Y-%m-%dT%H:%M:%S.%LZ
+      </parse>
+    </source>
+
+    <source>
+      @type tail
+      @id smm_mcp_logs
+      path /var/log/containers/*n8n*.log
+      pos_file /var/log/fluentd-smm-mcp.log.pos
+      tag smm.mcp
+      read_from_head true
+      <parse>
+        @type json
+        time_key timestamp
+        time_format %Y-%m-%dT%H:%M:%S.%LZ
+      </parse>
+    </source>
+
+    <source>
+      @type tail
+      @id smm_audit_logs
+      path /var/log/containers/*audit*.log
+      pos_file /var/log/fluentd-smm-audit.log.pos
+      tag smm.audit
+      read_from_head true
+      <parse>
+        @type json
+        time_key timestamp
+        time_format %Y-%m-%dT%H:%M:%S.%LZ
+      </parse>
+    </source>
+
+    <source>
+      @type tail
+      @id smm_workspace_logs
+      path /var/log/containers/*workspace*.log
+      pos_file /var/log/fluentd-smm-workspace.log.pos
+      tag smm.workspace
+      read_from_head true
+      <parse>
+        @type json
+        time_key timestamp
+        time_format %Y-%m-%dT%H:%M:%S.%LZ
+      </parse>
+    </source>
+
+    # Filters for log enhancement
+    <filter smm.**>
+      @type record_transformer
+      enable_ruby true
+      <record>
+        # Add correlation fields
+        trace_id ${record.dig("trace_id") || record.dig("requestId") || record.dig("request_id")}
+        workspace_id ${record.dig("workspace_id") || record.dig("workspaceId")}
+        tenant_id ${record.dig("tenant_id") || record.dig("tenantId")}
+        user_id ${record.dig("user_id") || record.dig("userId")}
+        
+        # Add service metadata
+        service_name ${tag_parts[1]}
+        cluster_name ${ENV["CLUSTER_NAME"] || "smm-architect"}
+        environment ${ENV["ENVIRONMENT"] || "production"}
+        
+        # Add Kubernetes metadata
+        namespace ${record.dig("kubernetes", "namespace_name")}
+        pod_name ${record.dig("kubernetes", "pod_name")}
+        container_name ${record.dig("kubernetes", "container_name")}
+        
+        # Standardize log level
+        level ${record.dig("level") || record.dig("severity") || "info"}
+        
+        # Add timestamp if missing
+        @timestamp ${record.dig("timestamp") || record.dig("@timestamp") || Time.now.strftime("%Y-%m-%dT%H:%M:%S.%LZ")}
+      </record>
+    </filter>
+
+    # Filter for Model Router specific enhancements
+    <filter smm.model-router>
+      @type record_transformer
+      enable_ruby true
+      <record>
+        # Extract model-specific fields
+        model_id ${record.dig("modelId") || record.dig("model_id")}
+        agent_type ${record.dig("agentType") || record.dig("agent_type")}
+        routing_rule_id ${record.dig("routingRuleId") || record.dig("routing_rule_id")}
+        
+        # Add performance metrics
+        latency_ms ${record.dig("latency") || record.dig("duration")}
+        token_count ${record.dig("tokens") || record.dig("tokenCount")}
+        cost_usd ${record.dig("cost") || record.dig("costUsd")}
+        
+        # Add evaluation context
+        evaluation_id ${record.dig("evaluationId") || record.dig("evaluation_id")}
+        canary_deployment_id ${record.dig("deploymentId") || record.dig("canary_deployment_id")}
+        
+        # Add error categorization
+        error_category ${
+          if record.dig("error")
+            case record.dig("error").to_s
+            when /timeout/i then "timeout"
+            when /rate.?limit/i then "rate_limit"
+            when /authentication/i then "auth"
+            when /quota/i then "quota"
+            when /model.?unavailable/i then "model_unavailable"
+            else "unknown"
+            end
+          else
+            nil
+          end
+        }
+      </record>
+    </filter>
+
+    # Filter for Canary deployment logs
+    <filter smm.canary>
+      @type record_transformer
+      enable_ruby true
+      <record>
+        deployment_id ${record.dig("deploymentId") || record.dig("deployment_id")}
+        production_model_id ${record.dig("productionModelId") || record.dig("production_model_id")}
+        canary_model_id ${record.dig("canaryModelId") || record.dig("canary_model_id")}
+        traffic_split_production ${record.dig("trafficSplit", "production") || record.dig("traffic_split_production")}
+        traffic_split_canary ${record.dig("trafficSplit", "canary") || record.dig("traffic_split_canary")}
+        rollout_status ${record.dig("status") || record.dig("rollout_status")}
+        performance_delta ${record.dig("performanceDelta") || record.dig("performance_delta")}
+        quality_delta ${record.dig("qualityDelta") || record.dig("quality_delta")}
+      </record>
+    </filter>
+
+    # Filter for MCP workflow logs
+    <filter smm.mcp>
+      @type record_transformer
+      enable_ruby true
+      <record>
+        workflow_id ${record.dig("workflowId") || record.dig("workflow_id")}
+        execution_id ${record.dig("executionId") || record.dig("execution_id")}
+        mcp_protocol_version ${record.dig("protocol") || "mcp-2.0"}
+        mcp_request_id ${record.dig("requestId") || record.dig("mcp_request_id")}
+        agent_communication_type ${record.dig("agentType") || record.dig("agent_communication_type")}
+        evaluation_type ${record.dig("evaluationType") || record.dig("evaluation_type")}
+        health_check_id ${record.dig("checkId") || record.dig("health_check_id")}
+      </record>
+    </filter>
+
+    # Filter for sensitive data masking
+    <filter smm.**>
+      @type record_transformer
+      enable_ruby true
+      <record>
+        # Mask sensitive fields
+        message ${
+          msg = record["message"] || record["msg"] || ""
+          # Mask API keys
+          msg = msg.gsub(/(?:api[_-]?key|secret|token|password)\s*[:=]\s*['\"]?([a-zA-Z0-9+\/=]{10,})['\"]?/i, '\1: [MASKED]')
+          # Mask email addresses
+          msg = msg.gsub(/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/, '[EMAIL_MASKED]')
+          # Mask credit card numbers
+          msg = msg.gsub(/\b\d{4}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b/, '[CC_MASKED]')
+          msg
+        }
+      </record>
+    </filter>
+
+    # Add geo-location based on request origin
+    <filter smm.**>
+      @type geoip
+      geoip_lookup_keys client_ip, remote_addr, x_forwarded_for
+      <record>
+        geoip_country_name ${city.country.names.en["client_ip"]}
+        geoip_city_name    ${city.city.names.en["client_ip"]}
+        geoip_latitude     ${city.location.latitude["client_ip"]}
+        geoip_longitude    ${city.location.longitude["client_ip"]}
+      </record>
+      skip_adding_null_record true
+    </filter>
+
+    # Output to Elasticsearch with enhanced indexing
+    <match smm.**>
+      @type elasticsearch
+      @id smm_elasticsearch_output
+      
+      host "#{ENV['ELASTICSEARCH_HOST'] || 'elasticsearch.logging.svc.cluster.local'}"
+      port "#{ENV['ELASTICSEARCH_PORT'] || '9200'}"
+      scheme "#{ENV['ELASTICSEARCH_SCHEME'] || 'http'}"
+      user "#{ENV['ELASTICSEARCH_USER']}"
+      password "#{ENV['ELASTICSEARCH_PASSWORD']}"
+      
+      # Index strategy
+      index_name smm-logs-%{+YYYY.MM.dd}
+      type_name _doc
+      
+      # Template for index mappings
+      template_name smm-logs
+      template_file /etc/fluent/elasticsearch-template.json
+      template_overwrite true
+      
+      # Buffering configuration
+      <buffer time>
+        timekey 300s
+        timekey_wait 30s
+        timekey_use_utc true
+        chunk_limit_size 32MB
+        total_limit_size 1GB
+        flush_mode interval
+        flush_interval 60s
+        flush_thread_count 4
+        retry_type exponential_backoff
+        retry_wait 1s
+        retry_max_interval 60s
+        retry_timeout 168h
+        overflow_action drop_oldest_chunk
+      </buffer>
+      
+      # Performance optimization
+      suppress_type_name true
+      reload_connections false
+      reconnect_on_error true
+      reload_on_failure true
+      request_timeout 15s
+      
+      # Log shipping monitoring
+      slow_flush_log_threshold 40.0
+      log_level info
+    </match>
+
+    # Dead letter queue for failed logs
+    <match **>
+      @type file
+      @id dead_letter_queue
+      path /var/log/fluent/dead-letter-queue
+      append true
+      time_slice_format %Y%m%d
+      time_slice_wait 10m
+      time_format %Y-%m-%dT%H:%M:%S%z
+      compress gzip
+    </match>
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: elasticsearch-template
+  namespace: logging
+  labels:
+    app: elasticsearch
+    component: enhanced-logging
+data:
+  elasticsearch-template.json: |
+    {
+      "index_patterns": ["smm-logs-*"],
+      "template": {
+        "settings": {
+          "number_of_shards": 3,
+          "number_of_replicas": 1,
+          "index.refresh_interval": "30s",
+          "index.codec": "best_compression",
+          "index.lifecycle.name": "smm-logs-policy",
+          "index.lifecycle.rollover_alias": "smm-logs"
+        },
+        "mappings": {
+          "properties": {
+            "@timestamp": {
+              "type": "date",
+              "format": "strict_date_optional_time||epoch_millis"
+            },
+            "level": {
+              "type": "keyword",
+              "index": true
+            },
+            "message": {
+              "type": "text",
+              "analyzer": "standard",
+              "fields": {
+                "keyword": {
+                  "type": "keyword",
+                  "ignore_above": 256
+                }
+              }
+            },
+            "service_name": {
+              "type": "keyword",
+              "index": true
+            },
+            "trace_id": {
+              "type": "keyword",
+              "index": true
+            },
+            "workspace_id": {
+              "type": "keyword",
+              "index": true
+            },
+            "tenant_id": {
+              "type": "keyword",
+              "index": true
+            },
+            "user_id": {
+              "type": "keyword",
+              "index": true
+            },
+            "model_id": {
+              "type": "keyword",
+              "index": true
+            },
+            "agent_type": {
+              "type": "keyword",
+              "index": true
+            },
+            "latency_ms": {
+              "type": "long"
+            },
+            "cost_usd": {
+              "type": "scaled_float",
+              "scaling_factor": 10000
+            },
+            "token_count": {
+              "type": "long"
+            },
+            "error_category": {
+              "type": "keyword",
+              "index": true
+            },
+            "deployment_id": {
+              "type": "keyword",
+              "index": true
+            },
+            "workflow_id": {
+              "type": "keyword",
+              "index": true
+            },
+            "mcp_protocol_version": {
+              "type": "keyword",
+              "index": true
+            },
+            "geoip_country_name": {
+              "type": "keyword",
+              "index": true
+            },
+            "geoip_city_name": {
+              "type": "keyword",
+              "index": true
+            },
+            "geoip_location": {
+              "type": "geo_point"
+            },
+            "kubernetes": {
+              "properties": {
+                "namespace_name": {"type": "keyword"},
+                "pod_name": {"type": "keyword"},
+                "container_name": {"type": "keyword"}
+              }
+            }
+          }
+        }
+      }
+    }
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kibana-enhanced-dashboards
+  namespace: logging
+  labels:
+    app: kibana
+    component: enhanced-logging
+data:
+  dashboard-config.json: |
+    {
+      "version": "8.0.0",
+      "objects": [
+        {
+          "id": "smm-model-router-logs",
+          "type": "dashboard",
+          "attributes": {
+            "title": "SMM Model Router - Log Analysis",
+            "description": "Comprehensive log analysis for Model Router Service",
+            "panelsJSON": "[{\"version\":\"8.0.0\",\"gridData\":{\"x\":0,\"y\":0,\"w\":24,\"h\":15,\"i\":\"1\"},\"panelIndex\":\"1\",\"embeddableConfig\":{},\"panelRefName\":\"panel_1\"}]",
+            "timeRestore": false,
+            "version": 1
+          }
+        },
+        {
+          "id": "smm-canary-deployment-logs",
+          "type": "dashboard", 
+          "attributes": {
+            "title": "SMM Canary Deployments - Log Analysis",
+            "description": "Log analysis for canary deployment lifecycle",
+            "panelsJSON": "[{\"version\":\"8.0.0\",\"gridData\":{\"x\":0,\"y\":0,\"w\":24,\"h\":15,\"i\":\"1\"},\"panelIndex\":\"1\",\"embeddableConfig\":{},\"panelRefName\":\"panel_1\"}]",
+            "timeRestore": false,
+            "version": 1
+          }
+        },
+        {
+          "id": "smm-mcp-workflow-logs",
+          "type": "dashboard",
+          "attributes": {
+            "title": "SMM MCP Workflows - Log Analysis", 
+            "description": "Log analysis for MCP protocol workflows",
+            "panelsJSON": "[{\"version\":\"8.0.0\",\"gridData\":{\"x\":0,\"y\":0,\"w\":24,\"h\":15,\"i\":\"1\"},\"panelIndex\":\"1\",\"embeddableConfig\":{},\"panelRefName\":\"panel_1\"}]",
+            "timeRestore": false,
+            "version": 1
+          }
+        }
+      ]
+    }
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: log-correlation-config
+  namespace: logging
+  labels:
+    app: fluentd
+    component: correlation
+data:
+  correlation.conf: |
+    # Log correlation for distributed tracing
+    <source>
+      @type http
+      port 9880
+      bind 0.0.0.0
+      cors_allow_origins ["*"]
+      <parse>
+        @type json
+      </parse>
+      <transport tls>
+        ca_cert_path /etc/fluent/certs/ca.crt
+        cert_path /etc/fluent/certs/server.crt
+        private_key_path /etc/fluent/certs/server.key
+      </transport>
+    </source>
+
+    # Correlation buffer for trace assembly
+    <filter smm.**>
+      @type correlation
+      key_name trace_id
+      time_window 300
+      max_traces 10000
+      <correlation_fields>
+        request_start_time
+        response_time
+        total_duration
+        service_chain
+        error_propagation
+      </correlation_fields>
+    </filter>

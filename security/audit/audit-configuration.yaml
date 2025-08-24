@@ -1,0 +1,432 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: audit-policy
+  namespace: kube-system
+data:
+  audit-policy.yaml: |
+    apiVersion: audit.k8s.io/v1
+    kind: Policy
+    omitStages:
+      - RequestReceived
+    resources:
+      - group: ""
+        resources: ["*"]
+      - group: "apps"
+        resources: ["*"]
+      - group: "extensions"
+        resources: ["*"]
+      - group: "rbac.authorization.k8s.io"
+        resources: ["*"]
+      - group: "networking.k8s.io"
+        resources: ["*"]
+    rules:
+      # Critical security events - record everything
+      - level: RequestResponse
+        omitStages:
+          - RequestReceived
+        resources:
+        - group: ""
+          resources: ["secrets", "configmaps", "serviceaccounts"]
+        - group: "rbac.authorization.k8s.io"
+          resources: ["*"]
+        
+      # SMM Architect specific resources
+      - level: RequestResponse
+        omitStages:
+          - RequestReceived
+        namespaces: ["smm-architect"]
+        resources:
+        - group: ""
+          resources: ["*"]
+        - group: "apps"
+          resources: ["*"]
+        
+      # Multi-tenant namespace activity
+      - level: Request
+        omitStages:
+          - RequestReceived
+        namespaceRegex: "smm-tenant-.*"
+        verbs: ["create", "update", "patch", "delete"]
+        
+      # Authentication and authorization
+      - level: Metadata
+        omitStages:
+          - RequestReceived
+        resources:
+        - group: "authentication.k8s.io"
+          resources: ["*"]
+        - group: "authorization.k8s.io"
+          resources: ["*"]
+          
+      # Network policies and security contexts
+      - level: RequestResponse
+        omitStages:
+          - RequestReceived
+        resources:
+        - group: "networking.k8s.io"
+          resources: ["networkpolicies"]
+        - group: "policy"
+          resources: ["podsecuritypolicies"]
+          
+      # Admission controllers and policy violations
+      - level: Request
+        omitStages:
+          - RequestReceived
+        users: ["system:serviceaccount:gatekeeper-system:gatekeeper-admin"]
+        
+      # Exclude low-level events
+      - level: None
+        users: ["system:kube-proxy"]
+        verbs: ["watch"]
+        resources:
+        - group: ""
+          resources: ["endpoints", "services", "services/status"]
+          
+      - level: None
+        userGroups: ["system:nodes"]
+        verbs: ["get"]
+        resources:
+        - group: ""
+          resources: ["nodes", "nodes/status"]
+          
+      # Default catch-all rule
+      - level: Metadata
+        omitStages:
+          - RequestReceived
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fluent-audit-config
+  namespace: logging
+data:
+  audit.conf: |
+    # Kubernetes audit log parsing
+    <source>
+      @type tail
+      @id kubernetes_audit
+      path /var/log/audit.log
+      pos_file /var/log/fluentd-audit.log.pos
+      tag kubernetes.audit
+      read_from_head true
+      <parse>
+        @type json
+        time_key timestamp
+        time_format %Y-%m-%dT%H:%M:%S.%LZ
+      </parse>
+    </source>
+    
+    # Vault audit log parsing
+    <source>
+      @type tail
+      @id vault_audit
+      path /vault/logs/audit.log
+      pos_file /var/log/fluentd-vault-audit.log.pos
+      tag vault.audit
+      read_from_head true
+      <parse>
+        @type json
+        time_key time
+        time_format %Y-%m-%dT%H:%M:%S.%LZ
+      </parse>
+    </source>
+    
+    # Application audit logs
+    <source>
+      @type tail
+      @id app_audit
+      path /var/log/containers/*audit*.log
+      pos_file /var/log/fluentd-app-audit.log.pos
+      tag app.audit
+      read_from_head true
+      <parse>
+        @type json
+        time_key timestamp
+        time_format %Y-%m-%dT%H:%M:%S.%LZ
+      </parse>
+    </source>
+    
+    # Security event enrichment
+    <filter kubernetes.audit>
+      @type record_transformer
+      enable_ruby true
+      <record>
+        audit_type kubernetes
+        severity ${
+          case record["verb"]
+          when "create", "update", "patch", "delete"
+            if record.dig("objectRef", "resource") == "secrets" || 
+               record.dig("objectRef", "resource") == "serviceaccounts" ||
+               record.dig("objectRef", "apiGroup") == "rbac.authorization.k8s.io"
+              "high"
+            else
+              "medium"
+            end
+          when "get", "list", "watch"
+            "low"
+          else
+            "medium"
+          end
+        }
+        security_impact ${
+          case record["verb"]
+          when "create", "update", "patch", "delete"
+            if record.dig("objectRef", "namespace")&.start_with?("smm-")
+              "tenant_isolation"
+            elsif record.dig("objectRef", "resource") == "secrets"
+              "credential_access"
+            elsif record.dig("objectRef", "apiGroup") == "rbac.authorization.k8s.io"
+              "privilege_escalation"
+            else
+              "configuration_change"
+            end
+          else
+            "information_access"
+          end
+        }
+        compliance_requirement ${
+          if record.dig("objectRef", "namespace")&.start_with?("smm-tenant-")
+            ["gdpr", "sox", "tenant_isolation"]
+          elsif record.dig("objectRef", "resource") == "secrets"
+            ["gdpr", "sox", "pci_dss"]
+          else
+            ["sox"]
+          end
+        }
+        user_category ${
+          case record["user", "username"]
+          when /^system:/
+            "system"
+          when /^kubernetes-admin/
+            "admin"
+          when /serviceaccount:/
+            "service_account"
+          else
+            "human_user"
+          end
+        }
+      </record>
+    </filter>
+    
+    # Vault audit enrichment
+    <filter vault.audit>
+      @type record_transformer
+      enable_ruby true
+      <record>
+        audit_type vault
+        severity ${
+          case record["type"]
+          when "request"
+            if record.dig("request", "operation") == "write" ||
+               record.dig("request", "operation") == "delete"
+              "high"
+            else
+              "medium"
+            end
+          when "response"
+            if record.dig("response", "data", "errors")
+              "high"
+            else
+              "low"
+            end
+          else
+            "medium"
+          end
+        }
+        security_impact ${
+          path = record.dig("request", "path") || ""
+          case path
+          when /^auth\//
+            "authentication"
+          when /^secret\//
+            "secret_access"
+          when /^sys\//
+            "system_configuration"
+          else
+            "general_access"
+          end
+        }
+        compliance_requirement ["sox", "pci_dss", "gdpr"]
+      </record>
+    </filter>
+    
+    # Application audit enrichment
+    <filter app.audit>
+      @type record_transformer
+      enable_ruby true
+      <record>
+        audit_type application
+        severity ${record["level"] || "medium"}
+        security_impact ${
+          event_type = record["event_type"] || record["type"] || ""
+          case event_type
+          when /login|logout|auth/
+            "authentication"
+          when /access|permission/
+            "authorization"
+          when /data|privacy/
+            "data_access"
+          when /payment|billing/
+            "financial"
+          else
+            "general"
+          end
+        }
+        compliance_requirement ${
+          if record["pii_involved"] || record["personal_data"]
+            ["gdpr", "ccpa"]
+          elsif record["financial_data"] || record["payment"]
+            ["pci_dss", "sox"]
+          else
+            ["sox"]
+          end
+        }
+      </record>
+    </filter>
+    
+    # Security alerting for high-severity events
+    <match *.audit>
+      @type copy
+      <store>
+        @type elasticsearch
+        @id audit_elasticsearch
+        host "#{ENV['ELASTICSEARCH_HOST'] || 'elasticsearch.logging.svc.cluster.local'}"
+        port "#{ENV['ELASTICSEARCH_PORT'] || '9200'}"
+        index_name audit-logs-%{+YYYY.MM.dd}
+        type_name _doc
+        include_tag_key true
+        tag_key @log_type
+        <buffer time>
+          timekey 300s
+          timekey_wait 60s
+          flush_mode interval
+          flush_interval 30s
+          chunk_limit_size 16MB
+          total_limit_size 512MB
+        </buffer>
+      </store>
+      <store>
+        @type http
+        @id security_alerts
+        endpoint "#{ENV['SECURITY_WEBHOOK_URL'] || 'http://security-monitor.smm-system.svc.cluster.local:8080/alerts'}"
+        open_timeout 10
+        read_timeout 10
+        <format>
+          @type json
+        </format>
+        <filter>
+          severity high
+        </filter>
+      </store>
+    </match>
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: audit-retention-policy
+  namespace: logging
+data:
+  policy.json: |
+    {
+      "policy": {
+        "phases": {
+          "hot": {
+            "actions": {
+              "rollover": {
+                "max_size": "10GB",
+                "max_age": "7d"
+              }
+            }
+          },
+          "warm": {
+            "min_age": "7d",
+            "actions": {
+              "allocate": {
+                "number_of_replicas": 0
+              },
+              "forcemerge": {
+                "max_num_segments": 1
+              }
+            }
+          },
+          "cold": {
+            "min_age": "30d",
+            "actions": {
+              "allocate": {
+                "number_of_replicas": 0
+              }
+            }
+          },
+          "delete": {
+            "min_age": "2555d"
+          }
+        }
+      }
+    }
+
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: audit-integrity-check
+  namespace: logging
+spec:
+  schedule: "0 2 * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: integrity-checker
+            image: smm-architect/audit-tools:latest
+            command:
+            - /bin/bash
+            - -c
+            - |
+              #!/bin/bash
+              echo "Starting audit integrity check at $(date)"
+              
+              # Check Elasticsearch audit indices
+              curl -s "http://elasticsearch.logging.svc.cluster.local:9200/_cat/indices/audit-logs-*?v&h=index,docs.count,store.size"
+              
+              # Verify audit log continuity
+              YESTERDAY=$(date -d "yesterday" +%Y.%m.%d)
+              TODAY=$(date +%Y.%m.%d)
+              
+              echo "Checking audit logs for $YESTERDAY and $TODAY"
+              
+              # Check for gaps in audit logs
+              YESTERDAY_COUNT=$(curl -s "http://elasticsearch.logging.svc.cluster.local:9200/audit-logs-$YESTERDAY/_count" | jq -r '.count // 0')
+              TODAY_COUNT=$(curl -s "http://elasticsearch.logging.svc.cluster.local:9200/audit-logs-$TODAY/_count" | jq -r '.count // 0')
+              
+              echo "Yesterday: $YESTERDAY_COUNT events"
+              echo "Today: $TODAY_COUNT events"
+              
+              # Validate cryptographic signatures
+              curl -s "http://elasticsearch.logging.svc.cluster.local:9200/audit-logs-$TODAY/_search" \
+                -H "Content-Type: application/json" \
+                -d '{"query":{"bool":{"must_not":{"exists":{"field":"signature"}}}},"size":0}' \
+                | jq -r '.hits.total.value' > /tmp/unsigned_events
+              
+              UNSIGNED_COUNT=$(cat /tmp/unsigned_events)
+              if [ "$UNSIGNED_COUNT" -gt 0 ]; then
+                echo "WARNING: $UNSIGNED_COUNT audit events without signatures found"
+                exit 1
+              fi
+              
+              echo "Audit integrity check completed successfully"
+            resources:
+              requests:
+                memory: "128Mi"
+                cpu: "100m"
+              limits:
+                memory: "256Mi"
+                cpu: "200m"
+            securityContext:
+              runAsNonRoot: true
+              readOnlyRootFilesystem: true
+              allowPrivilegeEscalation: false
+          restartPolicy: OnFailure

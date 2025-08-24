@@ -1,0 +1,436 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: elasticsearch-config
+  namespace: logging
+  labels:
+    app: elasticsearch
+    component: logging
+data:
+  elasticsearch.yml: |
+    # SMM Architect Elasticsearch Configuration
+    cluster.name: smm-logging-cluster
+    node.name: ${HOSTNAME}
+    
+    # Network settings
+    network.host: 0.0.0.0
+    discovery.type: single-node
+    
+    # Memory settings
+    bootstrap.memory_lock: true
+    
+    # Index settings
+    action.auto_create_index: true
+    indices.query.bool.max_clause_count: 10000
+    
+    # Security settings
+    xpack.security.enabled: false
+    xpack.monitoring.collection.enabled: true
+    
+    # Performance tuning
+    thread_pool.write.queue_size: 1000
+    indices.memory.index_buffer_size: 20%
+    
+    # Log level
+    logger.level: INFO
+    
+  log4j2.properties: |
+    status = error
+    
+    appender.console.type = Console
+    appender.console.name = console
+    appender.console.layout.type = PatternLayout
+    appender.console.layout.pattern = [%d{ISO8601}][%-5p][%-25c{1.}] [%node_name]%marker %m%n
+    
+    rootLogger.level = info
+    rootLogger.appenderRef.console.ref = console
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: elasticsearch-index-templates
+  namespace: logging
+  labels:
+    app: elasticsearch
+    component: logging
+data:
+  smm-logs-template.json: |
+    {
+      "index_patterns": ["smm-logs-*"],
+      "template": {
+        "settings": {
+          "number_of_shards": 3,
+          "number_of_replicas": 1,
+          "index.refresh_interval": "5s",
+          "index.codec": "best_compression",
+          "index.mapping.total_fields.limit": 2000,
+          "index.max_result_window": 50000,
+          "index.lifecycle.name": "smm-logs-policy",
+          "index.lifecycle.rollover_alias": "smm-logs"
+        },
+        "mappings": {
+          "dynamic_templates": [
+            {
+              "strings_as_keywords": {
+                "match_mapping_type": "string",
+                "match": "*_id",
+                "mapping": {
+                  "type": "keyword",
+                  "ignore_above": 256
+                }
+              }
+            },
+            {
+              "timestamps": {
+                "match": "*timestamp*",
+                "mapping": {
+                  "type": "date",
+                  "format": "strict_date_optional_time||epoch_millis"
+                }
+              }
+            }
+          ],
+          "properties": {
+            "@timestamp": {
+              "type": "date",
+              "format": "strict_date_optional_time||epoch_millis"
+            },
+            "level": {
+              "type": "keyword"
+            },
+            "service_name": {
+              "type": "keyword"
+            },
+            "environment": {
+              "type": "keyword"
+            },
+            "cluster": {
+              "type": "keyword"
+            },
+            "request_id": {
+              "type": "keyword"
+            },
+            "workspace_id": {
+              "type": "keyword"
+            },
+            "user_id": {
+              "type": "keyword"
+            },
+            "trace_id": {
+              "type": "keyword"
+            },
+            "span_id": {
+              "type": "keyword"
+            },
+            "message": {
+              "type": "text",
+              "analyzer": "standard",
+              "fields": {
+                "keyword": {
+                  "type": "keyword",
+                  "ignore_above": 512
+                }
+              }
+            },
+            "log": {
+              "type": "text",
+              "analyzer": "standard"
+            },
+            "connector_type": {
+              "type": "keyword"
+            },
+            "platform": {
+              "type": "keyword"
+            },
+            "api_endpoint": {
+              "type": "keyword"
+            },
+            "response_time": {
+              "type": "float"
+            },
+            "status_code": {
+              "type": "integer"
+            },
+            "simulation_id": {
+              "type": "keyword"
+            },
+            "iteration": {
+              "type": "integer"
+            },
+            "algorithm": {
+              "type": "keyword"
+            },
+            "readiness_score": {
+              "type": "float"
+            },
+            "workflow_id": {
+              "type": "keyword"
+            },
+            "execution_id": {
+              "type": "keyword"
+            },
+            "node_type": {
+              "type": "keyword"
+            },
+            "workflow_status": {
+              "type": "keyword"
+            },
+            "kubernetes": {
+              "properties": {
+                "namespace_name": {
+                  "type": "keyword"
+                },
+                "pod_name": {
+                  "type": "keyword"
+                },
+                "container_name": {
+                  "type": "keyword"
+                },
+                "labels": {
+                  "type": "object",
+                  "dynamic": true
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
+  smm-audit-logs-template.json: |
+    {
+      "index_patterns": ["smm-audit-logs-*"],
+      "template": {
+        "settings": {
+          "number_of_shards": 2,
+          "number_of_replicas": 2,
+          "index.refresh_interval": "10s",
+          "index.codec": "best_compression",
+          "index.lifecycle.name": "smm-audit-policy",
+          "index.lifecycle.rollover_alias": "smm-audit-logs"
+        },
+        "mappings": {
+          "properties": {
+            "@timestamp": {
+              "type": "date"
+            },
+            "event_type": {
+              "type": "keyword"
+            },
+            "user_id": {
+              "type": "keyword"
+            },
+            "workspace_id": {
+              "type": "keyword"
+            },
+            "action": {
+              "type": "keyword"
+            },
+            "resource": {
+              "type": "keyword"
+            },
+            "result": {
+              "type": "keyword"
+            },
+            "ip_address": {
+              "type": "ip"
+            },
+            "user_agent": {
+              "type": "text",
+              "fields": {
+                "keyword": {
+                  "type": "keyword",
+                  "ignore_above": 256
+                }
+              }
+            },
+            "details": {
+              "type": "object",
+              "dynamic": true
+            }
+          }
+        }
+      }
+    }
+
+  smm-security-events-template.json: |
+    {
+      "index_patterns": ["smm-security-events-*"],
+      "template": {
+        "settings": {
+          "number_of_shards": 1,
+          "number_of_replicas": 2,
+          "index.refresh_interval": "5s",
+          "index.codec": "best_compression",
+          "index.lifecycle.name": "smm-security-policy"
+        },
+        "mappings": {
+          "properties": {
+            "@timestamp": {
+              "type": "date"
+            },
+            "severity": {
+              "type": "keyword"
+            },
+            "event_type": {
+              "type": "keyword"
+            },
+            "source_ip": {
+              "type": "ip"
+            },
+            "destination_ip": {
+              "type": "ip"
+            },
+            "user_id": {
+              "type": "keyword"
+            },
+            "session_id": {
+              "type": "keyword"
+            },
+            "threat_type": {
+              "type": "keyword"
+            },
+            "blocked": {
+              "type": "boolean"
+            },
+            "detection_method": {
+              "type": "keyword"
+            },
+            "risk_score": {
+              "type": "float"
+            }
+          }
+        }
+      }
+    }
+
+  lifecycle-policies.json: |
+    {
+      "smm-logs-policy": {
+        "policy": {
+          "phases": {
+            "hot": {
+              "actions": {
+                "rollover": {
+                  "max_size": "5GB",
+                  "max_age": "1d"
+                },
+                "set_priority": {
+                  "priority": 100
+                }
+              }
+            },
+            "warm": {
+              "min_age": "1d",
+              "actions": {
+                "allocate": {
+                  "number_of_replicas": 0
+                },
+                "forcemerge": {
+                  "max_num_segments": 1
+                },
+                "set_priority": {
+                  "priority": 50
+                }
+              }
+            },
+            "cold": {
+              "min_age": "7d",
+              "actions": {
+                "set_priority": {
+                  "priority": 0
+                }
+              }
+            },
+            "delete": {
+              "min_age": "30d"
+            }
+          }
+        }
+      },
+      "smm-audit-policy": {
+        "policy": {
+          "phases": {
+            "hot": {
+              "actions": {
+                "rollover": {
+                  "max_size": "2GB",
+                  "max_age": "1d"
+                },
+                "set_priority": {
+                  "priority": 100
+                }
+              }
+            },
+            "warm": {
+              "min_age": "7d",
+              "actions": {
+                "allocate": {
+                  "number_of_replicas": 1
+                },
+                "forcemerge": {
+                  "max_num_segments": 1
+                },
+                "set_priority": {
+                  "priority": 50
+                }
+              }
+            },
+            "cold": {
+              "min_age": "90d",
+              "actions": {
+                "set_priority": {
+                  "priority": 0
+                }
+              }
+            },
+            "delete": {
+              "min_age": "2555d"
+            }
+          }
+        }
+      },
+      "smm-security-policy": {
+        "policy": {
+          "phases": {
+            "hot": {
+              "actions": {
+                "rollover": {
+                  "max_size": "1GB",
+                  "max_age": "1d"
+                },
+                "set_priority": {
+                  "priority": 100
+                }
+              }
+            },
+            "warm": {
+              "min_age": "30d",
+              "actions": {
+                "allocate": {
+                  "number_of_replicas": 2
+                },
+                "forcemerge": {
+                  "max_num_segments": 1
+                },
+                "set_priority": {
+                  "priority": 75
+                }
+              }
+            },
+            "cold": {
+              "min_age": "365d",
+              "actions": {
+                "set_priority": {
+                  "priority": 0
+                }
+              }
+            },
+            "delete": {
+              "min_age": "2555d"
+            }
+          }
+        }
+      }
+    }

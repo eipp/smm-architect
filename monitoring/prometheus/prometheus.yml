@@ -1,0 +1,201 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: 'smm-architect-prod'
+    environment: 'production'
+
+rule_files:
+  - "/etc/prometheus/rules/*.yml"
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+          - alertmanager:9093
+
+scrape_configs:
+  # SMM Architect Main Service
+  - job_name: 'smm-architect'
+    static_configs:
+      - targets: ['smm-architect:3000']
+    metrics_path: /metrics
+    scrape_interval: 15s
+    scrape_timeout: 10s
+    honor_labels: false
+    honor_timestamps: true
+    scheme: http
+    
+    metric_relabel_configs:
+      - source_labels: [__name__]
+        regex: 'smm_.*'
+        target_label: __tmp_smm_metric
+        replacement: 'true'
+
+  # ToolHub Service
+  - job_name: 'smm-toolhub'
+    static_configs:
+      - targets: ['toolhub:8080']
+    metrics_path: /metrics
+    scrape_interval: 15s
+    
+    metric_relabel_configs:
+      - source_labels: [__name__]
+        regex: 'toolhub_.*|smm_toolhub_.*'
+        target_label: service
+        replacement: 'toolhub'
+
+  # n8n Workflow Engine
+  - job_name: 'smm-n8n'
+    static_configs:
+      - targets: ['n8n:5678']
+    metrics_path: /metrics
+    scrape_interval: 30s
+    
+  # Agent Services
+  - job_name: 'smm-agents'
+    static_configs:
+      - targets: 
+        - 'research-agent:3001'
+        - 'creative-agent:3002'
+        - 'legal-agent:3003'
+        - 'analytics-agent:3004'
+        - 'coordinator-agent:3005'
+        - 'brand-agent:3006'
+    metrics_path: /metrics
+    scrape_interval: 15s
+    
+    relabel_configs:
+      - source_labels: [__address__]
+        regex: '([^:]+)-agent:.*'
+        target_label: agent_type
+        replacement: '${1}'
+
+  # Database Metrics
+  - job_name: 'postgres-exporter'
+    static_configs:
+      - targets: ['postgres-exporter:9187']
+    scrape_interval: 30s
+    
+  # Redis Metrics  
+  - job_name: 'redis-exporter'
+    static_configs:
+      - targets: ['redis-exporter:9121']
+    scrape_interval: 30s
+
+  # Infrastructure Metrics
+  - job_name: 'node-exporter'
+    static_configs:
+      - targets: ['node-exporter:9100']
+    scrape_interval: 30s
+    
+  # Kubernetes Metrics (if running on K8s)
+  - job_name: 'kubernetes-pods'
+    kubernetes_sd_configs:
+    - role: pod
+      namespaces:
+        names:
+        - smm-architect
+    
+    relabel_configs:
+    - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+      action: keep
+      regex: true
+    - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+      action: replace
+      target_label: __metrics_path__
+      regex: (.+)
+    - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+      action: replace
+      regex: ([^:]+)(?::\d+)?;(\d+)
+      replacement: $1:$2
+      target_label: __address__
+    - action: labelmap
+      regex: __meta_kubernetes_pod_label_(.+)
+    - source_labels: [__meta_kubernetes_namespace]
+      action: replace
+      target_label: kubernetes_namespace
+    - source_labels: [__meta_kubernetes_pod_name]
+      action: replace
+      target_label: kubernetes_pod_name
+
+  # Custom Application Metrics for Specific Monitoring
+  - job_name: 'smm-connector-health'
+    static_configs:
+      - targets: ['connector-monitor:9090']
+    metrics_path: /connector-metrics
+    scrape_interval: 10s
+    params:
+      collect[]: ['connectors']
+      
+  - job_name: 'smm-simulation-metrics'
+    static_configs:
+      - targets: ['simulation-monitor:9091']
+    metrics_path: /simulation-metrics
+    scrape_interval: 30s
+    params:
+      collect[]: ['simulations', 'monte_carlo']
+
+# Recording Rules for Pre-computed Metrics
+recording_rules:
+  - name: smm_slo_rules
+    rules:
+    # Connector SLOs
+    - record: smm:connector_availability_5m
+      expr: avg_over_time(up{job="smm-connector-health"}[5m])
+      
+    - record: smm:connector_error_rate_5m
+      expr: rate(smm_connector_requests_total{status!~"2.."}[5m]) / rate(smm_connector_requests_total[5m])
+      
+    - record: smm:connector_latency_p95_5m
+      expr: histogram_quantile(0.95, rate(smm_connector_request_duration_seconds_bucket[5m]))
+      
+    # Agent SLOs
+    - record: smm:agent_success_rate_5m
+      expr: rate(smm_agent_executions_total{status="success"}[5m]) / rate(smm_agent_executions_total[5m])
+      
+    - record: smm:agent_latency_p95_5m
+      expr: histogram_quantile(0.95, rate(smm_agent_execution_duration_seconds_bucket[5m]))
+      
+    # Simulation SLOs
+    - record: smm:simulation_success_rate_1h
+      expr: rate(smm_simulation_total{status="success"}[1h]) / rate(smm_simulation_total[1h])
+      
+    - record: smm:simulation_duration_p95_1h
+      expr: histogram_quantile(0.95, rate(smm_simulation_duration_seconds_bucket[1h]))
+
+  - name: smm_business_metrics
+    rules:
+    # Business KPIs
+    - record: smm:daily_active_workspaces
+      expr: count(increase(smm_workspace_activity_total[24h]) > 0)
+      
+    - record: smm:hourly_simulation_throughput
+      expr: rate(smm_simulation_total[1h]) * 3600
+      
+    - record: smm:agent_utilization_rate
+      expr: avg(smm_agent_active_jobs / smm_agent_capacity) by (agent_type)
+      
+    - record: smm:platform_publish_success_rate_24h
+      expr: rate(smm_platform_publish_total{status="success"}[24h]) / rate(smm_platform_publish_total[24h])
+
+# Storage Configuration
+storage:
+  tsdb:
+    path: /prometheus/data
+    retention.time: 30d
+    retention.size: 50GB
+    wal-compression: true
+    
+# Remote Write Configuration (for long-term storage)
+remote_write:
+  - url: "https://prometheus-remote-write.monitoring.svc.cluster.local/api/v1/write"
+    queue_config:
+      max_samples_per_send: 1000
+      batch_send_deadline: 5s
+      min_shards: 1
+      max_shards: 200
+    write_relabel_configs:
+      - source_labels: [__name__]
+        regex: 'smm_.*'
+        action: keep

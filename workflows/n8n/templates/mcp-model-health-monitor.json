@@ -1,0 +1,398 @@
+{
+  "name": "MCP Model Health Monitor",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "expression": "*/5"
+            }
+          ]
+        }
+      },
+      "id": "health-check-scheduler",
+      "name": "Health Check Scheduler",
+      "type": "n8n-nodes-base.cron",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Initialize health check configuration\nconst healthCheckConfig = {\n  protocol: 'mcp-2.0',\n  checkId: `health-${Date.now()}`,\n  timestamp: new Date().toISOString(),\n  scope: 'all_models',\n  checks: [\n    'endpoint_availability',\n    'response_latency',\n    'error_rate',\n    'quality_metrics',\n    'resource_utilization'\n  ],\n  thresholds: {\n    maxLatency: 5000, // ms\n    maxErrorRate: 0.05, // 5%\n    minAvailability: 0.99, // 99%\n    minQualityScore: 0.8\n  }\n};\n\nreturn [{ json: healthCheckConfig }];"
+      },
+      "id": "health-check-init",
+      "name": "Health Check Initialization",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "url": "http://model-router.smm-system.svc.cluster.local:8080/api/models",
+        "qs": {
+          "parameters": [
+            {
+              "name": "status",
+              "value": "active"
+            },
+            {
+              "name": "includeMetrics",
+              "value": "true"
+            }
+          ]
+        }
+      },
+      "id": "get-active-models",
+      "name": "Get Active Models",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Process models list and create individual health check tasks\nconst healthConfig = items[0].json;\nconst modelsResponse = items[1].json;\nconst models = modelsResponse.models || [];\n\nif (models.length === 0) {\n  return [{ json: { ...healthConfig, status: 'no_models_found', models: [] } }];\n}\n\nconst healthCheckTasks = models.map(model => ({\n  ...healthConfig,\n  modelId: model.id,\n  modelName: model.name,\n  modelType: model.type,\n  endpoints: model.endpoints || [],\n  lastHealthCheck: model.lastHealthCheck,\n  currentStatus: model.status\n}));\n\nreturn healthCheckTasks.map(task => ({ json: task }));"
+      },
+      "id": "prepare-health-checks",
+      "name": "Prepare Health Checks",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "url": "{{ $json.endpoints[0]?.url || 'http://model-placeholder' }}/health",
+        "options": {
+          "timeout": 10000,
+          "retry": {
+            "enabled": true,
+            "maxAttempts": 2
+          }
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-MCP-Protocol",
+              "value": "2.0"
+            },
+            {
+              "name": "X-Health-Check-ID",
+              "value": "={{ $json.checkId }}"
+            }
+          ]
+        }
+      },
+      "id": "endpoint-health-check",
+      "name": "Endpoint Health Check",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "url": "{{ $json.endpoints[0]?.url || 'http://model-placeholder' }}/metrics",
+        "options": {
+          "timeout": 5000
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-MCP-Protocol",
+              "value": "2.0"
+            }
+          ]
+        }
+      },
+      "id": "metrics-collection",
+      "name": "Metrics Collection",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1340, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Process health check and metrics results\nconst healthConfig = items[0].json;\nconst healthResult = items[1] ? items[1].json : null;\nconst metricsResult = items[2] ? items[2].json : null;\n\nconst healthStatus = {\n  modelId: healthConfig.modelId,\n  modelName: healthConfig.modelName,\n  checkId: healthConfig.checkId,\n  timestamp: new Date().toISOString(),\n  protocol: 'mcp-2.0',\n  status: 'unknown',\n  availability: 0,\n  latency: null,\n  errorRate: null,\n  qualityScore: null,\n  resourceUtilization: {},\n  issues: [],\n  recommendations: []\n};\n\n// Process health check results\nif (healthResult) {\n  healthStatus.status = healthResult.status || 'healthy';\n  healthStatus.availability = healthResult.availability || 1.0;\n  healthStatus.latency = healthResult.responseTime || healthResult.latency;\n  \n  if (healthResult.errors) {\n    healthStatus.issues.push(...healthResult.errors);\n  }\n} else {\n  healthStatus.status = 'unreachable';\n  healthStatus.availability = 0;\n  healthStatus.issues.push('Health endpoint not responding');\n}\n\n// Process metrics results\nif (metricsResult) {\n  healthStatus.errorRate = metricsResult.errorRate || 0;\n  healthStatus.qualityScore = metricsResult.qualityScore || 0.8;\n  healthStatus.resourceUtilization = {\n    cpu: metricsResult.cpu || 0,\n    memory: metricsResult.memory || 0,\n    gpu: metricsResult.gpu || 0,\n    requestsPerMinute: metricsResult.requestsPerMinute || 0\n  };\n}\n\n// Apply thresholds and generate recommendations\nconst thresholds = healthConfig.thresholds;\n\nif (healthStatus.latency && healthStatus.latency > thresholds.maxLatency) {\n  healthStatus.issues.push(`High latency: ${healthStatus.latency}ms > ${thresholds.maxLatency}ms`);\n  healthStatus.recommendations.push('Investigate model performance optimization');\n}\n\nif (healthStatus.errorRate && healthStatus.errorRate > thresholds.maxErrorRate) {\n  healthStatus.issues.push(`High error rate: ${healthStatus.errorRate} > ${thresholds.maxErrorRate}`);\n  healthStatus.recommendations.push('Review model stability and error handling');\n}\n\nif (healthStatus.availability < thresholds.minAvailability) {\n  healthStatus.issues.push(`Low availability: ${healthStatus.availability} < ${thresholds.minAvailability}`);\n  healthStatus.recommendations.push('Check infrastructure and scaling configuration');\n}\n\nif (healthStatus.qualityScore && healthStatus.qualityScore < thresholds.minQualityScore) {\n  healthStatus.issues.push(`Low quality score: ${healthStatus.qualityScore} < ${thresholds.minQualityScore}`);\n  healthStatus.recommendations.push('Consider model retraining or replacement');\n}\n\n// Determine overall health status\nif (healthStatus.issues.length === 0) {\n  healthStatus.status = 'healthy';\n} else if (healthStatus.issues.length <= 2) {\n  healthStatus.status = 'degraded';\n} else {\n  healthStatus.status = 'unhealthy';\n}\n\nreturn [{ json: healthStatus }];"
+      },
+      "id": "health-status-processor",
+      "name": "Health Status Processor",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1560, 300]
+    },
+    {
+      "parameters": {
+        "url": "http://model-router.smm-system.svc.cluster.local:8080/api/models/{{ $json.modelId }}/health",
+        "sendBody": true,
+        "httpMethod": "POST",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "healthStatus",
+              "value": "={{ JSON.stringify($json) }}"
+            },
+            {
+              "name": "timestamp",
+              "value": "={{ $json.timestamp }}"
+            },
+            {
+              "name": "protocol",
+              "value": "mcp-2.0"
+            }
+          ]
+        }
+      },
+      "id": "update-model-health",
+      "name": "Update Model Health",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1780, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "unhealthy-condition",
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "unhealthy",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            },
+            {
+              "id": "degraded-condition",
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "degraded",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "id": "alert-condition-check",
+      "name": "Alert Condition Check",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [2000, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Generate alert notification\nconst healthStatus = items[0].json;\n\nconst alert = {\n  type: 'model_health_alert',\n  severity: healthStatus.status === 'unhealthy' ? 'critical' : 'warning',\n  modelId: healthStatus.modelId,\n  modelName: healthStatus.modelName,\n  status: healthStatus.status,\n  issues: healthStatus.issues,\n  recommendations: healthStatus.recommendations,\n  metrics: {\n    availability: healthStatus.availability,\n    latency: healthStatus.latency,\n    errorRate: healthStatus.errorRate,\n    qualityScore: healthStatus.qualityScore\n  },\n  timestamp: healthStatus.timestamp,\n  protocol: 'mcp-2.0',\n  alertId: `alert-${healthStatus.checkId}`\n};\n\nreturn [{ json: alert }];"
+      },
+      "id": "generate-alert",
+      "name": "Generate Alert",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [2220, 200]
+    },
+    {
+      "parameters": {
+        "url": "http://monitoring.smm-system.svc.cluster.local:8080/alerts",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "alert",
+              "value": "={{ JSON.stringify($json) }}"
+            }
+          ]
+        }
+      },
+      "id": "send-alert",
+      "name": "Send Alert",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [2440, 200]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Aggregate all health check results\nconst allResults = items;\nconst timestamp = new Date().toISOString();\n\nconst aggregatedHealth = {\n  protocol: 'mcp-2.0',\n  timestamp: timestamp,\n  totalModels: allResults.length,\n  healthySummary: {\n    healthy: allResults.filter(item => item.json.status === 'healthy').length,\n    degraded: allResults.filter(item => item.json.status === 'degraded').length,\n    unhealthy: allResults.filter(item => item.json.status === 'unhealthy').length,\n    unreachable: allResults.filter(item => item.json.status === 'unreachable').length\n  },\n  averageMetrics: {\n    availability: allResults.reduce((sum, item) => sum + (item.json.availability || 0), 0) / allResults.length,\n    latency: allResults\n      .filter(item => item.json.latency)\n      .reduce((sum, item) => sum + item.json.latency, 0) / allResults.filter(item => item.json.latency).length || 0,\n    errorRate: allResults\n      .filter(item => item.json.errorRate)\n      .reduce((sum, item) => sum + item.json.errorRate, 0) / allResults.filter(item => item.json.errorRate).length || 0,\n    qualityScore: allResults\n      .filter(item => item.json.qualityScore)\n      .reduce((sum, item) => sum + item.json.qualityScore, 0) / allResults.filter(item => item.json.qualityScore).length || 0\n  },\n  criticalIssues: allResults\n    .filter(item => item.json.status === 'unhealthy')\n    .map(item => ({\n      modelId: item.json.modelId,\n      modelName: item.json.modelName,\n      issues: item.json.issues\n    }))\n};\n\nreturn [{ json: aggregatedHealth }];"
+      },
+      "id": "aggregate-health-results",
+      "name": "Aggregate Health Results",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [2000, 400]
+    },
+    {
+      "parameters": {
+        "url": "http://monitoring.smm-system.svc.cluster.local:8080/health-summary",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "summary",
+              "value": "={{ JSON.stringify($json) }}"
+            }
+          ]
+        }
+      },
+      "id": "store-health-summary",
+      "name": "Store Health Summary",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [2220, 400]
+    }
+  ],
+  "connections": {
+    "Health Check Scheduler": {
+      "main": [
+        [
+          {
+            "node": "Health Check Initialization",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Health Check Initialization": {
+      "main": [
+        [
+          {
+            "node": "Get Active Models",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Active Models": {
+      "main": [
+        [
+          {
+            "node": "Prepare Health Checks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Health Checks": {
+      "main": [
+        [
+          {
+            "node": "Endpoint Health Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Endpoint Health Check": {
+      "main": [
+        [
+          {
+            "node": "Metrics Collection",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Metrics Collection": {
+      "main": [
+        [
+          {
+            "node": "Health Status Processor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Health Status Processor": {
+      "main": [
+        [
+          {
+            "node": "Update Model Health",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Model Health": {
+      "main": [
+        [
+          {
+            "node": "Alert Condition Check",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Aggregate Health Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Alert Condition Check": {
+      "main": [
+        [
+          {
+            "node": "Generate Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Alert": {
+      "main": [
+        [
+          {
+            "node": "Send Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate Health Results": {
+      "main": [
+        [
+          {
+            "node": "Store Health Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "createdAt": "2024-01-15T10:00:00.000Z",
+  "updatedAt": "2024-01-15T10:00:00.000Z",
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "meta": {
+    "templateId": "mcp-model-health-monitor"
+  },
+  "pinData": {},
+  "versionId": "1",
+  "triggerCount": 0,
+  "tags": [
+    {
+      "createdAt": "2024-01-15T10:00:00.000Z",
+      "updatedAt": "2024-01-15T10:00:00.000Z",
+      "id": "mcp-integration",
+      "name": "MCP Integration"
+    }
+  ]
+}

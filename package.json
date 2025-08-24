@@ -1,0 +1,92 @@
+{
+  "name": "smm-architect-qa",
+  "version": "1.0.0",
+  "description": "QA & Validation framework for SMM Architect",
+  "scripts": {
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "test:alerting": "jest tests/monitoring/alerting-system.test.ts",
+    "test:contracts": "jest tests/contract/",
+    "test:security": "jest tests/security/",
+    "test:simulation": "jest tests/simulation/",
+    "test:agents": "jest tests/agents/",
+    "test:policy": "jest tests/policy/",
+    "test:performance": "jest tests/performance/ --runInBand --testTimeout=600000",
+    "test:slo": "jest tests/performance/slo-compliance.test.ts --runInBand",
+    "test:benchmark": "jest tests/performance/benchmark-framework.test.ts --runInBand",
+    "test:load": "jest tests/performance/load-testing-framework.test.ts --runInBand --testTimeout=1200000",
+    "test:slo-monitoring": "jest tests/performance/slo-monitoring-framework.test.ts --runInBand",
+    "performance:ci": "./scripts/run-performance-tests.sh ci",
+    "performance:staging": "./scripts/run-performance-tests.sh staging",
+    "performance:production": "./scripts/run-performance-tests.sh production",
+    "lint": "eslint tests/ --ext .ts,.js",
+    "lint:fix": "eslint tests/ --ext .ts,.js --fix"
+  },
+  "devDependencies": {
+    "@jest/globals": "^29.7.0",
+    "@types/jest": "^29.5.8",
+    "@types/node": "^20.10.0",
+    "@typescript-eslint/eslint-plugin": "^6.13.0",
+    "@typescript-eslint/parser": "^6.13.0",
+    "eslint": "^8.54.0",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.1.1",
+    "typescript": "^5.3.0"
+  },
+  "dependencies": {
+    "artillery": "^2.0.4",
+    "axios": "^1.6.2",
+    "js-yaml": "^4.1.0",
+    "@types/js-yaml": "^4.0.9",
+    "fast-check": "^3.15.0",
+    "prom-client": "^15.1.0"
+  },
+  "jest": {
+    "preset": "ts-jest",
+    "testEnvironment": "node",
+    "roots": ["<rootDir>/tests"],
+    "testMatch": [
+      "**/*.test.ts",
+      "**/*.spec.ts"
+    ],
+    "transform": {
+      "^.+\\.tsx?$": "ts-jest"
+    },
+    "collectCoverageFrom": [
+      "tests/**/*.{ts,js}",
+      "!tests/**/*.d.ts",
+      "!tests/utils/**/*.ts"
+    ],
+    "coverageDirectory": "coverage",
+    "coverageReporters": [
+      "text",
+      "lcov",
+      "html"
+    ],
+    "testTimeout": 300000,
+    "setupFilesAfterEnv": ["<rootDir>/tests/setup.ts"]
+  },
+  "eslintConfig": {
+    "parser": "@typescript-eslint/parser",
+    "extends": [
+      "eslint:recommended",
+      "@typescript-eslint/recommended"
+    ],
+    "rules": {
+      "@typescript-eslint/no-unused-vars": "error",
+      "@typescript-eslint/explicit-function-return-type": "off",
+      "@typescript-eslint/no-explicit-any": "off"
+    }
+  },
+  "keywords": [
+    "smm-architect",
+    "qa",
+    "testing",
+    "monitoring",
+    "alerts",
+    "validation"
+  ],
+  "author": "SMM Architect Team",
+  "license": "MIT"
+}

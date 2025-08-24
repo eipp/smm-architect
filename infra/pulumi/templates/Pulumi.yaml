@@ -1,0 +1,123 @@
+name: smm-architect-workspace
+runtime: nodejs
+description: SMM Architect Workspace Infrastructure Template
+
+template:
+  description: Complete infrastructure template for SMM Architect workspace deployment
+  config:
+    workspace:
+      description: Workspace configuration object
+      type: object
+      properties:
+        workspaceId:
+          type: string
+          description: Unique identifier for the workspace
+        tenantId:
+          type: string
+          description: Tenant identifier
+        environment:
+          type: string
+          enum: ["development", "staging", "production"]
+          default: "development"
+        region:
+          type: string
+          enum: ["us-east-1", "us-west-2", "eu-west-1", "ap-southeast-1"]
+          default: "us-east-1"
+        resourceTier:
+          type: string
+          enum: ["small", "medium", "large", "enterprise"]
+          default: "medium"
+        features:
+          type: object
+          properties:
+            enableHighAvailability:
+              type: boolean
+              default: false
+            enableAutoScaling:
+              type: boolean
+              default: true
+            enableMultiRegion:
+              type: boolean
+              default: false
+            enableDataEncryption:
+              type: boolean
+              default: true
+            enableAuditLogging:
+              type: boolean
+              default: true
+            enableMonitoring:
+              type: boolean
+              default: true
+            enableBackup:
+              type: boolean
+              default: true
+        networking:
+          type: object
+          properties:
+            vpcCidr:
+              type: string
+              default: "10.0.0.0/16"
+            enablePrivateSubnets:
+              type: boolean
+              default: true
+            enableNatGateway:
+              type: boolean
+              default: true
+            enableVpnAccess:
+              type: boolean
+              default: false
+        security:
+          type: object
+          properties:
+            enableVault:
+              type: boolean
+              default: true
+            vaultIntegration:
+              type: string
+              enum: ["aws-kms", "gcp-kms", "azure-kv"]
+              default: "aws-kms"
+            enableOPA:
+              type: boolean
+              default: true
+            enableNetworkPolicies:
+              type: boolean
+              default: true
+            allowedCidrs:
+              type: array
+              items:
+                type: string
+              default: ["0.0.0.0/0"]
+        storage:
+          type: object
+          properties:
+            databaseSize:
+              type: string
+              default: "100GB"
+            storageClass:
+              type: string
+              enum: ["standard", "ssd", "nvme"]
+              default: "ssd"
+            backupRetentionDays:
+              type: number
+              default: 30
+            enablePointInTimeRecovery:
+              type: boolean
+              default: true
+        monitoring:
+          type: object
+          properties:
+            enablePrometheus:
+              type: boolean
+              default: true
+            enableGrafana:
+              type: boolean
+              default: true
+            enableAlertManager:
+              type: boolean
+              default: true
+            slackWebhookUrl:
+              type: string
+              secret: true
+            pagerDutyApiKey:
+              type: string
+              secret: true

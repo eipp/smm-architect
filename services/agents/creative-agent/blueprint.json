@@ -1,0 +1,223 @@
+{
+  "agentId": "creative-agent-v1",
+  "role": "creative",
+  "displayName": "Creative Content Agent", 
+  "description": "Generates compelling content variations, creates visual assets, and produces platform-optimized creative materials that align with brand voice and campaign objectives.",
+  "systemPrompt": "You are the Creative Agent for SMM Architect. Your mission is to create engaging, on-brand content that drives audience action while respecting platform guidelines and brand constraints. You must: 1) Generate multiple content variations for A/B testing and optimization. 2) Create or adapt visual assets using brand guidelines and templates. 3) Write compelling copy that matches brand voice and resonates with target audience. 4) Optimize content format and structure for each platform's algorithm and user behavior. 5) Ensure all content includes proper calls-to-action and engagement hooks. 6) Maintain consistency across all touchpoints while allowing for creative experimentation. Always prioritize audience value and authentic brand expression over trending tactics.",
+  "version": "1.0.0",
+  "memorySchema": {
+    "type": "object",
+    "properties": {
+      "workspaceId": {
+        "type": "string",
+        "description": "Target workspace for content creation"
+      },
+      "activeProjects": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "projectId": {"type": "string"},
+            "contentType": {"type": "string"},
+            "status": {"type": "string", "enum": ["concept", "draft", "review", "approved"]},
+            "deadline": {"type": "string", "format": "date-time"},
+            "variations": {"type": "integer"}
+          }
+        }
+      },
+      "brandAssets": {
+        "type": "object",
+        "properties": {
+          "logos": {"type": "array", "items": {"type": "string"}},
+          "colorPalette": {"type": "array", "items": {"type": "string"}},
+          "fonts": {"type": "array", "items": {"type": "string"}},
+          "templates": {"type": "array", "items": {"type": "string"}}
+        }
+      },
+      "performanceHistory": {
+        "type": "array", 
+        "items": {
+          "type": "object",
+          "properties": {
+            "contentId": {"type": "string"},
+            "platform": {"type": "string"},
+            "contentType": {"type": "string"},
+            "metrics": {"type": "object"},
+            "createdAt": {"type": "string", "format": "date-time"}
+          }
+        }
+      }
+    },
+    "required": ["workspaceId"]
+  },
+  "tools": [
+    "toolhub.render",
+    "image.generate",
+    "text.enhance",
+    "video.create",
+    "template.customize",
+    "brand.validate",
+    "platform.optimize",
+    "accessibility.check"
+  ],
+  "outputs": {
+    "primary": {
+      "type": "ContentVariants",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "projectId": {"type": "string"},
+          "contentType": {"type": "string"},
+          "platform": {"type": "string"},
+          "variants": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "variantId": {"type": "string"},
+                "headline": {"type": "string"},
+                "body": {"type": "string"},
+                "callToAction": {"type": "string"},
+                "visualAssets": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "assetId": {"type": "string"},
+                      "type": {"type": "string"},
+                      "url": {"type": "string"},
+                      "dimensions": {"type": "string"},
+                      "fileSize": {"type": "integer"}
+                    }
+                  }
+                },
+                "metadata": {
+                  "type": "object",
+                  "properties": {
+                    "estimatedEngagement": {"type": "number"},
+                    "contentScore": {"type": "number"},
+                    "brandAlignment": {"type": "number"},
+                    "platformOptimization": {"type": "number"}
+                  }
+                },
+                "hashtags": {"type": "array", "items": {"type": "string"}},
+                "mentionSuggestions": {"type": "array", "items": {"type": "string"}}
+              }
+            }
+          },
+          "recommendations": {
+            "type": "object",
+            "properties": {
+              "bestPerformingVariant": {"type": "string"},
+              "testingStrategy": {"type": "string"},
+              "optimizationTips": {"type": "array", "items": {"type": "string"}}
+            }
+          }
+        }
+      },
+      "description": "Multiple content variations with assets and optimization recommendations"
+    },
+    "secondary": {
+      "type": "CreativeStrategy", 
+      "format": "markdown",
+      "description": "Creative strategy document explaining design choices and content rationale"
+    }
+  },
+  "configuration": {
+    "runTTLSeconds": 2400,
+    "costEstimateTokens": 4000,
+    "maxVariationsPerRequest": 5,
+    "maxAssetSizeMB": 25,
+    "supportedFormats": ["image/png", "image/jpeg", "video/mp4", "image/gif"]
+  },
+  "tests": [
+    {
+      "name": "linkedin-post-generation",
+      "description": "Generate professional LinkedIn post with multiple variations",
+      "input": {
+        "workspaceId": "ws-test-001",
+        "contentType": "social_post",
+        "platform": "linkedin",
+        "topic": "digital transformation trends",
+        "brandVoice": {"tone": "professional", "style": "thought leadership"},
+        "callToActionType": "engagement"
+      },
+      "assertions": [
+        "output.contentVariants.variants.length >= 3",
+        "output.contentVariants.variants.every(v => v.headline && v.body && v.callToAction)",
+        "output.contentVariants.variants.every(v => v.body.length <= 3000)",
+        "output.recommendations.bestPerformingVariant",
+        "output.contentVariants.variants.some(v => v.hashtags.length > 0)"
+      ],
+      "expectedDuration": "< 120s"
+    },
+    {
+      "name": "visual-asset-creation",
+      "description": "Create branded visual assets for campaign",
+      "input": {
+        "workspaceId": "ws-test-002",
+        "contentType": "carousel",
+        "platform": "instagram", 
+        "theme": "product showcase",
+        "brandAssets": {
+          "primaryColor": "#007acc",
+          "logo": "brand-logo-001",
+          "template": "modern-carousel-v2"
+        }
+      },
+      "assertions": [
+        "output.contentVariants.variants.length >= 2",
+        "output.contentVariants.variants.every(v => v.visualAssets.length > 0)",
+        "output.contentVariants.variants.every(v => v.visualAssets.every(a => a.assetId && a.url))",
+        "output.contentVariants.variants.every(v => v.metadata.brandAlignment >= 0.8)"
+      ],
+      "expectedDuration": "< 300s"
+    },
+    {
+      "name": "multi-platform-adaptation",
+      "description": "Adapt content for multiple platforms with platform-specific optimization",
+      "input": {
+        "workspaceId": "ws-test-003",
+        "contentType": "announcement",
+        "platforms": ["linkedin", "x", "instagram"],
+        "baseContent": "Excited to announce our new AI consulting services",
+        "adaptationRequirements": {
+          "linkedin": "professional tone, industry focus",
+          "x": "concise, trending hashtags",
+          "instagram": "visual-first, story format"
+        }
+      },
+      "assertions": [
+        "output.contentVariants.variants.length >= 3",
+        "output.contentVariants.variants.filter(v => v.platform === 'x').every(v => v.body.length <= 280)",
+        "output.contentVariants.variants.filter(v => v.platform === 'instagram').every(v => v.visualAssets.length > 0)",
+        "output.contentVariants.variants.every(v => v.metadata.platformOptimization >= 0.8)"
+      ],
+      "expectedDuration": "< 180s"
+    }
+  ],
+  "errorHandling": {
+    "assetGenerationFailure": "fallback_to_template",
+    "brandGuidelineViolation": "auto_correct_and_notify",
+    "platformFormatError": "regenerate_optimized_version"
+  },
+  "monitoring": {
+    "keyMetrics": [
+      "content_generation_time",
+      "brand_alignment_score",
+      "asset_creation_success_rate",
+      "variation_diversity_index"
+    ],
+    "alertThresholds": {
+      "low_brand_alignment": "< 0.7 average brand alignment",
+      "poor_content_quality": "< 0.6 average content score",
+      "slow_generation": "> 200s average generation time"
+    }
+  },
+  "compliance": {
+    "brandGuidelines": "All content must adhere to brand voice, tone, and visual guidelines",
+    "platformPolicies": "Content must comply with each platform's community guidelines",
+    "accessibilityStandards": "Visual content must include alt text and meet WCAG guidelines",
+    "copyrightCompliance": "All assets must be original or properly licensed"
+  }
+}

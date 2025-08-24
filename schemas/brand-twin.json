@@ -1,0 +1,315 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "BrandTwin",
+  "description": "Canonical output of the research agent containing validated brand information with exact-span citations and enhanced provenance tracking",
+  "type": "object",
+  "properties": {
+    "brandId": {
+      "type": "string",
+      "description": "Unique identifier for the brand"
+    },
+    "snapshotAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Timestamp when this brand snapshot was created"
+    },
+    "metadata": {
+      "type": "object",
+      "properties": {
+        "modelVersion": {
+          "type": "string",
+          "description": "Version of the research model used"
+        },
+        "ingestedBy": {
+          "type": "string",
+          "description": "Principal (agent/service) that created this brand twin"
+        },
+        "ingestedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When this brand twin was ingested/processed"
+        },
+        "sourceCount": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Number of sources processed"
+        },
+        "processingDurationMs": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Time taken to process all sources"
+        }
+      },
+      "required": ["modelVersion", "ingestedBy", "ingestedAt"],
+      "description": "Metadata about how this brand twin was created"
+    },
+    "facts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "claim": {
+            "type": "string",
+            "description": "The factual claim or statement"
+          },
+          "sourceUrl": {
+            "type": "string",
+            "format": "uri",
+            "description": "Source URL where this fact was found"
+          },
+          "sourceId": {
+            "type": "string",
+            "description": "Internal ID in ToolHub source store"
+          },
+          "provenanceId": {
+            "type": "string",
+            "description": "Snapshot ID used to justify this claim"
+          },
+          "embeddingId": {
+            "type": "string",
+            "description": "Reference to embedding vector in vector database"
+          },
+          "claimType": {
+            "type": "string",
+            "enum": ["factual", "opinion", "marketing", "testimonial", "product_info"],
+            "description": "Classification of the claim type"
+          },
+          "spanStart": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Start position of the exact text span"
+          },
+          "spanEnd": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "End position of the exact text span"
+          },
+          "confidence": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "description": "Confidence score for this fact (0-1)"
+          },
+          "extractedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When this fact was extracted"
+          },
+          "verificationStatus": {
+            "type": "string",
+            "enum": ["unverified", "verified", "disputed", "outdated"],
+            "default": "unverified",
+            "description": "Verification status of the claim"
+          }
+        },
+        "required": ["claim", "sourceUrl", "sourceId", "provenanceId", "embeddingId", "claimType", "spanStart", "spanEnd", "confidence"],
+        "description": "Individual fact with complete provenance chain"
+      },
+      "minItems": 1,
+      "description": "Array of facts extracted about the brand"
+    },
+    "voiceTone": {
+      "type": "object",
+      "properties": {
+        "primaryTone": {
+          "type": "string",
+          "enum": ["professional", "casual", "authoritative", "friendly", "technical", "creative", "corporate", "personal"],
+          "description": "Primary communication tone"
+        },
+        "description": {
+          "type": "string",
+          "description": "Detailed description of the brand voice and tone"
+        },
+        "examples": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Example phrases or sentences demonstrating the voice"
+        },
+        "keywords": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Key terms frequently used by the brand"
+        }
+      },
+      "required": ["primaryTone", "description"],
+      "description": "Brand voice and communication style"
+    },
+    "audience": {
+      "type": "object",
+      "properties": {
+        "segments": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Target audience segments"
+        },
+        "geos": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Geographic markets"
+        },
+        "demographics": {
+          "type": "object",
+          "properties": {
+            "ageRange": {
+              "type": "string",
+              "description": "Primary age range of audience"
+            },
+            "interests": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Key interests of the audience"
+            },
+            "platforms": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Preferred social media platforms"
+            }
+          }
+        }
+      },
+      "required": ["segments", "geos"],
+      "description": "Target audience information"
+    },
+    "assets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "assetId": {
+            "type": "string",
+            "description": "Unique identifier for the asset"
+          },
+          "type": {
+            "type": "string",
+            "enum": ["logo", "image", "video", "audio", "document", "font", "color_palette"],
+            "description": "Type of asset"
+          },
+          "fingerprint": {
+            "type": "string",
+            "description": "Cryptographic fingerprint (hash) of the asset"
+          },
+          "license": {
+            "type": "string",
+            "enum": ["proprietary", "cc0", "cc-by", "cc-by-sa", "mit", "apache", "custom"],
+            "description": "License type for the asset"
+          },
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "description": "URL where the asset can be accessed"
+          },
+          "metadata": {
+            "type": "object",
+            "properties": {
+              "size": {
+                "type": "integer",
+                "description": "File size in bytes"
+              },
+              "dimensions": {
+                "type": "string",
+                "description": "Dimensions for images/videos (e.g., '1920x1080')"
+              },
+              "format": {
+                "type": "string",
+                "description": "File format (e.g., 'PNG', 'MP4', 'SVG')"
+              }
+            }
+          }
+        },
+        "required": ["assetId", "type", "fingerprint", "license"],
+        "description": "Brand asset with licensing and metadata"
+      },
+      "description": "Available brand assets (logos, images, etc.)"
+    },
+    "competitors": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Competitor name"
+          },
+          "profileUrl": {
+            "type": "string",
+            "format": "uri",
+            "description": "URL to competitor's profile/website"
+          },
+          "notes": {
+            "type": "string",
+            "description": "Analysis notes about the competitor"
+          },
+          "strengthsWeaknesses": {
+            "type": "object",
+            "properties": {
+              "strengths": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "weaknesses": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "marketPosition": {
+            "type": "string",
+            "enum": ["leader", "challenger", "follower", "niche"],
+            "description": "Market position relative to our brand"
+          }
+        },
+        "required": ["name", "profileUrl", "notes"],
+        "description": "Competitor analysis information"
+      },
+      "description": "Competitive landscape analysis"
+    },
+    "industries": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Industries the brand operates in"
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Tags for categorization and search"
+    },
+    "lastUpdated": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When this brand twin was last updated"
+    },
+    "qualityScore": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "description": "Overall quality score of the brand twin data"
+    }
+  },
+  "required": [
+    "brandId",
+    "snapshotAt", 
+    "facts",
+    "metadata"
+  ],
+  "additionalProperties": false
+}

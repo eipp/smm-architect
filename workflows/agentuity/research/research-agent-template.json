@@ -1,0 +1,361 @@
+{
+  "id": "research-agent-v1",
+  "name": "SMM Research Agent",
+  "description": "Autonomous research agent for brand intelligence gathering, competitor analysis, and market research to create comprehensive brand twins",
+  "version": "1.0.0",
+  "category": "marketing_research",
+  "tags": ["research", "brand-intelligence", "competitive-analysis", "market-research", "smm"],
+  
+  "requirements": {
+    "runtime": "nodejs",
+    "version": ">=18.0.0",
+    "memory": "2048MB",
+    "timeout": "1800", 
+    "concurrent_executions": 3,
+    "retry_attempts": 3,
+    "priority": "normal"
+  },
+  
+  "triggers": [
+    {
+      "type": "webhook",
+      "endpoint": "/research/start",
+      "method": "POST",
+      "authentication": "bearer_token"
+    },
+    {
+      "type": "queue",
+      "queue_name": "research_queue",
+      "batch_size": 1
+    },
+    {
+      "type": "schedule",
+      "cron": "0 2 * * *",
+      "timezone": "UTC",
+      "description": "Daily brand monitoring at 2 AM UTC"
+    }
+  ],
+  
+  "input_schema": {
+    "type": "object",
+    "required": ["workspace_id", "brand_info", "research_scope"],
+    "properties": {
+      "workspace_id": {
+        "type": "string",
+        "description": "Unique identifier for the workspace"
+      },
+      "brand_info": {
+        "type": "object",
+        "required": ["name", "domain"],
+        "properties": {
+          "name": { "type": "string" },
+          "domain": { "type": "string", "format": "uri" },
+          "social_handles": {
+            "type": "object",
+            "properties": {
+              "linkedin": { "type": "string" },
+              "twitter": { "type": "string" },
+              "instagram": { "type": "string" },
+              "facebook": { "type": "string" }
+            }
+          },
+          "industry": { "type": "string" },
+          "headquarters": { "type": "string" },
+          "employee_count": { "type": "string" }
+        }
+      },
+      "research_scope": {
+        "type": "object",
+        "properties": {
+          "depth": {
+            "type": "string",
+            "enum": ["basic", "comprehensive", "deep_dive"],
+            "default": "comprehensive"
+          },
+          "focus_areas": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "brand_voice",
+                "content_strategy", 
+                "competitor_analysis",
+                "market_positioning",
+                "customer_sentiment",
+                "trending_topics",
+                "industry_insights"
+              ]
+            }
+          },
+          "competitor_limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 10,
+            "default": 5
+          },
+          "timeframe": {
+            "type": "string",
+            "enum": ["1_week", "1_month", "3_months", "6_months", "1_year"],
+            "default": "3_months"
+          }
+        }
+      },
+      "data_sources": {
+        "type": "object",
+        "properties": {
+          "social_media": { "type": "boolean", "default": true },
+          "news_articles": { "type": "boolean", "default": true },
+          "press_releases": { "type": "boolean", "default": true },
+          "financial_reports": { "type": "boolean", "default": false },
+          "job_postings": { "type": "boolean", "default": true },
+          "patents": { "type": "boolean", "default": false },
+          "reviews": { "type": "boolean", "default": true }
+        }
+      },
+      "output_preferences": {
+        "type": "object",
+        "properties": {
+          "include_embeddings": { "type": "boolean", "default": true },
+          "generate_summary": { "type": "boolean", "default": true },
+          "export_format": {
+            "type": "string",
+            "enum": ["json", "markdown", "pdf"],
+            "default": "json"
+          }
+        }
+      }
+    }
+  },
+  
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "research_id": { "type": "string" },
+      "workspace_id": { "type": "string" },
+      "status": {
+        "type": "string",
+        "enum": ["completed", "partial", "failed"]
+      },
+      "execution_time": { "type": "number" },
+      "brand_twin": {
+        "$ref": "../../schemas/brand-twin.json"
+      },
+      "research_artifacts": {
+        "type": "object",
+        "properties": {
+          "competitor_analysis": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "company_name": { "type": "string" },
+                "similarity_score": { "type": "number" },
+                "key_differentiators": { "type": "array", "items": { "type": "string" } },
+                "content_themes": { "type": "array", "items": { "type": "string" } },
+                "posting_frequency": { "type": "object" },
+                "engagement_metrics": { "type": "object" }
+              }
+            }
+          },
+          "market_insights": {
+            "type": "object",
+            "properties": {
+              "trending_topics": { "type": "array", "items": { "type": "string" } },
+              "seasonal_patterns": { "type": "array" },
+              "audience_demographics": { "type": "object" },
+              "content_performance": { "type": "object" }
+            }
+          },
+          "data_quality": {
+            "type": "object",
+            "properties": {
+              "sources_accessed": { "type": "integer" },
+              "data_points_collected": { "type": "integer" },
+              "verification_score": { "type": "number" },
+              "completeness_score": { "type": "number" }
+            }
+          }
+        }
+      },
+      "errors": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "source": { "type": "string" },
+            "error_type": { "type": "string" },
+            "message": { "type": "string" },
+            "severity": { "type": "string", "enum": ["low", "medium", "high"] }
+          }
+        }
+      },
+      "metadata": {
+        "type": "object",
+        "properties": {
+          "created_at": { "type": "string", "format": "date-time" },
+          "agent_version": { "type": "string" },
+          "data_sources_used": { "type": "array", "items": { "type": "string" } },
+          "processing_stats": { "type": "object" }
+        }
+      }
+    }
+  },
+  
+  "environment": {
+    "variables": {
+      "TOOLHUB_API_ENDPOINT": "${TOOLHUB_URL}",
+      "VAULT_ADDR": "${VAULT_ADDR}",
+      "NODE_ENV": "production",
+      "LOG_LEVEL": "info",
+      "RESEARCH_TIMEOUT": "1800",
+      "MAX_CONCURRENT_SOURCES": "10",
+      "RATE_LIMIT_REQUESTS_PER_MINUTE": "60"
+    },
+    "secrets": [
+      "TOOLHUB_API_KEY",
+      "SOCIAL_MEDIA_API_KEYS",
+      "NEWS_API_KEY", 
+      "SERPAPI_KEY",
+      "CRUNCHBASE_API_KEY"
+    ]
+  },
+  
+  "monitoring": {
+    "metrics": [
+      {
+        "name": "research_completion_rate",
+        "type": "counter",
+        "description": "Number of successful research completions"
+      },
+      {
+        "name": "research_duration",
+        "type": "histogram",
+        "description": "Time taken to complete research"
+      },
+      {
+        "name": "data_quality_score",
+        "type": "gauge",
+        "description": "Average data quality score"
+      },
+      {
+        "name": "error_rate_by_source",
+        "type": "counter",
+        "labels": ["source", "error_type"],
+        "description": "Errors encountered by data source"
+      }
+    ],
+    "health_check": {
+      "endpoint": "/health",
+      "interval": "30s",
+      "timeout": "10s",
+      "healthy_threshold": 2,
+      "unhealthy_threshold": 3
+    },
+    "alerts": [
+      {
+        "name": "high_error_rate",
+        "condition": "error_rate > 0.1",
+        "severity": "warning",
+        "notification": "slack"
+      },
+      {
+        "name": "slow_execution",
+        "condition": "avg(research_duration) > 1200",
+        "severity": "warning",
+        "notification": "email"
+      }
+    ]
+  },
+  
+  "scaling": {
+    "auto_scaling": {
+      "enabled": true,
+      "min_instances": 1,
+      "max_instances": 5,
+      "target_cpu_utilization": 70,
+      "scale_up_cooldown": "300s",
+      "scale_down_cooldown": "600s"
+    },
+    "load_balancing": {
+      "strategy": "round_robin",
+      "health_check_grace_period": "60s"
+    }
+  },
+  
+  "security": {
+    "network_policy": {
+      "egress": [
+        {
+          "to": "toolhub.smm-architect.svc.cluster.local",
+          "ports": [443, 80]
+        },
+        {
+          "to": "vault.vault.svc.cluster.local", 
+          "ports": [8200]
+        },
+        {
+          "to": "external",
+          "domains": [
+            "api.linkedin.com",
+            "api.twitter.com", 
+            "graph.facebook.com",
+            "newsapi.org",
+            "serpapi.com"
+          ]
+        }
+      ]
+    },
+    "resource_limits": {
+      "max_file_size": "100MB",
+      "max_network_requests": 1000,
+      "max_execution_time": "1800s"
+    }
+  },
+  
+  "integrations": {
+    "toolhub": {
+      "endpoint": "${TOOLHUB_API_ENDPOINT}",
+      "authentication": "api_key",
+      "operations": [
+        "search_vectors",
+        "store_embeddings",
+        "retrieve_content"
+      ]
+    },
+    "vault": {
+      "endpoint": "${VAULT_ADDR}",
+      "authentication": "kubernetes",
+      "mount_paths": [
+        "secret/research-agent",
+        "secret/api-keys"
+      ]
+    },
+    "audit_service": {
+      "endpoint": "${AUDIT_SERVICE_URL}",
+      "events": [
+        "research_started",
+        "research_completed", 
+        "data_source_accessed",
+        "error_occurred"
+      ]
+    }
+  },
+  
+  "execution": {
+    "runtime_config": {
+      "node_options": "--max-old-space-size=1536",
+      "worker_threads": true,
+      "cluster_mode": false
+    },
+    "deployment": {
+      "strategy": "rolling_update",
+      "max_unavailable": "25%",
+      "max_surge": "25%"
+    },
+    "restart_policy": {
+      "on_failure": "always",
+      "max_restart_count": 3,
+      "restart_delay": "30s"
+    }
+  }
+}

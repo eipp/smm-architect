@@ -1,0 +1,368 @@
+groups:
+  - name: smm_connector_alerts
+    rules:
+      # Connector Health Alerts
+      - alert: SMM_ConnectorDown
+        expr: up{job="smm-connector-health"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          team: platform
+          service: connector
+        annotations:
+          summary: "SMM Connector {{ $labels.instance }} is down"
+          description: "Connector {{ $labels.instance }} has been down for more than 2 minutes. This affects platform publishing capabilities."
+          runbook_url: "https://wiki.smm-architect.com/runbooks/connector-down"
+          dashboard_url: "https://grafana.smm-architect.com/d/connector-health"
+
+      - alert: SMM_ConnectorHighErrorRate
+        expr: smm:connector_error_rate_5m > 0.05
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+          service: connector
+        annotations:
+          summary: "High error rate on connector {{ $labels.connector }}"
+          description: "Connector {{ $labels.connector }} has an error rate of {{ $value | humanizePercentage }} over the last 5 minutes."
+          runbook_url: "https://wiki.smm-architect.com/runbooks/connector-errors"
+
+      - alert: SMM_ConnectorHighLatency
+        expr: smm:connector_latency_p95_5m > 5
+        for: 10m
+        labels:
+          severity: warning
+          team: platform
+          service: connector
+        annotations:
+          summary: "High latency on connector {{ $labels.connector }}"
+          description: "95th percentile latency for {{ $labels.connector }} is {{ $value }}s, exceeding 5s threshold."
+
+      - alert: SMM_ConnectorRateLimited
+        expr: increase(smm_connector_rate_limited_total[5m]) > 10
+        for: 0m
+        labels:
+          severity: warning
+          team: platform
+          service: connector
+        annotations:
+          summary: "Connector {{ $labels.connector }} hitting rate limits"
+          description: "{{ $labels.connector }} has been rate limited {{ $value }} times in the last 5 minutes."
+
+      - alert: SMM_ConnectorTokenExpiry
+        expr: smm_connector_token_expires_hours < 24
+        for: 0m
+        labels:
+          severity: warning
+          team: platform
+          service: connector
+        annotations:
+          summary: "Connector token expiring soon"
+          description: "{{ $labels.connector }} token expires in {{ $value }} hours. Renewal required."
+          runbook_url: "https://wiki.smm-architect.com/runbooks/token-renewal"
+
+  - name: smm_budget_alerts
+    rules:
+      # Budget Management Alerts
+      - alert: SMM_BudgetThresholdExceeded
+        expr: smm_workspace_budget_utilization > 0.8
+        for: 0m
+        labels:
+          severity: warning
+          team: finance
+          service: budget
+        annotations:
+          summary: "Budget threshold exceeded for workspace {{ $labels.workspace_id }}"
+          description: "Workspace {{ $labels.workspace_id }} has used {{ $value | humanizePercentage }} of allocated budget."
+          runbook_url: "https://wiki.smm-architect.com/runbooks/budget-alerts"
+
+      - alert: SMM_BudgetCriticalOverspend
+        expr: smm_workspace_budget_utilization > 0.95
+        for: 0m
+        labels:
+          severity: critical
+          team: finance
+          service: budget
+        annotations:
+          summary: "Critical budget overspend for workspace {{ $labels.workspace_id }}"
+          description: "Workspace {{ $labels.workspace_id }} has used {{ $value | humanizePercentage }} of budget. Immediate action required."
+          runbook_url: "https://wiki.smm-architect.com/runbooks/budget-critical"
+
+      - alert: SMM_BudgetBurnRateHigh
+        expr: smm_workspace_budget_daily_burn_rate * 7 > smm_workspace_budget_weekly_allocation
+        for: 30m
+        labels:
+          severity: warning
+          team: finance
+          service: budget
+        annotations:
+          summary: "High budget burn rate detected"
+          description: "Workspace {{ $labels.workspace_id }} burn rate suggests weekly budget will be exceeded."
+
+      - alert: SMM_BudgetExhaustionPredicted
+        expr: smm_workspace_budget_days_remaining < 3
+        for: 0m
+        labels:
+          severity: critical
+          team: finance
+          service: budget
+        annotations:
+          summary: "Budget exhaustion predicted"
+          description: "Workspace {{ $labels.workspace_id }} budget will be exhausted in {{ $value }} days at current burn rate."
+
+  - name: smm_agent_alerts
+    rules:
+      # Agent Performance Alerts
+      - alert: SMM_AgentHighFailureRate
+        expr: (1 - smm:agent_success_rate_5m) > 0.1
+        for: 10m
+        labels:
+          severity: warning
+          team: platform
+          service: agent
+        annotations:
+          summary: "High failure rate for {{ $labels.agent_type }} agent"
+          description: "{{ $labels.agent_type }} agent failure rate is {{ $value | humanizePercentage }} over 5 minutes."
+          runbook_url: "https://wiki.smm-architect.com/runbooks/agent-failures"
+
+      - alert: SMM_AgentHighLatency
+        expr: smm:agent_latency_p95_5m > 60
+        for: 15m
+        labels:
+          severity: warning
+          team: platform
+          service: agent
+        annotations:
+          summary: "High latency for {{ $labels.agent_type }} agent"
+          description: "95th percentile execution time for {{ $labels.agent_type }} is {{ $value }}s, exceeding 60s SLO."
+
+      - alert: SMM_AgentQueueBacklog
+        expr: smm_agent_queue_depth > 100
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+          service: agent
+        annotations:
+          summary: "Agent queue backlog detected"
+          description: "{{ $labels.agent_type }} has {{ $value }} jobs queued, exceeding normal capacity."
+
+      - alert: SMM_AgentMemoryLeak
+        expr: increase(smm_agent_memory_usage_bytes[1h]) > 1073741824  # 1GB growth
+        for: 0m
+        labels:
+          severity: warning
+          team: platform
+          service: agent
+        annotations:
+          summary: "Potential memory leak in {{ $labels.agent_type }} agent"
+          description: "Memory usage increased by {{ $value | humanizeBytes }} in the last hour."
+
+  - name: smm_simulation_alerts
+    rules:
+      # Simulation Performance Alerts
+      - alert: SMM_SimulationHighFailureRate
+        expr: (1 - smm:simulation_success_rate_1h) > 0.05
+        for: 30m
+        labels:
+          severity: warning
+          team: platform
+          service: simulation
+        annotations:
+          summary: "High simulation failure rate"
+          description: "Simulation failure rate is {{ $value | humanizePercentage }} over the last hour."
+          runbook_url: "https://wiki.smm-architect.com/runbooks/simulation-failures"
+
+      - alert: SMM_SimulationHighLatency
+        expr: smm:simulation_duration_p95_1h > 30
+        for: 30m
+        labels:
+          severity: warning
+          team: platform
+          service: simulation
+        annotations:
+          summary: "High simulation latency"
+          description: "95th percentile simulation duration is {{ $value }}s, exceeding 30s SLO."
+
+      - alert: SMM_SimulationResourceExhaustion
+        expr: smm_simulation_concurrent_jobs > 50
+        for: 10m
+        labels:
+          severity: critical
+          team: platform
+          service: simulation
+        annotations:
+          summary: "Simulation resource exhaustion"
+          description: "{{ $value }} concurrent simulations running, approaching system limits."
+
+  - name: smm_canary_alerts
+    rules:
+      # Canary Deployment Alerts
+      - alert: SMM_CanaryDeploymentFailure
+        expr: smm_canary_deployment_success == 0
+        for: 0m
+        labels:
+          severity: critical
+          team: platform
+          service: deployment
+        annotations:
+          summary: "Canary deployment failed"
+          description: "Canary deployment for {{ $labels.service }} has failed. Rollback may be required."
+          runbook_url: "https://wiki.smm-architect.com/runbooks/canary-failure"
+
+      - alert: SMM_CanaryTrafficAnomalies
+        expr: abs(smm_canary_traffic_split - 0.1) > 0.05  # Expected 10% traffic
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+          service: deployment
+        annotations:
+          summary: "Canary traffic split anomaly"
+          description: "Canary is receiving {{ $value | humanizePercentage }} traffic instead of expected 10%."
+
+      - alert: SMM_CanaryModelDrift
+        expr: smm_model_evaluation_drift_score > 0.3
+        for: 0m
+        labels:
+          severity: critical
+          team: ml
+          service: model
+        annotations:
+          summary: "Model drift detected in canary"
+          description: "Canary model shows drift score of {{ $value }}, exceeding 0.3 threshold."
+          runbook_url: "https://wiki.smm-architect.com/runbooks/model-drift"
+
+      - alert: SMM_CanaryQualityDegradation
+        expr: smm_canary_quality_score < 0.8
+        for: 10m
+        labels:
+          severity: warning
+          team: ml
+          service: model
+        annotations:
+          summary: "Canary quality degradation"
+          description: "Canary output quality score {{ $value }} below 0.8 threshold."
+
+  - name: smm_infrastructure_alerts
+    rules:
+      # Infrastructure Health Alerts
+      - alert: SMM_DatabaseConnectionFailure
+        expr: up{job="postgres-exporter"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          team: platform
+          service: database
+        annotations:
+          summary: "Database connection failure"
+          description: "Cannot connect to SMM database for more than 2 minutes."
+          runbook_url: "https://wiki.smm-architect.com/runbooks/database-down"
+
+      - alert: SMM_RedisConnectionFailure
+        expr: up{job="redis-exporter"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          team: platform
+          service: cache
+        annotations:
+          summary: "Redis connection failure"
+          description: "Cannot connect to Redis cache for more than 2 minutes."
+
+      - alert: SMM_DiskSpaceWarning
+        expr: (node_filesystem_avail_bytes / node_filesystem_size_bytes) < 0.15
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+          service: infrastructure
+        annotations:
+          summary: "Low disk space on {{ $labels.instance }}"
+          description: "Disk usage is above 85% on {{ $labels.instance }}."
+
+      - alert: SMM_HighMemoryUsage
+        expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) > 0.9
+        for: 10m
+        labels:
+          severity: warning
+          team: platform
+          service: infrastructure
+        annotations:
+          summary: "High memory usage on {{ $labels.instance }}"
+          description: "Memory usage is above 90% on {{ $labels.instance }}."
+
+  - name: smm_security_alerts
+    rules:
+      # Security Alerts
+      - alert: SMM_UnauthorizedAPIAccess
+        expr: increase(smm_api_requests_total{status="401"}[5m]) > 20
+        for: 0m
+        labels:
+          severity: warning
+          team: security
+          service: api
+        annotations:
+          summary: "Increased unauthorized API access attempts"
+          description: "{{ $value }} unauthorized access attempts in the last 5 minutes."
+          runbook_url: "https://wiki.smm-architect.com/runbooks/security-breach"
+
+      - alert: SMM_SuspiciousUserActivity
+        expr: smm_user_requests_per_minute > 100
+        for: 5m
+        labels:
+          severity: warning
+          team: security
+          service: user-behavior
+        annotations:
+          summary: "Suspicious user activity detected"
+          description: "User {{ $labels.user_id }} making {{ $value }} requests/minute, exceeding normal patterns."
+
+      - alert: SMM_VaultConnectionFailure
+        expr: up{job="vault-exporter"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          team: security
+          service: vault
+        annotations:
+          summary: "Vault connection failure"
+          description: "Cannot connect to Vault for secrets management."
+          runbook_url: "https://wiki.smm-architect.com/runbooks/vault-down"
+
+  - name: smm_business_alerts
+    rules:
+      # Business Metrics Alerts
+      - alert: SMM_PublishingSuccessRateDropped
+        expr: smm:platform_publish_success_rate_24h < 0.95
+        for: 30m
+        labels:
+          severity: warning
+          team: business
+          service: publishing
+        annotations:
+          summary: "Publishing success rate below SLA"
+          description: "24-hour publishing success rate is {{ $value | humanizePercentage }}, below 95% SLA."
+          runbook_url: "https://wiki.smm-architect.com/runbooks/publishing-sla"
+
+      - alert: SMM_WorkspaceActivityDrop
+        expr: smm:daily_active_workspaces < 100
+        for: 4h
+        labels:
+          severity: warning
+          team: business
+          service: engagement
+        annotations:
+          summary: "Low workspace activity"
+          description: "Only {{ $value }} active workspaces today, significantly below normal levels."
+
+      - alert: SMM_LicenseExpiration
+        expr: smm_license_expires_days < 30
+        for: 0m
+        labels:
+          severity: warning
+          team: business
+          service: licensing
+        annotations:
+          summary: "License expiration approaching"
+          description: "SMM Architect license expires in {{ $value }} days."

@@ -1,0 +1,345 @@
+global:
+  # SMTP configuration for email notifications
+  smtp_smarthost: 'localhost:587'
+  smtp_from: 'alerts@smm-architect.com'
+  smtp_auth_username: 'alerts@smm-architect.com'
+  smtp_auth_password: '${SMTP_PASSWORD}'
+  smtp_require_tls: true
+
+  # Slack configuration
+  slack_api_url: '${SLACK_WEBHOOK_URL}'
+
+  # PagerDuty configuration
+  pagerduty_url: 'https://events.pagerduty.com/v2/enqueue'
+
+# Alert routing configuration
+route:
+  # Default route settings
+  group_by: ['cluster', 'service', 'severity']
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+  receiver: 'default-notifications'
+
+  # Specific routing rules
+  routes:
+    # Critical alerts - immediate PagerDuty and Slack
+    - match:
+        severity: critical
+      receiver: 'critical-alerts'
+      group_wait: 10s
+      group_interval: 2m
+      repeat_interval: 30m
+      routes:
+        # Database issues
+        - match:
+            service: database
+          receiver: 'database-team'
+        # Security incidents
+        - match:
+            team: security
+          receiver: 'security-team'
+        # Canary failures
+        - match:
+            service: deployment
+          receiver: 'platform-team'
+
+    # Budget alerts - finance team
+    - match:
+        team: finance
+      receiver: 'finance-team'
+      group_by: ['workspace_id', 'severity']
+      group_wait: 2m
+      repeat_interval: 12h
+
+    # Warning alerts - Slack only during business hours
+    - match:
+        severity: warning
+      receiver: 'warning-alerts'
+      group_wait: 2m
+      group_interval: 10m
+      repeat_interval: 8h
+
+    # Platform alerts
+    - match:
+        team: platform
+      receiver: 'platform-team'
+      routes:
+        # Agent-specific alerts
+        - match:
+            service: agent
+          receiver: 'agent-team'
+        # Connector-specific alerts
+        - match:
+            service: connector
+          receiver: 'connector-team'
+
+    # ML/Model alerts
+    - match:
+        team: ml
+      receiver: 'ml-team'
+      group_by: ['service', 'model_version']
+
+    # Business alerts
+    - match:
+        team: business
+      receiver: 'business-team'
+      repeat_interval: 24h
+
+# Inhibition rules to prevent alert spam
+inhibit_rules:
+  # Inhibit warning alerts when critical alerts are firing
+  - source_match:
+      severity: 'critical'
+    target_match:
+      severity: 'warning'
+    equal: ['cluster', 'service']
+
+  # Inhibit connector error alerts when connector is down
+  - source_match:
+      alertname: 'SMM_ConnectorDown'
+    target_match_re:
+      alertname: 'SMM_Connector.*'
+    equal: ['connector']
+
+  # Inhibit agent alerts when queue is backed up
+  - source_match:
+      alertname: 'SMM_AgentQueueBacklog'
+    target_match:
+      alertname: 'SMM_AgentHighLatency'
+    equal: ['agent_type']
+
+# Receiver configurations
+receivers:
+  # Default notifications (email + Slack)
+  - name: 'default-notifications'
+    email_configs:
+      - to: 'platform-team@smm-architect.com'
+        subject: '[SMM] {{ .Status | toUpper }}: {{ .GroupLabels.service }} Alert'
+        body: |
+          {{ range .Alerts }}
+          Alert: {{ .Annotations.summary }}
+          Description: {{ .Annotations.description }}
+          Severity: {{ .Labels.severity }}
+          Service: {{ .Labels.service }}
+          {{ if .Annotations.runbook_url }}Runbook: {{ .Annotations.runbook_url }}{{ end }}
+          {{ if .Annotations.dashboard_url }}Dashboard: {{ .Annotations.dashboard_url }}{{ end }}
+          {{ end }}
+        html: |
+          <!DOCTYPE html>
+          <html>
+          <head><title>SMM Alert</title></head>
+          <body>
+          <h2>SMM Architect Alert - {{ .Status | toUpper }}</h2>
+          {{ range .Alerts }}
+          <div style="border: 1px solid #ddd; margin: 10px; padding: 15px;">
+            <h3 style="color: {{ if eq .Labels.severity "critical" }}red{{ else if eq .Labels.severity "warning" }}orange{{ else }}blue{{ end }};">
+              {{ .Annotations.summary }}
+            </h3>
+            <p><strong>Description:</strong> {{ .Annotations.description }}</p>
+            <p><strong>Service:</strong> {{ .Labels.service }}</p>
+            <p><strong>Severity:</strong> {{ .Labels.severity }}</p>
+            {{ if .Annotations.runbook_url }}<p><a href="{{ .Annotations.runbook_url }}">📖 Runbook</a></p>{{ end }}
+            {{ if .Annotations.dashboard_url }}<p><a href="{{ .Annotations.dashboard_url }}">📊 Dashboard</a></p>{{ end }}
+          </div>
+          {{ end }}
+          </body>
+          </html>
+
+    slack_configs:
+      - channel: '#smm-alerts'
+        username: 'SMM AlertManager'
+        icon_emoji: ':warning:'
+        title: 'SMM Alert - {{ .Status | toUpper }}'
+        text: |
+          {{ range .Alerts }}
+          *{{ .Annotations.summary }}*
+          {{ .Annotations.description }}
+          *Severity:* {{ .Labels.severity }} | *Service:* {{ .Labels.service }}
+          {{ if .Annotations.runbook_url }}📖 <{{ .Annotations.runbook_url }}|Runbook>{{ end }}
+          {{ if .Annotations.dashboard_url }}📊 <{{ .Annotations.dashboard_url }}|Dashboard>{{ end }}
+          {{ end }}
+        color: '{{ if eq .Status "firing" }}{{ if eq .CommonLabels.severity "critical" }}danger{{ else }}warning{{ end }}{{ else }}good{{ end }}'
+
+  # Critical alerts (PagerDuty + Slack + Email)
+  - name: 'critical-alerts'
+    pagerduty_configs:
+      - routing_key: '${PAGERDUTY_INTEGRATION_KEY}'
+        description: '{{ range .Alerts }}{{ .Annotations.summary }}{{ end }}'
+        details:
+          severity: '{{ .CommonLabels.severity }}'
+          service: '{{ .CommonLabels.service }}'
+          cluster: '{{ .CommonLabels.cluster }}'
+          firing_alerts: '{{ .Alerts.Firing | len }}'
+          resolved_alerts: '{{ .Alerts.Resolved | len }}'
+        custom_details:
+          alert_count: '{{ .Alerts | len }}'
+          grouped_by: '{{ .GroupLabels }}'
+
+    slack_configs:
+      - channel: '#smm-critical'
+        username: 'SMM Critical Alert'
+        icon_emoji: ':rotating_light:'
+        title: '🚨 CRITICAL SMM Alert'
+        text: |
+          {{ range .Alerts }}
+          *{{ .Annotations.summary }}*
+          {{ .Annotations.description }}
+          *Service:* {{ .Labels.service }} | *Team:* {{ .Labels.team }}
+          {{ if .Annotations.runbook_url }}📖 <{{ .Annotations.runbook_url }}|Runbook> - **ACTION REQUIRED**{{ end }}
+          {{ end }}
+        color: 'danger'
+
+    email_configs:
+      - to: 'oncall@smm-architect.com, platform-lead@smm-architect.com'
+        subject: '🚨 CRITICAL SMM Alert: {{ .GroupLabels.service }}'
+        body: |
+          CRITICAL ALERT REQUIRES IMMEDIATE ATTENTION
+          
+          {{ range .Alerts }}
+          Alert: {{ .Annotations.summary }}
+          Description: {{ .Annotations.description }}
+          Service: {{ .Labels.service }}
+          Team: {{ .Labels.team }}
+          {{ if .Annotations.runbook_url }}Runbook: {{ .Annotations.runbook_url }}{{ end }}
+          
+          {{ end }}
+
+  # Database team notifications
+  - name: 'database-team'
+    slack_configs:
+      - channel: '#database-alerts'
+        username: 'Database Monitor'
+        icon_emoji: ':database:'
+        title: 'Database Alert - {{ .Status | toUpper }}'
+        text: |
+          {{ range .Alerts }}
+          *{{ .Annotations.summary }}*
+          {{ .Annotations.description }}
+          {{ if .Annotations.runbook_url }}📖 <{{ .Annotations.runbook_url }}|Database Runbook>{{ end }}
+          {{ end }}
+
+    email_configs:
+      - to: 'database-team@smm-architect.com'
+        subject: '[Database] {{ .Status | toUpper }}: {{ .GroupLabels.service }}'
+
+  # Security team notifications
+  - name: 'security-team'
+    slack_configs:
+      - channel: '#security-alerts'
+        username: 'Security Monitor'
+        icon_emoji: ':shield:'
+        title: '🔒 Security Alert'
+        text: |
+          {{ range .Alerts }}
+          *{{ .Annotations.summary }}*
+          {{ .Annotations.description }}
+          *Immediate security review required*
+          {{ if .Annotations.runbook_url }}📖 <{{ .Annotations.runbook_url }}|Security Response>{{ end }}
+          {{ end }}
+        color: 'danger'
+
+    email_configs:
+      - to: 'security-team@smm-architect.com, ciso@smm-architect.com'
+        subject: '🔒 SECURITY ALERT: {{ .GroupLabels.service }}'
+
+  # Platform team notifications
+  - name: 'platform-team'
+    slack_configs:
+      - channel: '#platform-alerts'
+        username: 'Platform Monitor'
+        icon_emoji: ':gear:'
+        title: 'Platform Alert - {{ .Status | toUpper }}'
+
+    email_configs:
+      - to: 'platform-team@smm-architect.com'
+
+  # Agent team notifications
+  - name: 'agent-team'
+    slack_configs:
+      - channel: '#agent-monitoring'
+        username: 'Agent Monitor'
+        icon_emoji: ':robot_face:'
+        title: 'Agent Alert - {{ .Status | toUpper }}'
+
+  # Connector team notifications
+  - name: 'connector-team'
+    slack_configs:
+      - channel: '#connector-monitoring'
+        username: 'Connector Monitor'
+        icon_emoji: ':link:'
+        title: 'Connector Alert - {{ .Status | toUpper }}'
+
+  # Finance team notifications
+  - name: 'finance-team'
+    email_configs:
+      - to: 'finance-team@smm-architect.com, cfo@smm-architect.com'
+        subject: '💰 Budget Alert: {{ .GroupLabels.workspace_id }}'
+        body: |
+          Budget threshold exceeded for workspace {{ .GroupLabels.workspace_id }}
+          
+          {{ range .Alerts }}
+          Alert: {{ .Annotations.summary }}
+          Description: {{ .Annotations.description }}
+          Workspace: {{ .Labels.workspace_id }}
+          {{ end }}
+
+    slack_configs:
+      - channel: '#finance-alerts'
+        username: 'Budget Monitor'
+        icon_emoji: ':moneybag:'
+        title: '💰 Budget Alert'
+
+  # ML team notifications
+  - name: 'ml-team'
+    slack_configs:
+      - channel: '#ml-alerts'
+        username: 'ML Monitor'
+        icon_emoji: ':brain:'
+        title: 'ML/Model Alert - {{ .Status | toUpper }}'
+
+    email_configs:
+      - to: 'ml-team@smm-architect.com'
+
+  # Business team notifications
+  - name: 'business-team'
+    email_configs:
+      - to: 'business-team@smm-architect.com, ceo@smm-architect.com'
+        subject: '📊 Business Metrics Alert'
+
+    slack_configs:
+      - channel: '#business-metrics'
+        username: 'Business Monitor'
+        icon_emoji: ':chart_with_upwards_trend:'
+
+  # Warning alerts (Slack only during business hours)
+  - name: 'warning-alerts'
+    slack_configs:
+      - channel: '#smm-warnings'
+        username: 'SMM Warning'
+        icon_emoji: ':warning:'
+        title: '⚠️ SMM Warning'
+        color: 'warning'
+
+# Time-based alert routing (optional - requires external configuration)
+time_intervals:
+  - name: 'business_hours'
+    time_intervals:
+      - times:
+          - start_time: '09:00'
+            end_time: '17:00'
+        weekdays: ['monday:friday']
+        location: 'America/New_York'
+
+  - name: 'nights_and_weekends'
+    time_intervals:
+      - times:
+          - start_time: '17:01'
+            end_time: '08:59'
+        weekdays: ['monday:friday']
+        location: 'America/New_York'
+      - times:
+          - start_time: '00:00'
+            end_time: '23:59'
+        weekdays: ['saturday', 'sunday']
+        location: 'America/New_York'

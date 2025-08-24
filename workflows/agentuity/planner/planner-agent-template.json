@@ -1,0 +1,437 @@
+{
+  "id": "planner-agent-v1",
+  "name": "SMM Planner Agent",
+  "description": "Strategic planning agent that creates comprehensive social media marketing campaigns based on brand intelligence, goals, and constraints",
+  "version": "1.0.0",
+  "category": "campaign_planning",
+  "tags": ["planning", "strategy", "campaign-generation", "content-calendar", "smm"],
+  
+  "requirements": {
+    "runtime": "nodejs",
+    "version": ">=18.0.0",
+    "memory": "3072MB",
+    "timeout": "2400",
+    "concurrent_executions": 3,
+    "retry_attempts": 2,
+    "priority": "high"
+  },
+  
+  "triggers": [
+    {
+      "type": "webhook",
+      "endpoint": "/planner/generate",
+      "method": "POST",
+      "authentication": "bearer_token"
+    },
+    {
+      "type": "queue",
+      "queue_name": "planning_queue",
+      "batch_size": 1
+    },
+    {
+      "type": "event",
+      "source": "research_agent",
+      "event_type": "research_completed"
+    }
+  ],
+  
+  "input_schema": {
+    "type": "object",
+    "required": ["workspace_id", "brand_twin", "campaign_goals", "constraints"],
+    "properties": {
+      "workspace_id": {
+        "type": "string",
+        "description": "Unique identifier for the workspace"
+      },
+      "brand_twin": {
+        "$ref": "../../schemas/brand-twin.json"
+      },
+      "campaign_goals": {
+        "type": "object",
+        "required": ["primary_objective"],
+        "properties": {
+          "primary_objective": {
+            "type": "string",
+            "enum": [
+              "brand_awareness",
+              "lead_generation", 
+              "customer_engagement",
+              "thought_leadership",
+              "product_launch",
+              "recruitment",
+              "crisis_management"
+            ]
+          },
+          "kpis": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "metric": { "type": "string" },
+                "target": { "type": "number" },
+                "unit": { "type": "string" },
+                "timeframe": { "type": "string" }
+              }
+            }
+          },
+          "target_audience": {
+            "type": "object",
+            "properties": {
+              "demographics": { "type": "object" },
+              "psychographics": { "type": "object" },
+              "behavioral_traits": { "type": "array", "items": { "type": "string" } },
+              "pain_points": { "type": "array", "items": { "type": "string" } }
+            }
+          }
+        }
+      },
+      "constraints": {
+        "type": "object",
+        "properties": {
+          "budget": {
+            "type": "object",
+            "properties": {
+              "total": { "type": "number" },
+              "currency": { "type": "string" },
+              "breakdown": { "type": "object" },
+              "timeframe": { "type": "string" }
+            }
+          },
+          "channels": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": ["linkedin", "twitter", "instagram", "facebook", "youtube", "tiktok"]
+            }
+          },
+          "content_guidelines": {
+            "type": "object",
+            "properties": {
+              "tone": { "type": "string" },
+              "forbidden_topics": { "type": "array", "items": { "type": "string" } },
+              "required_disclaimers": { "type": "array", "items": { "type": "string" } },
+              "brand_guidelines_url": { "type": "string", "format": "uri" }
+            }
+          },
+          "timeline": {
+            "type": "object",
+            "properties": {
+              "start_date": { "type": "string", "format": "date" },
+              "end_date": { "type": "string", "format": "date" },
+              "campaign_duration": { "type": "string" },
+              "posting_frequency": { "type": "object" }
+            }
+          },
+          "compliance": {
+            "type": "object",
+            "properties": {
+              "industry_regulations": { "type": "array", "items": { "type": "string" } },
+              "geographical_restrictions": { "type": "array", "items": { "type": "string" } },
+              "content_approval_required": { "type": "boolean" }
+            }
+          }
+        }
+      },
+      "planning_preferences": {
+        "type": "object",
+        "properties": {
+          "campaign_style": {
+            "type": "string",
+            "enum": ["aggressive", "conservative", "balanced"],
+            "default": "balanced"
+          },
+          "content_mix": {
+            "type": "object",
+            "properties": {
+              "educational": { "type": "number", "minimum": 0, "maximum": 100 },
+              "promotional": { "type": "number", "minimum": 0, "maximum": 100 },
+              "entertaining": { "type": "number", "minimum": 0, "maximum": 100 },
+              "news_commentary": { "type": "number", "minimum": 0, "maximum": 100 }
+            }
+          },
+          "automation_level": {
+            "type": "string",
+            "enum": ["manual", "semi_automated", "fully_automated"],
+            "default": "semi_automated"
+          }
+        }
+      }
+    }
+  },
+  
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "plan_id": { "type": "string" },
+      "workspace_id": { "type": "string" },
+      "status": {
+        "type": "string",
+        "enum": ["completed", "partial", "failed"]
+      },
+      "execution_time": { "type": "number" },
+      "campaign_plan": {
+        "type": "object",
+        "properties": {
+          "overview": {
+            "type": "object",
+            "properties": {
+              "title": { "type": "string" },
+              "description": { "type": "string" },
+              "duration": { "type": "string" },
+              "total_posts": { "type": "integer" },
+              "estimated_reach": { "type": "integer" },
+              "estimated_budget": { "type": "number" }
+            }
+          },
+          "strategy": {
+            "type": "object",
+            "properties": {
+              "messaging_pillars": { "type": "array", "items": { "type": "string" } },
+              "content_themes": { "type": "array", "items": { "type": "string" } },
+              "posting_strategy": { "type": "object" },
+              "engagement_strategy": { "type": "object" },
+              "hashtag_strategy": { "type": "object" }
+            }
+          },
+          "content_calendar": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "date": { "type": "string", "format": "date" },
+                "time": { "type": "string" },
+                "channel": { "type": "string" },
+                "content_type": { "type": "string" },
+                "topic": { "type": "string" },
+                "content_brief": { "type": "string" },
+                "hashtags": { "type": "array", "items": { "type": "string" } },
+                "call_to_action": { "type": "string" },
+                "target_audience": { "type": "string" },
+                "estimated_reach": { "type": "integer" },
+                "budget_allocation": { "type": "number" }
+              }
+            }
+          },
+          "channel_strategies": {
+            "type": "object",
+            "patternProperties": {
+              "^(linkedin|twitter|instagram|facebook|youtube|tiktok)$": {
+                "type": "object",
+                "properties": {
+                  "posting_frequency": { "type": "string" },
+                  "optimal_times": { "type": "array", "items": { "type": "string" } },
+                  "content_formats": { "type": "array", "items": { "type": "string" } },
+                  "engagement_tactics": { "type": "array", "items": { "type": "string" } },
+                  "budget_allocation": { "type": "number" }
+                }
+              }
+            }
+          },
+          "success_metrics": {
+            "type": "object",
+            "properties": {
+              "kpi_tracking": { "type": "array" },
+              "milestone_schedule": { "type": "array" },
+              "reporting_cadence": { "type": "string" },
+              "optimization_checkpoints": { "type": "array" }
+            }
+          }
+        }
+      },
+      "risk_assessment": {
+        "type": "object",
+        "properties": {
+          "identified_risks": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "risk_type": { "type": "string" },
+                "severity": { "type": "string", "enum": ["low", "medium", "high"] },
+                "probability": { "type": "number" },
+                "impact": { "type": "string" },
+                "mitigation_strategy": { "type": "string" }
+              }
+            }
+          },
+          "contingency_plans": { "type": "array" },
+          "compliance_checklist": { "type": "array" }
+        }
+      },
+      "recommendations": {
+        "type": "object",
+        "properties": {
+          "optimization_opportunities": { "type": "array", "items": { "type": "string" } },
+          "a_b_test_suggestions": { "type": "array" },
+          "resource_requirements": { "type": "object" },
+          "timeline_adjustments": { "type": "array" }
+        }
+      },
+      "metadata": {
+        "type": "object",
+        "properties": {
+          "created_at": { "type": "string", "format": "date-time" },
+          "agent_version": { "type": "string" },
+          "planning_model_version": { "type": "string" },
+          "confidence_score": { "type": "number" },
+          "processing_stats": { "type": "object" }
+        }
+      }
+    }
+  },
+  
+  "environment": {
+    "variables": {
+      "TOOLHUB_API_ENDPOINT": "${TOOLHUB_URL}",
+      "VAULT_ADDR": "${VAULT_ADDR}",
+      "NODE_ENV": "production",
+      "LOG_LEVEL": "info",
+      "PLANNING_TIMEOUT": "2400",
+      "LLM_MODEL": "gpt-4-turbo",
+      "MAX_CONTENT_ITEMS": "500",
+      "OPTIMIZATION_THRESHOLD": "0.8"
+    },
+    "secrets": [
+      "TOOLHUB_API_KEY",
+      "OPENAI_API_KEY",
+      "ANTHROPIC_API_KEY",
+      "PLANNING_MODEL_API_KEY"
+    ]
+  },
+  
+  "monitoring": {
+    "metrics": [
+      {
+        "name": "plans_generated",
+        "type": "counter",
+        "description": "Number of campaign plans generated"
+      },
+      {
+        "name": "planning_duration",
+        "type": "histogram",
+        "description": "Time taken to generate plans"
+      },
+      {
+        "name": "plan_confidence_score",
+        "type": "gauge",
+        "description": "Average confidence score of generated plans"
+      },
+      {
+        "name": "optimization_suggestions",
+        "type": "counter",
+        "description": "Number of optimization suggestions made"
+      }
+    ],
+    "health_check": {
+      "endpoint": "/health",
+      "interval": "30s",
+      "timeout": "10s",
+      "healthy_threshold": 2,
+      "unhealthy_threshold": 3
+    },
+    "alerts": [
+      {
+        "name": "low_confidence_plans",
+        "condition": "avg(plan_confidence_score) < 0.7",
+        "severity": "warning",
+        "notification": "slack"
+      },
+      {
+        "name": "slow_planning",
+        "condition": "avg(planning_duration) > 1800",
+        "severity": "warning",
+        "notification": "email"
+      }
+    ]
+  },
+  
+  "scaling": {
+    "auto_scaling": {
+      "enabled": true,
+      "min_instances": 1,
+      "max_instances": 4,
+      "target_cpu_utilization": 75,
+      "scale_up_cooldown": "300s",
+      "scale_down_cooldown": "600s"
+    },
+    "load_balancing": {
+      "strategy": "least_connections",
+      "health_check_grace_period": "60s"
+    }
+  },
+  
+  "security": {
+    "network_policy": {
+      "egress": [
+        {
+          "to": "toolhub.smm-architect.svc.cluster.local",
+          "ports": [443, 80]
+        },
+        {
+          "to": "vault.vault.svc.cluster.local",
+          "ports": [8200]
+        },
+        {
+          "to": "external",
+          "domains": [
+            "api.openai.com",
+            "api.anthropic.com"
+          ]
+        }
+      ]
+    },
+    "resource_limits": {
+      "max_file_size": "50MB",
+      "max_network_requests": 500,
+      "max_execution_time": "2400s"
+    }
+  },
+  
+  "integrations": {
+    "toolhub": {
+      "endpoint": "${TOOLHUB_API_ENDPOINT}",
+      "authentication": "api_key",
+      "operations": [
+        "retrieve_brand_twin",
+        "store_campaign_plan",
+        "search_content_templates"
+      ]
+    },
+    "vault": {
+      "endpoint": "${VAULT_ADDR}",
+      "authentication": "kubernetes",
+      "mount_paths": [
+        "secret/planner-agent",
+        "secret/llm-keys"
+      ]
+    },
+    "simulator": {
+      "endpoint": "${SIMULATOR_SERVICE_URL}",
+      "operations": [
+        "validate_plan",
+        "estimate_performance"
+      ]
+    }
+  },
+  
+  "execution": {
+    "runtime_config": {
+      "node_options": "--max-old-space-size=2048",
+      "worker_threads": true,
+      "cluster_mode": false
+    },
+    "deployment": {
+      "strategy": "blue_green",
+      "readiness_probe": {
+        "path": "/ready",
+        "initial_delay": "30s",
+        "period": "10s"
+      }
+    },
+    "restart_policy": {
+      "on_failure": "always",
+      "max_restart_count": 2,
+      "restart_delay": "60s"
+    }
+  }
+}

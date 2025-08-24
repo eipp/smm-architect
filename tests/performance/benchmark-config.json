@@ -1,0 +1,246 @@
+{
+  "benchmarkConfig": {
+    "version": "v1.0.0",
+    "description": "SMM Architect Performance Benchmarks & SLO Targets",
+    "lastUpdated": "2024-01-15T10:00:00Z"
+  },
+  "sloTargets": {
+    "toolhub": {
+      "vectorSearch": {
+        "p95": 200,
+        "p50": 100,
+        "unit": "ms",
+        "description": "Vector similarity search latency"
+      },
+      "vectorSearchLarge": {
+        "p95": 300,
+        "p50": 150,
+        "unit": "ms",
+        "description": "Large result set vector search (topK > 25)"
+      },
+      "healthCheck": {
+        "p95": 50,
+        "p50": 20,
+        "unit": "ms",
+        "description": "Health endpoint response time"
+      }
+    },
+    "simulation": {
+      "smallWorkflow": {
+        "p95": 30000,
+        "p50": 20000,
+        "unit": "ms",
+        "description": "Small workflow simulation (1-2 agents, <500 iterations)"
+      },
+      "mediumWorkflow": {
+        "p95": 60000,
+        "p50": 40000,
+        "unit": "ms",
+        "description": "Medium workflow simulation (2-4 agents, <1000 iterations)"
+      },
+      "largeWorkflow": {
+        "p95": 120000,
+        "p50": 80000,
+        "unit": "ms",
+        "description": "Large workflow simulation (4+ agents, <2000 iterations)"
+      },
+      "convergence": {
+        "maxIterations": 2000,
+        "targetConfidence": 0.95,
+        "toleranceThreshold": 0.01,
+        "description": "Monte Carlo convergence criteria"
+      }
+    },
+    "agents": {
+      "jobStartLatency": {
+        "p95": 60000,
+        "p50": 30000,
+        "unit": "ms",
+        "description": "Time from job queue to agent start"
+      },
+      "highPriorityJobStart": {
+        "p95": 30000,
+        "p50": 15000,
+        "unit": "ms",
+        "description": "High priority job start latency"
+      },
+      "jobCompletionRate": {
+        "target": 99.5,
+        "unit": "percent",
+        "description": "Job completion success rate"
+      }
+    },
+    "workspace": {
+      "creation": {
+        "p95": 5000,
+        "p50": 3000,
+        "unit": "ms",
+        "description": "Workspace creation time"
+      },
+      "contractValidation": {
+        "p95": 2000,
+        "p50": 1000,
+        "unit": "ms",
+        "description": "Contract validation latency"
+      },
+      "schemaValidation": {
+        "p95": 100,
+        "p50": 50,
+        "unit": "ms",
+        "description": "JSON schema validation time"
+      }
+    },
+    "publishing": {
+      "successRate": {
+        "target": 99.0,
+        "unit": "percent",
+        "description": "Content publication success rate"
+      },
+      "publishLatency": {
+        "p95": 5000,
+        "p50": 3000,
+        "unit": "ms",
+        "description": "Content publish operation latency"
+      },
+      "retrySuccessRate": {
+        "target": 99.9,
+        "unit": "percent",
+        "description": "Success rate including retries"
+      }
+    }
+  },
+  "loadTestingProfiles": {
+    "light": {
+      "concurrentUsers": 5,
+      "operationsPerUser": 10,
+      "duration": 60,
+      "rampUpTime": 10,
+      "description": "Light load for CI testing"
+    },
+    "moderate": {
+      "concurrentUsers": 20,
+      "operationsPerUser": 25,
+      "duration": 300,
+      "rampUpTime": 30,
+      "description": "Moderate load for staging validation"
+    },
+    "stress": {
+      "concurrentUsers": 50,
+      "operationsPerUser": 50,
+      "duration": 600,
+      "rampUpTime": 60,
+      "description": "Stress testing for production readiness"
+    },
+    "spike": {
+      "concurrentUsers": 100,
+      "operationsPerUser": 10,
+      "duration": 120,
+      "rampUpTime": 5,
+      "description": "Spike testing for elasticity validation"
+    }
+  },
+  "testEnvironments": {
+    "ci": {
+      "description": "Continuous Integration - Fast validation",
+      "profileName": "light",
+      "iterations": 10,
+      "timeoutMultiplier": 1.0,
+      "enabledTests": [
+        "vectorSearch",
+        "contractValidation",
+        "smallWorkflow",
+        "jobStartLatency"
+      ]
+    },
+    "staging": {
+      "description": "Staging Environment - Comprehensive testing",
+      "profileName": "moderate",
+      "iterations": 20,
+      "timeoutMultiplier": 1.5,
+      "enabledTests": [
+        "vectorSearch",
+        "vectorSearchLarge",
+        "smallWorkflow",
+        "mediumWorkflow",
+        "jobStartLatency",
+        "highPriorityJobStart",
+        "publishing",
+        "concurrentLoad"
+      ]
+    },
+    "production": {
+      "description": "Production Environment - Full validation",
+      "profileName": "stress",
+      "iterations": 50,
+      "timeoutMultiplier": 2.0,
+      "enabledTests": [
+        "all"
+      ]
+    }
+  },
+  "alerting": {
+    "thresholds": {
+      "critical": {
+        "description": "Immediate attention required",
+        "sloBreachPercentage": 150,
+        "consecutiveFailures": 3
+      },
+      "warning": {
+        "description": "Performance degradation detected",
+        "sloBreachPercentage": 120,
+        "consecutiveFailures": 5
+      },
+      "info": {
+        "description": "Performance trend monitoring",
+        "sloBreachPercentage": 110,
+        "consecutiveFailures": 10
+      }
+    },
+    "channels": {
+      "slack": {
+        "webhook": "https://hooks.slack.com/services/...",
+        "channel": "#sre-alerts",
+        "enabled": true
+      },
+      "email": {
+        "recipients": ["sre@smmarchitect.com"],
+        "enabled": true
+      },
+      "pagerduty": {
+        "serviceKey": "...",
+        "enabled": true,
+        "triggerOn": ["critical"]
+      }
+    }
+  },
+  "baselineExpectations": {
+    "description": "Baseline performance expectations for regression detection",
+    "toolhubVectorSearch": {
+      "p95Mean": 120,
+      "p95StdDev": 25,
+      "regressionThreshold": 50
+    },
+    "smallWorkflowSimulation": {
+      "p95Mean": 18000,
+      "p95StdDev": 4000,
+      "regressionThreshold": 5000
+    },
+    "agentJobStart": {
+      "p95Mean": 35000,
+      "p95StdDev": 8000,
+      "regressionThreshold": 10000
+    },
+    "contractValidation": {
+      "p95Mean": 800,
+      "p95StdDev": 200,
+      "regressionThreshold": 500
+    }
+  },
+  "reportingConfig": {
+    "outputFormats": ["json", "html", "junit"],
+    "includeHistograms": true,
+    "includePercentiles": [50, 90, 95, 99, 99.9],
+    "retentionDays": 90,
+    "comparisonBaseline": "lastWeek"
+  }
+}

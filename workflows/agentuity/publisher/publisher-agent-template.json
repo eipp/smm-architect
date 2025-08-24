@@ -1,0 +1,585 @@
+{
+  "id": "publisher-agent-v1",
+  "name": "SMM Publisher Agent",
+  "description": "Content publishing and distribution agent that executes approved campaigns across social media platforms with real-time monitoring and optimization",
+  "version": "1.0.0",
+  "category": "content_publishing",
+  "tags": ["publishing", "distribution", "execution", "monitoring", "optimization", "smm"],
+  
+  "requirements": {
+    "runtime": "nodejs",
+    "version": ">=18.0.0",
+    "memory": "2048MB",
+    "timeout": "1200",
+    "concurrent_executions": 8,
+    "retry_attempts": 3,
+    "priority": "high"
+  },
+  
+  "triggers": [
+    {
+      "type": "webhook",
+      "endpoint": "/publisher/execute",
+      "method": "POST",
+      "authentication": "bearer_token"
+    },
+    {
+      "type": "queue",
+      "queue_name": "publishing_queue",
+      "batch_size": 5
+    },
+    {
+      "type": "event",
+      "source": "automation_agent",
+      "event_type": "posts_scheduled"
+    },
+    {
+      "type": "event",
+      "source": "legal_agent",
+      "event_type": "content_approved"
+    },
+    {
+      "type": "schedule",
+      "cron": "*/5 * * * *",
+      "timezone": "UTC",
+      "description": "Check for pending publications every 5 minutes"
+    }
+  ],
+  
+  "input_schema": {
+    "type": "object",
+    "required": ["workspace_id", "publication_batch"],
+    "properties": {
+      "workspace_id": {
+        "type": "string",
+        "description": "Unique identifier for the workspace"
+      },
+      "publication_batch": {
+        "type": "object",
+        "required": ["batch_id", "publications"],
+        "properties": {
+          "batch_id": { "type": "string" },
+          "execution_mode": {
+            "type": "string",
+            "enum": ["immediate", "scheduled", "test", "canary"],
+            "default": "scheduled"
+          },
+          "publications": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["publication_id", "channel", "content"],
+              "properties": {
+                "publication_id": { "type": "string" },
+                "channel": {
+                  "type": "string",
+                  "enum": ["linkedin", "twitter", "instagram", "facebook", "youtube", "tiktok"]
+                },
+                "content": {
+                  "type": "object",
+                  "properties": {
+                    "text": { "type": "string" },
+                    "media": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "type": { "type": "string", "enum": ["image", "video", "document"] },
+                          "url": { "type": "string", "format": "uri" },
+                          "alt_text": { "type": "string" },
+                          "caption": { "type": "string" }
+                        }
+                      }
+                    },
+                    "hashtags": { "type": "array", "items": { "type": "string" } },
+                    "mentions": { "type": "array", "items": { "type": "string" } },
+                    "link": { "type": "string", "format": "uri" },
+                    "call_to_action": { "type": "object" },
+                    "location": { "type": "object" }
+                  }
+                },
+                "scheduling": {
+                  "type": "object",
+                  "properties": {
+                    "publish_time": { "type": "string", "format": "date-time" },
+                    "timezone": { "type": "string" },
+                    "optimal_timing": { "type": "boolean", "default": true },
+                    "max_delay": { "type": "string", "default": "1h" }
+                  }
+                },
+                "targeting": {
+                  "type": "object",
+                  "properties": {
+                    "audience": { "type": "string" },
+                    "demographics": { "type": "object" },
+                    "interests": { "type": "array", "items": { "type": "string" } },
+                    "geo_targeting": { "type": "object" },
+                    "budget": { "type": "number" }
+                  }
+                },
+                "monitoring": {
+                  "type": "object",
+                  "properties": {
+                    "track_engagement": { "type": "boolean", "default": true },
+                    "alert_thresholds": {
+                      "type": "object",
+                      "properties": {
+                        "low_engagement": { "type": "number" },
+                        "high_negative_sentiment": { "type": "number" },
+                        "spam_detection": { "type": "number" }
+                      }
+                    },
+                    "monitoring_duration": { "type": "string", "default": "24h" }
+                  }
+                },
+                "compliance": {
+                  "type": "object",
+                  "properties": {
+                    "legal_approval_id": { "type": "string" },
+                    "required_disclaimers": { "type": "array", "items": { "type": "string" } },
+                    "content_warnings": { "type": "array", "items": { "type": "string" } },
+                    "age_restrictions": { "type": "boolean" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "execution_preferences": {
+        "type": "object",
+        "properties": {
+          "failover_strategy": {
+            "type": "string",
+            "enum": ["retry", "reschedule", "skip", "manual_review"],
+            "default": "retry"
+          },
+          "optimization_enabled": { "type": "boolean", "default": true },
+          "real_time_analytics": { "type": "boolean", "default": true },
+          "auto_engagement": { "type": "boolean", "default": false },
+          "cross_promotion": { "type": "boolean", "default": false },
+          "a_b_testing": {
+            "type": "object",
+            "properties": {
+              "enabled": { "type": "boolean", "default": false },
+              "test_percentage": { "type": "number", "minimum": 0.1, "maximum": 0.5 },
+              "test_duration": { "type": "string", "default": "2h" }
+            }
+          }
+        }
+      },
+      "platform_configurations": {
+        "type": "object",
+        "patternProperties": {
+          "^(linkedin|twitter|instagram|facebook|youtube|tiktok)$": {
+            "type": "object",
+            "properties": {
+              "account_id": { "type": "string" },
+              "connection_id": { "type": "string" },
+              "rate_limits": {
+                "type": "object",
+                "properties": {
+                  "posts_per_hour": { "type": "integer" },
+                  "posts_per_day": { "type": "integer" }
+                }
+              },
+              "optimization_settings": {
+                "type": "object",
+                "properties": {
+                  "auto_hashtags": { "type": "boolean" },
+                  "optimal_timing": { "type": "boolean" },
+                  "content_adaptation": { "type": "boolean" }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "execution_id": { "type": "string" },
+      "workspace_id": { "type": "string" },
+      "batch_id": { "type": "string" },
+      "status": {
+        "type": "string",
+        "enum": ["completed", "partial", "failed", "in_progress"]
+      },
+      "execution_time": { "type": "number" },
+      "publication_results": {
+        "type": "object",
+        "properties": {
+          "total_publications": { "type": "integer" },
+          "successful_publications": { "type": "integer" },
+          "failed_publications": { "type": "integer" },
+          "scheduled_publications": { "type": "integer" },
+          "publications_by_channel": {
+            "type": "object",
+            "patternProperties": {
+              "^(linkedin|twitter|instagram|facebook|youtube|tiktok)$": {
+                "type": "object",
+                "properties": {
+                  "published": { "type": "integer" },
+                  "failed": { "type": "integer" },
+                  "scheduled": { "type": "integer" },
+                  "total_reach": { "type": "integer" },
+                  "total_engagement": { "type": "integer" }
+                }
+              }
+            }
+          }
+        }
+      },
+      "individual_results": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "publication_id": { "type": "string" },
+            "channel": { "type": "string" },
+            "status": {
+              "type": "string",
+              "enum": ["published", "scheduled", "failed", "cancelled"]
+            },
+            "publish_details": {
+              "type": "object",
+              "properties": {
+                "platform_post_id": { "type": "string" },
+                "platform_url": { "type": "string", "format": "uri" },
+                "published_at": { "type": "string", "format": "date-time" },
+                "scheduled_for": { "type": "string", "format": "date-time" },
+                "actual_content": { "type": "object" },
+                "applied_optimizations": { "type": "array", "items": { "type": "string" } }
+              }
+            },
+            "initial_performance": {
+              "type": "object",
+              "properties": {
+                "impressions": { "type": "integer" },
+                "reach": { "type": "integer" },
+                "engagement": { "type": "integer" },
+                "clicks": { "type": "integer" },
+                "shares": { "type": "integer" },
+                "comments": { "type": "integer" },
+                "reactions": { "type": "integer" },
+                "saves": { "type": "integer" },
+                "engagement_rate": { "type": "number" },
+                "click_through_rate": { "type": "number" }
+              }
+            },
+            "real_time_metrics": {
+              "type": "object",
+              "properties": {
+                "current_engagement": { "type": "integer" },
+                "engagement_velocity": { "type": "number" },
+                "sentiment_score": { "type": "number" },
+                "spam_score": { "type": "number" },
+                "trending_potential": { "type": "number" }
+              }
+            },
+            "errors": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "error_code": { "type": "string" },
+                  "message": { "type": "string" },
+                  "timestamp": { "type": "string", "format": "date-time" },
+                  "recovery_attempted": { "type": "boolean" },
+                  "retry_scheduled": { "type": "boolean" }
+                }
+              }
+            }
+          }
+        }
+      },
+      "performance_analytics": {
+        "type": "object",
+        "properties": {
+          "overall_engagement_rate": { "type": "number" },
+          "total_reach": { "type": "integer" },
+          "total_impressions": { "type": "integer" },
+          "best_performing_post": { "type": "string" },
+          "worst_performing_post": { "type": "string" },
+          "channel_performance": {
+            "type": "object",
+            "patternProperties": {
+              "^(linkedin|twitter|instagram|facebook|youtube|tiktok)$": {
+                "type": "object",
+                "properties": {
+                  "engagement_rate": { "type": "number" },
+                  "reach": { "type": "integer" },
+                  "click_through_rate": { "type": "number" },
+                  "best_time": { "type": "string" },
+                  "audience_quality": { "type": "number" }
+                }
+              }
+            }
+          },
+          "content_type_performance": { "type": "object" },
+          "hashtag_performance": { "type": "object" }
+        }
+      },
+      "optimizations_applied": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "publication_id": { "type": "string" },
+            "optimization_type": { "type": "string" },
+            "original_value": { "type": "string" },
+            "optimized_value": { "type": "string" },
+            "expected_improvement": { "type": "number" },
+            "actual_improvement": { "type": "number" }
+          }
+        }
+      },
+      "alerts_triggered": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "publication_id": { "type": "string" },
+            "alert_type": { "type": "string" },
+            "severity": { "type": "string", "enum": ["low", "medium", "high", "critical"] },
+            "message": { "type": "string" },
+            "triggered_at": { "type": "string", "format": "date-time" },
+            "action_taken": { "type": "string" }
+          }
+        }
+      },
+      "recommendations": {
+        "type": "object",
+        "properties": {
+          "timing_recommendations": { "type": "array", "items": { "type": "string" } },
+          "content_recommendations": { "type": "array", "items": { "type": "string" } },
+          "audience_recommendations": { "type": "array", "items": { "type": "string" } },
+          "budget_recommendations": { "type": "array", "items": { "type": "string" } },
+          "next_batch_optimizations": { "type": "array", "items": { "type": "string" } }
+        }
+      },
+      "metadata": {
+        "type": "object",
+        "properties": {
+          "execution_started_at": { "type": "string", "format": "date-time" },
+          "execution_completed_at": { "type": "string", "format": "date-time" },
+          "agent_version": { "type": "string" },
+          "platform_api_versions": { "type": "object" },
+          "monitoring_active_until": { "type": "string", "format": "date-time" },
+          "data_retention_until": { "type": "string", "format": "date-time" }
+        }
+      }
+    }
+  },
+  
+  "environment": {
+    "variables": {
+      "TOOLHUB_API_ENDPOINT": "${TOOLHUB_URL}",
+      "VAULT_ADDR": "${VAULT_ADDR}",
+      "NODE_ENV": "production",
+      "LOG_LEVEL": "info",
+      "PUBLISHING_TIMEOUT": "1200",
+      "MAX_CONCURRENT_PUBLISHES": "8",
+      "REAL_TIME_MONITORING": "true",
+      "OPTIMIZATION_ENABLED": "true",
+      "ANALYTICS_RETENTION_DAYS": "90"
+    },
+    "secrets": [
+      "TOOLHUB_API_KEY",
+      "LINKEDIN_PUBLISHING_CREDENTIALS",
+      "TWITTER_PUBLISHING_CREDENTIALS",
+      "INSTAGRAM_PUBLISHING_CREDENTIALS",
+      "FACEBOOK_PUBLISHING_CREDENTIALS",
+      "YOUTUBE_PUBLISHING_CREDENTIALS",
+      "TIKTOK_PUBLISHING_CREDENTIALS",
+      "ANALYTICS_API_KEYS"
+    ]
+  },
+  
+  "monitoring": {
+    "metrics": [
+      {
+        "name": "publications_executed",
+        "type": "counter",
+        "labels": ["channel", "status"],
+        "description": "Number of publications executed"
+      },
+      {
+        "name": "publishing_duration",
+        "type": "histogram",
+        "labels": ["channel"],
+        "description": "Time taken to publish content"
+      },
+      {
+        "name": "engagement_rate",
+        "type": "gauge",
+        "labels": ["channel", "content_type"],
+        "description": "Real-time engagement rate"
+      },
+      {
+        "name": "reach_achieved",
+        "type": "gauge",
+        "labels": ["channel"],
+        "description": "Total reach achieved"
+      },
+      {
+        "name": "publishing_errors",
+        "type": "counter",
+        "labels": ["channel", "error_type"],
+        "description": "Publishing errors encountered"
+      },
+      {
+        "name": "optimization_effectiveness",
+        "type": "histogram",
+        "description": "Effectiveness of applied optimizations"
+      }
+    ],
+    "health_check": {
+      "endpoint": "/health",
+      "interval": "30s",
+      "timeout": "10s",
+      "healthy_threshold": 2,
+      "unhealthy_threshold": 3
+    },
+    "alerts": [
+      {
+        "name": "high_publishing_failure_rate",
+        "condition": "sum(rate(publications_executed{status=\"failed\"}[5m])) > 0.1",
+        "severity": "critical",
+        "notification": "slack"
+      },
+      {
+        "name": "low_engagement_detected",
+        "condition": "avg(engagement_rate) < 0.01",
+        "severity": "warning",
+        "notification": "email"
+      },
+      {
+        "name": "viral_content_detected",
+        "condition": "max(engagement_rate) > 0.1",
+        "severity": "info",
+        "notification": "slack"
+      }
+    ]
+  },
+  
+  "scaling": {
+    "auto_scaling": {
+      "enabled": true,
+      "min_instances": 2,
+      "max_instances": 12,
+      "target_cpu_utilization": 70,
+      "scale_up_cooldown": "120s",
+      "scale_down_cooldown": "300s"
+    },
+    "load_balancing": {
+      "strategy": "least_connections",
+      "health_check_grace_period": "45s"
+    }
+  },
+  
+  "security": {
+    "network_policy": {
+      "egress": [
+        {
+          "to": "toolhub.smm-architect.svc.cluster.local",
+          "ports": [443, 80]
+        },
+        {
+          "to": "vault.vault.svc.cluster.local",
+          "ports": [8200]
+        },
+        {
+          "to": "external",
+          "domains": [
+            "api.linkedin.com",
+            "api.twitter.com",
+            "graph.facebook.com",
+            "graph.instagram.com",
+            "www.googleapis.com",
+            "open-api.tiktok.com",
+            "analytics.google.com"
+          ]
+        }
+      ]
+    },
+    "resource_limits": {
+      "max_file_size": "500MB",
+      "max_network_requests": 10000,
+      "max_execution_time": "1200s"
+    }
+  },
+  
+  "integrations": {
+    "toolhub": {
+      "endpoint": "${TOOLHUB_API_ENDPOINT}",
+      "authentication": "api_key",
+      "operations": [
+        "retrieve_content",
+        "store_performance_data",
+        "update_publication_status"
+      ]
+    },
+    "vault": {
+      "endpoint": "${VAULT_ADDR}",
+      "authentication": "kubernetes",
+      "mount_paths": [
+        "secret/publisher-agent",
+        "secret/social-publishing",
+        "secret/analytics"
+      ]
+    },
+    "social_platforms": {
+      "linkedin": {
+        "api_version": "v2",
+        "publishing_endpoint": "https://api.linkedin.com/v2/ugcPosts",
+        "analytics_endpoint": "https://api.linkedin.com/v2/organizationalEntityShareStatistics"
+      },
+      "twitter": {
+        "api_version": "v2",
+        "publishing_endpoint": "https://api.twitter.com/2/tweets",
+        "analytics_endpoint": "https://api.twitter.com/2/tweets/:id/metrics"
+      },
+      "instagram": {
+        "api_version": "v1",
+        "publishing_endpoint": "https://graph.instagram.com/v1/media",
+        "analytics_endpoint": "https://graph.facebook.com/v1/insights"
+      }
+    },
+    "analytics": {
+      "real_time_providers": ["native_platforms", "google_analytics"],
+      "sentiment_analysis": "perspective_api",
+      "spam_detection": "custom_ml_model"
+    },
+    "audit_service": {
+      "endpoint": "${AUDIT_SERVICE_URL}",
+      "events": [
+        "publication_executed",
+        "performance_milestone",
+        "alert_triggered",
+        "optimization_applied"
+      ]
+    }
+  },
+  
+  "execution": {
+    "runtime_config": {
+      "node_options": "--max-old-space-size=1536",
+      "worker_threads": true,
+      "cluster_mode": true
+    },
+    "deployment": {
+      "strategy": "rolling_update",
+      "max_unavailable": "25%",
+      "max_surge": "50%"
+    },
+    "restart_policy": {
+      "on_failure": "always",
+      "max_restart_count": 3,
+      "restart_delay": "30s"
+    }
+  }
+}

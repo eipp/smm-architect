@@ -1,0 +1,214 @@
+{
+  "testConfig": {
+    "workspaceId": "ws-icblabs-001",
+    "randomSeed": 42,
+    "iterations": 1000,
+    "baselineVersion": "v1.0.0",
+    "generatedAt": "2024-01-15T10:30:00Z",
+    "generatedBy": "monte-carlo-engine-v1.2.3",
+    "testEnvironment": "ci"
+  },
+  "workspaceContext": {
+    "tenantId": "icblabs",
+    "goals": [
+      {
+        "key": "lead_gen",
+        "target": 100,
+        "unit": "leads_per_month"
+      },
+      {
+        "key": "brand_awareness",
+        "target": 50000,
+        "unit": "impressions_per_month"
+      }
+    ],
+    "primaryChannels": ["linkedin", "x"],
+    "budget": {
+      "currency": "USD",
+      "weeklyCap": 1000,
+      "hardCap": 5000
+    },
+    "connectors": [
+      {
+        "platform": "linkedin",
+        "status": "connected"
+      },
+      {
+        "platform": "x", 
+        "status": "connected"
+      }
+    ],
+    "consentRecords": [
+      {
+        "type": "voice_likeness",
+        "status": "granted"
+      },
+      {
+        "type": "ugc_license",
+        "status": "granted"
+      }
+    ],
+    "riskProfile": "moderate"
+  },
+  "expectedResults": {
+    "readinessScore": {
+      "mean": 0.847,
+      "stdDev": 0.123,
+      "median": 0.851,
+      "p25": 0.791,
+      "p50": 0.851,
+      "p75": 0.903,
+      "p95": 0.934,
+      "p99": 0.967,
+      "min": 0.423,
+      "max": 0.998,
+      "tolerance": 0.001
+    },
+    "policyPassPct": {
+      "mean": 0.923,
+      "stdDev": 0.087,
+      "median": 0.940,
+      "p95": 0.998,
+      "p99": 1.000,
+      "tolerance": 0.001
+    },
+    "citationCoverage": {
+      "mean": 0.834,
+      "stdDev": 0.156,
+      "median": 0.847,
+      "p95": 0.967,
+      "p99": 0.989,
+      "tolerance": 0.002
+    },
+    "duplicationRisk": {
+      "mean": 0.156,
+      "stdDev": 0.089,
+      "median": 0.142,
+      "p95": 0.298,
+      "p99": 0.367,
+      "tolerance": 0.001
+    },
+    "costEstimate": {
+      "mean": 1247.32,
+      "stdDev": 234.56,
+      "median": 1235.67,
+      "p95": 1687.89,
+      "p99": 1823.45,
+      "tolerance": 0.50
+    },
+    "technicalReadiness": {
+      "mean": 0.892,
+      "stdDev": 0.067,
+      "median": 0.901,
+      "p95": 0.976,
+      "p99": 0.992,
+      "tolerance": 0.001
+    },
+    "convergenceMetrics": {
+      "convergenceIteration": 487,
+      "confidenceInterval": {
+        "lower": 0.832,
+        "upper": 0.862,
+        "confidence": 0.95,
+        "width": 0.030
+      },
+      "stabilityIndex": 0.934
+    }
+  },
+  "distributionChecks": {
+    "readinessScore": {
+      "distribution": "normal",
+      "kolmogorovSmirnovP": 0.067,
+      "shapiroWilkP": 0.089,
+      "skewness": -0.123,
+      "kurtosis": 2.876
+    },
+    "costEstimate": {
+      "distribution": "lognormal",
+      "kolmogorovSmirnovP": 0.156,
+      "shapiroWilkP": 0.203,
+      "skewness": 0.567,
+      "kurtosis": 3.234
+    }
+  },
+  "scenarioVariations": {
+    "baseCase": {
+      "description": "Standard configuration",
+      "readinessScore": 0.847,
+      "weight": 1.0
+    },
+    "highVolatility": {
+      "description": "Market volatility +2 std dev",
+      "readinessScore": 0.723,
+      "weight": 0.1
+    },
+    "platformDegraded": {
+      "description": "LinkedIn connector degraded",
+      "readinessScore": 0.691,
+      "weight": 0.05
+    },
+    "budgetConstrained": {
+      "description": "Weekly cap reduced by 50%",
+      "readinessScore": 0.789,
+      "weight": 0.1
+    },
+    "seasonalPeak": {
+      "description": "Q4 seasonal factor applied",
+      "readinessScore": 0.912,
+      "weight": 0.15
+    }
+  },
+  "performanceMetrics": {
+    "executionTime": {
+      "total": 24.567,
+      "perIteration": 0.02457,
+      "p95": 0.0289,
+      "p99": 0.0356,
+      "unit": "seconds"
+    },
+    "memoryUsage": {
+      "peak": 387.234,
+      "average": 234.567,
+      "unit": "MB"
+    },
+    "convergenceRate": {
+      "earlyTermination": true,
+      "terminationIteration": 487,
+      "confidenceAchieved": 0.95
+    }
+  },
+  "qualityMetrics": {
+    "monotonicityChecks": {
+      "budgetVsCostRisk": "passed",
+      "iterationsVsConfidence": "passed",
+      "connectorsVsTechnicalReadiness": "passed"
+    },
+    "boundaryConditions": {
+      "readinessScoreInRange": true,
+      "probabilitiesInRange": true,
+      "costEstimatesPositive": true
+    },
+    "statisticalConsistency": {
+      "meanWithinCI": true,
+      "varianceStable": true,
+      "distributionShape": "expected"
+    }
+  },
+  "regressionThresholds": {
+    "critical": {
+      "readinessScoreDelta": 0.05,
+      "costEstimateDelta": 100.0,
+      "policyPassDelta": 0.02
+    },
+    "warning": {
+      "readinessScoreDelta": 0.02,
+      "costEstimateDelta": 50.0,
+      "policyPassDelta": 0.01
+    },
+    "acceptable": {
+      "readinessScoreDelta": 0.001,
+      "costEstimateDelta": 0.50,
+      "policyPassDelta": 0.001
+    }
+  }
+}

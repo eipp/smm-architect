@@ -1,0 +1,530 @@
+{
+  "id": "automation-agent-v1",
+  "name": "SMM Automation Agent",
+  "description": "Content scheduling and workflow automation agent that orchestrates social media posting, engagement monitoring, and campaign execution across multiple platforms",
+  "version": "1.0.0",
+  "category": "workflow_automation",
+  "tags": ["automation", "scheduling", "orchestration", "social-posting", "workflow", "smm"],
+  
+  "requirements": {
+    "runtime": "nodejs",
+    "version": ">=18.0.0",
+    "memory": "2048MB",
+    "timeout": "1800",
+    "concurrent_executions": 10,
+    "retry_attempts": 3,
+    "priority": "normal"
+  },
+  
+  "triggers": [
+    {
+      "type": "webhook",
+      "endpoint": "/automation/execute",
+      "method": "POST",
+      "authentication": "bearer_token"
+    },
+    {
+      "type": "queue", 
+      "queue_name": "automation_queue",
+      "batch_size": 5
+    },
+    {
+      "type": "schedule",
+      "cron": "*/15 * * * *",
+      "timezone": "UTC",
+      "description": "Check for scheduled posts every 15 minutes"
+    },
+    {
+      "type": "event",
+      "source": "creative_agent",
+      "event_type": "content_approved"
+    }
+  ],
+  
+  "input_schema": {
+    "type": "object",
+    "required": ["workspace_id", "execution_plan"],
+    "properties": {
+      "workspace_id": {
+        "type": "string",
+        "description": "Unique identifier for the workspace"
+      },
+      "execution_plan": {
+        "type": "object",
+        "required": ["plan_id", "schedule", "content_items"],
+        "properties": {
+          "plan_id": { "type": "string" },
+          "schedule": {
+            "type": "object",
+            "properties": {
+              "start_date": { "type": "string", "format": "date-time" },
+              "end_date": { "type": "string", "format": "date-time" },
+              "timezone": { "type": "string" },
+              "posting_windows": {
+                "type": "object",
+                "patternProperties": {
+                  "^(monday|tuesday|wednesday|thursday|friday|saturday|sunday)$": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "start_time": { "type": "string" },
+                        "end_time": { "type": "string" },
+                        "priority": { "type": "string", "enum": ["high", "medium", "low"] }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "content_items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["content_id", "channel", "scheduled_time"],
+              "properties": {
+                "content_id": { "type": "string" },
+                "channel": {
+                  "type": "string",
+                  "enum": ["linkedin", "twitter", "instagram", "facebook", "youtube", "tiktok"]
+                },
+                "scheduled_time": { "type": "string", "format": "date-time" },
+                "content": {
+                  "type": "object",
+                  "properties": {
+                    "text": { "type": "string" },
+                    "media_urls": { "type": "array", "items": { "type": "string", "format": "uri" } },
+                    "hashtags": { "type": "array", "items": { "type": "string" } },
+                    "mentions": { "type": "array", "items": { "type": "string" } },
+                    "link": { "type": "string", "format": "uri" },
+                    "call_to_action": { "type": "string" }
+                  }
+                },
+                "automation_settings": {
+                  "type": "object",
+                  "properties": {
+                    "auto_engage": { "type": "boolean", "default": false },
+                    "respond_to_comments": { "type": "boolean", "default": false },
+                    "repost_if_failed": { "type": "boolean", "default": true },
+                    "optimal_time_adjustment": { "type": "boolean", "default": true },
+                    "a_b_test_enabled": { "type": "boolean", "default": false }
+                  }
+                },
+                "approval_status": {
+                  "type": "string",
+                  "enum": ["pending", "approved", "rejected", "conditional"],
+                  "default": "pending"
+                },
+                "priority": {
+                  "type": "string",
+                  "enum": ["low", "medium", "high", "urgent"],
+                  "default": "medium"
+                }
+              }
+            }
+          }
+        }
+      },
+      "platform_connections": {
+        "type": "object",
+        "patternProperties": {
+          "^(linkedin|twitter|instagram|facebook|youtube|tiktok)$": {
+            "type": "object",
+            "properties": {
+              "connection_id": { "type": "string" },
+              "account_id": { "type": "string" },
+              "rate_limits": {
+                "type": "object",
+                "properties": {
+                  "posts_per_hour": { "type": "integer" },
+                  "posts_per_day": { "type": "integer" },
+                  "api_calls_per_minute": { "type": "integer" }
+                }
+              },
+              "posting_preferences": {
+                "type": "object",
+                "properties": {
+                  "optimal_times": { "type": "array", "items": { "type": "string" } },
+                  "avoid_times": { "type": "array", "items": { "type": "string" } },
+                  "minimum_interval": { "type": "string" }
+                }
+              }
+            }
+          }
+        }
+      },
+      "automation_preferences": {
+        "type": "object",
+        "properties": {
+          "execution_mode": {
+            "type": "string",
+            "enum": ["immediate", "scheduled", "optimal_timing"],
+            "default": "scheduled"
+          },
+          "error_handling": {
+            "type": "string",
+            "enum": ["stop_on_error", "continue_on_error", "retry_with_fallback"],
+            "default": "retry_with_fallback"
+          },
+          "notifications": {
+            "type": "object",
+            "properties": {
+              "success_notifications": { "type": "boolean", "default": false },
+              "error_notifications": { "type": "boolean", "default": true },
+              "summary_reports": { "type": "boolean", "default": true }
+            }
+          },
+          "engagement_monitoring": {
+            "type": "object",
+            "properties": {
+              "enabled": { "type": "boolean", "default": true },
+              "monitor_duration": { "type": "string", "default": "24h" },
+              "alert_thresholds": {
+                "type": "object",
+                "properties": {
+                  "low_engagement": { "type": "number", "default": 0.01 },
+                  "negative_sentiment": { "type": "number", "default": 0.3 },
+                  "spam_detection": { "type": "number", "default": 0.8 }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "execution_id": { "type": "string" },
+      "workspace_id": { "type": "string" },
+      "status": {
+        "type": "string",
+        "enum": ["completed", "partial", "failed", "in_progress"]
+      },
+      "execution_time": { "type": "number" },
+      "execution_results": {
+        "type": "object",
+        "properties": {
+          "total_posts_scheduled": { "type": "integer" },
+          "successful_posts": { "type": "integer" },
+          "failed_posts": { "type": "integer" },
+          "pending_posts": { "type": "integer" },
+          "posts_by_channel": {
+            "type": "object",
+            "patternProperties": {
+              "^(linkedin|twitter|instagram|facebook|youtube|tiktok)$": {
+                "type": "object",
+                "properties": {
+                  "scheduled": { "type": "integer" },
+                  "published": { "type": "integer" },
+                  "failed": { "type": "integer" },
+                  "engagement_metrics": { "type": "object" }
+                }
+              }
+            }
+          },
+          "scheduling_optimizations": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "content_id": { "type": "string" },
+                "original_time": { "type": "string", "format": "date-time" },
+                "optimized_time": { "type": "string", "format": "date-time" },
+                "reason": { "type": "string" },
+                "expected_improvement": { "type": "number" }
+              }
+            }
+          }
+        }
+      },
+      "post_details": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "content_id": { "type": "string" },
+            "channel": { "type": "string" },
+            "status": {
+              "type": "string",
+              "enum": ["scheduled", "published", "failed", "cancelled"]
+            },
+            "scheduled_time": { "type": "string", "format": "date-time" },
+            "actual_publish_time": { "type": "string", "format": "date-time" },
+            "platform_post_id": { "type": "string" },
+            "platform_url": { "type": "string", "format": "uri" },
+            "initial_metrics": {
+              "type": "object",
+              "properties": {
+                "impressions": { "type": "integer" },
+                "engagement": { "type": "integer" },
+                "clicks": { "type": "integer" },
+                "shares": { "type": "integer" },
+                "comments": { "type": "integer" },
+                "reactions": { "type": "integer" }
+              }
+            },
+            "errors": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "error_code": { "type": "string" },
+                  "message": { "type": "string" },
+                  "timestamp": { "type": "string", "format": "date-time" },
+                  "retry_attempted": { "type": "boolean" }
+                }
+              }
+            }
+          }
+        }
+      },
+      "engagement_monitoring": {
+        "type": "object",
+        "properties": {
+          "monitoring_active": { "type": "boolean" },
+          "alerts_triggered": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "content_id": { "type": "string" },
+                "alert_type": { "type": "string" },
+                "severity": { "type": "string" },
+                "message": { "type": "string" },
+                "timestamp": { "type": "string", "format": "date-time" }
+              }
+            }
+          },
+          "performance_summary": {
+            "type": "object",
+            "properties": {
+              "total_engagement": { "type": "integer" },
+              "average_engagement_rate": { "type": "number" },
+              "best_performing_post": { "type": "string" },
+              "worst_performing_post": { "type": "string" },
+              "sentiment_analysis": {
+                "type": "object",
+                "properties": {
+                  "positive": { "type": "number" },
+                  "neutral": { "type": "number" },
+                  "negative": { "type": "number" }
+                }
+              }
+            }
+          }
+        }
+      },
+      "recommendations": {
+        "type": "object",
+        "properties": {
+          "timing_optimizations": { "type": "array", "items": { "type": "string" } },
+          "content_adjustments": { "type": "array", "items": { "type": "string" } },
+          "engagement_strategies": { "type": "array", "items": { "type": "string" } },
+          "platform_specific_tips": { "type": "object" }
+        }
+      },
+      "metadata": {
+        "type": "object",
+        "properties": {
+          "execution_started_at": { "type": "string", "format": "date-time" },
+          "execution_completed_at": { "type": "string", "format": "date-time" },
+          "agent_version": { "type": "string" },
+          "platform_api_versions": { "type": "object" },
+          "rate_limit_status": { "type": "object" }
+        }
+      }
+    }
+  },
+  
+  "environment": {
+    "variables": {
+      "TOOLHUB_API_ENDPOINT": "${TOOLHUB_URL}",
+      "VAULT_ADDR": "${VAULT_ADDR}",
+      "NODE_ENV": "production",
+      "LOG_LEVEL": "info",
+      "AUTOMATION_TIMEOUT": "1800",
+      "MAX_CONCURRENT_POSTS": "10",
+      "ENGAGEMENT_MONITORING_ENABLED": "true",
+      "OPTIMAL_TIMING_ENABLED": "true"
+    },
+    "secrets": [
+      "TOOLHUB_API_KEY",
+      "LINKEDIN_API_CREDENTIALS",
+      "TWITTER_API_CREDENTIALS",
+      "INSTAGRAM_API_CREDENTIALS",
+      "FACEBOOK_API_CREDENTIALS",
+      "YOUTUBE_API_CREDENTIALS",
+      "TIKTOK_API_CREDENTIALS"
+    ]
+  },
+  
+  "monitoring": {
+    "metrics": [
+      {
+        "name": "posts_scheduled",
+        "type": "counter",
+        "labels": ["channel", "status"],
+        "description": "Number of posts scheduled/published"
+      },
+      {
+        "name": "publishing_duration",
+        "type": "histogram",
+        "labels": ["channel"],
+        "description": "Time taken to publish posts"
+      },
+      {
+        "name": "engagement_rate",
+        "type": "gauge",
+        "labels": ["channel", "content_type"],
+        "description": "Engagement rate of published posts"
+      },
+      {
+        "name": "api_errors",
+        "type": "counter",
+        "labels": ["platform", "error_type"],
+        "description": "API errors encountered"
+      },
+      {
+        "name": "optimization_improvements",
+        "type": "histogram",
+        "description": "Performance improvements from timing optimizations"
+      }
+    ],
+    "health_check": {
+      "endpoint": "/health",
+      "interval": "30s",
+      "timeout": "10s",
+      "healthy_threshold": 2,
+      "unhealthy_threshold": 3
+    },
+    "alerts": [
+      {
+        "name": "high_failure_rate",
+        "condition": "sum(rate(posts_scheduled{status=\"failed\"}[5m])) > 0.1",
+        "severity": "critical",
+        "notification": "slack"
+      },
+      {
+        "name": "low_engagement",
+        "condition": "avg(engagement_rate) < 0.02",
+        "severity": "warning",
+        "notification": "email"
+      }
+    ]
+  },
+  
+  "scaling": {
+    "auto_scaling": {
+      "enabled": true,
+      "min_instances": 2,
+      "max_instances": 15,
+      "target_cpu_utilization": 70,
+      "scale_up_cooldown": "180s",
+      "scale_down_cooldown": "300s"
+    },
+    "load_balancing": {
+      "strategy": "least_connections",
+      "health_check_grace_period": "45s"
+    }
+  },
+  
+  "security": {
+    "network_policy": {
+      "egress": [
+        {
+          "to": "toolhub.smm-architect.svc.cluster.local",
+          "ports": [443, 80]
+        },
+        {
+          "to": "vault.vault.svc.cluster.local",
+          "ports": [8200]
+        },
+        {
+          "to": "external",
+          "domains": [
+            "api.linkedin.com",
+            "api.twitter.com",
+            "graph.facebook.com",
+            "graph.instagram.com",
+            "www.googleapis.com",
+            "open-api.tiktok.com"
+          ]
+        }
+      ]
+    },
+    "resource_limits": {
+      "max_file_size": "100MB",
+      "max_network_requests": 5000,
+      "max_execution_time": "1800s"
+    }
+  },
+  
+  "integrations": {
+    "toolhub": {
+      "endpoint": "${TOOLHUB_API_ENDPOINT}",
+      "authentication": "api_key",
+      "operations": [
+        "retrieve_content",
+        "update_post_status",
+        "store_metrics"
+      ]
+    },
+    "vault": {
+      "endpoint": "${VAULT_ADDR}",
+      "authentication": "kubernetes",
+      "mount_paths": [
+        "secret/automation-agent",
+        "secret/social-platforms"
+      ]
+    },
+    "social_platforms": {
+      "linkedin": {
+        "api_version": "v2",
+        "rate_limits": {
+          "posts_per_day": 100,
+          "api_calls_per_hour": 500
+        }
+      },
+      "twitter": {
+        "api_version": "v2",
+        "rate_limits": {
+          "posts_per_day": 300,
+          "api_calls_per_hour": 1500
+        }
+      },
+      "instagram": {
+        "api_version": "v1",
+        "rate_limits": {
+          "posts_per_day": 25,
+          "api_calls_per_hour": 200
+        }
+      }
+    },
+    "analytics": {
+      "providers": ["native_platforms", "google_analytics", "custom_tracking"],
+      "real_time_monitoring": true
+    }
+  },
+  
+  "execution": {
+    "runtime_config": {
+      "node_options": "--max-old-space-size=1536",
+      "worker_threads": true,
+      "cluster_mode": true
+    },
+    "deployment": {
+      "strategy": "rolling_update",
+      "max_unavailable": "33%",
+      "max_surge": "33%"
+    },
+    "restart_policy": {
+      "on_failure": "always",
+      "max_restart_count": 3,
+      "restart_delay": "60s"
+    }
+  }
+}

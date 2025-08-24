@@ -1,0 +1,679 @@
+openapi: 3.0.3
+info:
+  title: ToolHub API
+  description: |
+    ToolHub / MCP-Proxy service for SMM Architect platform.
+    Provides content ingestion, vector search, simulation, rendering, and OAuth integration capabilities.
+  version: v1.0.0
+  contact:
+    name: SMM Architect Team
+    email: dev@smmarchitect.com
+  license:
+    name: Proprietary
+    
+servers:
+  - url: https://toolhub.smmarchitect.com
+    description: Production server
+  - url: https://toolhub-staging.smmarchitect.com  
+    description: Staging server
+  - url: http://localhost:8080
+    description: Development server
+
+security:
+  - VaultToken: []
+  - BearerAuth: []
+
+paths:
+  /ingest/source:
+    post:
+      summary: Ingest a content source (URL, HTML, or file)
+      description: |
+        Ingests content from various sources for brand research and analysis.
+        Supports URLs, raw HTML, and file uploads.
+      operationId: ingestSource
+      security:
+        - VaultToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - workspaceId
+                - sourceType
+              properties:
+                workspaceId:
+                  type: string
+                  description: Target workspace identifier
+                  example: "ws-icblabs-0001"
+                sourceType:
+                  type: string
+                  enum: [url, html, file]
+                  description: Type of content source
+                url:
+                  type: string
+                  format: uri
+                  description: URL to ingest (required if sourceType=url)
+                  example: "https://icblabs.com/about"
+                html:
+                  type: string
+                  description: Raw HTML content (required if sourceType=html)
+                content:
+                  type: string
+                  description: File content or text (required if sourceType=file)
+                metadata:
+                  type: object
+                  description: Additional metadata about the source
+                  properties:
+                    title:
+                      type: string
+                    author:
+                      type: string
+                    publishedAt:
+                      type: string
+                      format: date-time
+                    tags:
+                      type: array
+                      items:
+                        type: string
+            examples:
+              url_source:
+                summary: Ingest from URL
+                value:
+                  workspaceId: "ws-icblabs-0001"
+                  sourceType: "url"
+                  url: "https://icblabs.com/about"
+                  metadata:
+                    title: "About ICB Labs"
+              html_source:
+                summary: Ingest raw HTML
+                value:
+                  workspaceId: "ws-icblabs-0001"
+                  sourceType: "html"
+                  html: "<html><body><h1>Company Info</h1><p>We are a tech company...</p></body></html>"
+      responses:
+        '200':
+          description: Source ingested successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sourceId:
+                    type: string
+                    description: Unique identifier for the ingested source
+                    example: "src-icblabs-about-001"
+                  status:
+                    type: string
+                    enum: [ingested, processing, failed]
+                  extractedFacts:
+                    type: integer
+                    description: Number of facts extracted
+                  processingTime:
+                    type: number
+                    description: Processing time in seconds
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /vector/search:
+    post:
+      summary: Vector similarity search
+      description: |
+        Performs semantic search across ingested content using vector embeddings.
+        Returns the most relevant content pieces based on the query.
+      operationId: vectorSearch
+      security:
+        - VaultToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - workspaceId
+                - query
+              properties:
+                workspaceId:
+                  type: string
+                  description: Workspace to search within
+                query:
+                  type: string
+                  description: Search query (will be embedded automatically)
+                  example: "brand voice and tone guidelines"
+                queryEmbedding:
+                  type: array
+                  items:
+                    type: number
+                  description: Pre-computed query embedding (optional)
+                topK:
+                  type: integer
+                  minimum: 1
+                  maximum: 50
+                  default: 10
+                  description: Number of results to return
+                filters:
+                  type: object
+                  description: Additional filters
+                  properties:
+                    sourceTypes:
+                      type: array
+                      items:
+                        type: string
+                    dateRange:
+                      type: object
+                      properties:
+                        from:
+                          type: string
+                          format: date-time
+                        to:
+                          type: string
+                          format: date-time
+      responses:
+        '200':
+          description: Search results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  results:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        sourceId:
+                          type: string
+                        score:
+                          type: number
+                          minimum: 0
+                          maximum: 1
+                        content:
+                          type: string
+                        metadata:
+                          type: object
+                        spanStart:
+                          type: integer
+                        spanEnd:
+                          type: integer
+                  totalFound:
+                    type: integer
+                  queryTime:
+                    type: number
+                    description: Query execution time in seconds
+
+  /simulate:
+    post:
+      summary: Simulate a workflow execution
+      description: |
+        Runs a simulation of campaign workflow execution without actually publishing content.
+        Returns readiness scores, policy compliance, and execution traces.
+      operationId: simulateWorkflow
+      security:
+        - VaultToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - workspaceId
+                - workflowJson
+              properties:
+                workspaceId:
+                  type: string
+                  description: Target workspace
+                workflowJson:
+                  type: object
+                  description: n8n workflow definition or custom workflow spec
+                dryRun:
+                  type: boolean
+                  default: true
+                  description: Whether to run in dry-run mode (no real API calls)
+                iterations:
+                  type: integer
+                  minimum: 1
+                  maximum: 5000
+                  default: 1000
+                  description: Number of Monte Carlo iterations
+                randomSeed:
+                  type: integer
+                  description: Random seed for deterministic results
+                targetChannels:
+                  type: array
+                  items:
+                    type: string
+                  description: Specific channels to simulate
+      responses:
+        '200':
+          description: Simulation completed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  simulationId:
+                    type: string
+                  readinessScore:
+                    type: number
+                    minimum: 0
+                    maximum: 1
+                  policyPassPct:
+                    type: number
+                    minimum: 0
+                    maximum: 1
+                  citationCoverage:
+                    type: number
+                    minimum: 0
+                    maximum: 1
+                  duplicationRisk:
+                    type: number
+                    minimum: 0
+                    maximum: 1
+                  costEstimateUSD:
+                    type: number
+                  traces:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        nodeId:
+                          type: string
+                        status:
+                          type: string
+                          enum: [ok, warning, error]
+                        durationMs:
+                          type: number
+                        message:
+                          type: string
+                        metadata:
+                          type: object
+                  confidence:
+                    type: object
+                    properties:
+                      interval:
+                        type: object
+                        properties:
+                          lower:
+                            type: number
+                          upper:
+                            type: number
+                      level:
+                        type: number
+        '408':
+          description: Simulation timeout
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /render/job:
+    post:
+      summary: Create a render job for content generation
+      description: |
+        Creates an asynchronous job to render content (images, videos, documents)
+        based on brand guidelines and content specifications.
+      operationId: createRenderJob
+      security:
+        - VaultToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - workspaceId
+                - renderSpec
+              properties:
+                workspaceId:
+                  type: string
+                renderSpec:
+                  type: object
+                  required:
+                    - type
+                    - template
+                  properties:
+                    type:
+                      type: string
+                      enum: [image, video, document, carousel, story]
+                    template:
+                      type: string
+                      description: Template identifier or custom template
+                    content:
+                      type: object
+                      description: Content to render
+                      properties:
+                        text:
+                          type: string
+                        headlines:
+                          type: array
+                          items:
+                            type: string
+                        callToAction:
+                          type: string
+                        assets:
+                          type: array
+                          items:
+                            type: string
+                    dimensions:
+                      type: object
+                      properties:
+                        width:
+                          type: integer
+                        height:
+                          type: integer
+                        format:
+                          type: string
+                          enum: [png, jpg, mp4, pdf, svg]
+                    brandAssets:
+                      type: array
+                      items:
+                        type: string
+                      description: Brand asset IDs to include
+                priority:
+                  type: string
+                  enum: [low, normal, high, urgent]
+                  default: normal
+                callbackUrl:
+                  type: string
+                  format: uri
+                  description: URL to call when job completes
+      responses:
+        '202':
+          description: Render job queued
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  jobId:
+                    type: string
+                    description: Unique job identifier
+                  status:
+                    type: string
+                    enum: [queued, processing, completed, failed]
+                  estimatedCompletionTime:
+                    type: string
+                    format: date-time
+                  queuePosition:
+                    type: integer
+
+  /render/job/{jobId}:
+    get:
+      summary: Get render job status
+      operationId: getRenderJobStatus
+      security:
+        - VaultToken: []
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Job status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  jobId:
+                    type: string
+                  status:
+                    type: string
+                    enum: [queued, processing, completed, failed]
+                  progress:
+                    type: number
+                    minimum: 0
+                    maximum: 1
+                  result:
+                    type: object
+                    properties:
+                      assets:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            assetId:
+                              type: string
+                            url:
+                              type: string
+                            type:
+                              type: string
+                            fingerprint:
+                              type: string
+                  error:
+                    type: string
+                    description: Error message if status is failed
+
+  /oauth/connect:
+    post:
+      summary: Start OAuth connection flow for social media platform
+      description: |
+        Initiates OAuth flow to connect a social media platform account.
+        Returns authorization URL and state token for secure callback handling.
+      operationId: startOAuthFlow
+      security:
+        - VaultToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - workspaceId
+                - provider
+                - redirectUri
+              properties:
+                workspaceId:
+                  type: string
+                provider:
+                  type: string
+                  enum: [linkedin, x, instagram, facebook, youtube, tiktok]
+                redirectUri:
+                  type: string
+                  format: uri
+                  description: Where to redirect after OAuth completion
+                scopes:
+                  type: array
+                  items:
+                    type: string
+                  description: Requested OAuth scopes (provider-specific)
+                accountHint:
+                  type: string
+                  description: Hint for which account to connect (e.g., company page)
+      responses:
+        '200':
+          description: OAuth flow initiated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  authUrl:
+                    type: string
+                    format: uri
+                    description: URL to redirect user for authorization
+                  state:
+                    type: string
+                    description: State token for callback verification
+                  expiresAt:
+                    type: string
+                    format: date-time
+                    description: When the auth URL expires
+
+  /oauth/callback:
+    post:
+      summary: Handle OAuth callback and complete connection
+      operationId: handleOAuthCallback
+      security:
+        - VaultToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - state
+                - code
+              properties:
+                state:
+                  type: string
+                  description: State token from original request
+                code:
+                  type: string
+                  description: Authorization code from provider
+                error:
+                  type: string
+                  description: Error from provider (if any)
+      responses:
+        '200':
+          description: Connection completed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  connectorId:
+                    type: string
+                  status:
+                    type: string
+                    enum: [connected, failed]
+                  accountInfo:
+                    type: object
+                    properties:
+                      accountId:
+                        type: string
+                      displayName:
+                        type: string
+                      profileUrl:
+                        type: string
+                  scopes:
+                    type: array
+                    items:
+                      type: string
+
+  /health:
+    get:
+      summary: Health check endpoint
+      operationId: healthCheck
+      security: []
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [healthy, degraded, unhealthy]
+                  timestamp:
+                    type: string
+                    format: date-time
+                  version:
+                    type: string
+                  checks:
+                    type: object
+                    properties:
+                      database:
+                        type: string
+                      vectorDb:
+                        type: string
+                      vault:
+                        type: string
+
+components:
+  securitySchemes:
+    VaultToken:
+      type: http
+      scheme: bearer
+      bearerFormat: "vault:<token>"
+      description: Vault-issued ephemeral token with workspace scope
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Standard JWT bearer token
+
+  schemas:
+    Error:
+      type: object
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+          description: Error code
+        message:
+          type: string
+          description: Human-readable error message
+        details:
+          type: object
+          description: Additional error details
+        traceId:
+          type: string
+          description: Request trace ID for debugging
+
+  responses:
+    BadRequest:
+      description: Bad request - invalid input
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: "INVALID_INPUT"
+            message: "workspaceId is required"
+            traceId: "req-12345"
+
+    Unauthorized:
+      description: Unauthorized - invalid or missing authentication
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: "UNAUTHORIZED"
+            message: "Invalid or expired token"
+
+    RateLimited:
+      description: Rate limit exceeded
+      headers:
+        Retry-After:
+          schema:
+            type: integer
+          description: Seconds to wait before retrying
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: "RATE_LIMITED"
+            message: "Rate limit exceeded. Try again in 60 seconds."
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+x-rate-limits:
+  ingest: 100 requests per hour per workspace
+  search: 1000 requests per hour per workspace  
+  simulate: 10 requests per hour per workspace
+  render: 50 requests per hour per workspace
+  oauth: 20 requests per hour per workspace

@@ -1,0 +1,406 @@
+name: Performance Testing & SLO Validation
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'services/**'
+      - 'tests/performance/**'
+      - 'scripts/run-performance-tests.sh'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'services/**'
+      - 'tests/performance/**'
+  schedule:
+    # Run performance tests daily at 2 AM UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment for testing'
+        required: true
+        default: 'ci'
+        type: choice
+        options:
+          - ci
+          - staging
+          - production
+      test_type:
+        description: 'Type of performance test to run'
+        required: true
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - slo-only
+          - benchmark-only
+          - load-only
+      update_baselines:
+        description: 'Update performance baselines after successful run'
+        required: false
+        default: false
+        type: boolean
+
+env:
+  NODE_VERSION: '18'
+  ENVIRONMENT: ${{ github.event.inputs.environment || 'ci' }}
+  UPDATE_BASELINES: ${{ github.event.inputs.update_baselines || 'false' }}
+  PERFORMANCE_THRESHOLD: 20
+  SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+  EMAIL_RECIPIENTS: ${{ secrets.EMAIL_RECIPIENTS }}
+
+jobs:
+  setup:
+    name: Setup Performance Testing Environment
+    runs-on: ubuntu-latest
+    outputs:
+      test-matrix: ${{ steps.test-matrix.outputs.matrix }}
+      environment: ${{ steps.config.outputs.environment }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure test environment
+        id: config
+        run: |
+          ENV="${{ env.ENVIRONMENT }}"
+          echo "environment=$ENV" >> $GITHUB_OUTPUT
+          echo "🔧 Environment configured: $ENV"
+
+      - name: Generate test matrix
+        id: test-matrix
+        run: |
+          case "${{ github.event.inputs.test_type || 'all' }}" in
+            "slo-only")
+              MATRIX='{"include":[{"name":"slo","script":"test:slo","timeout":"10"}]}'
+              ;;
+            "benchmark-only")
+              MATRIX='{"include":[{"name":"benchmark","script":"test:benchmark","timeout":"15"}]}'
+              ;;
+            "load-only")
+              MATRIX='{"include":[{"name":"load","script":"test:load","timeout":"20"}]}'
+              ;;
+            *)
+              MATRIX='{"include":[{"name":"slo","script":"test:slo","timeout":"10"},{"name":"benchmark","script":"test:benchmark","timeout":"15"},{"name":"load","script":"test:load","timeout":"20"},{"name":"slo-monitoring","script":"test:slo-monitoring","timeout":"8"}]}'
+              ;;
+          esac
+          echo "matrix=$MATRIX" >> $GITHUB_OUTPUT
+          echo "📋 Test matrix: $MATRIX"
+
+  performance-tests:
+    name: ${{ matrix.name }} Performance Tests
+    runs-on: ubuntu-latest
+    needs: setup
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.setup.outputs.test-matrix) }}
+    timeout-minutes: ${{ fromJson(matrix.timeout) }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: |
+          npm ci
+          npm install -g artillery@latest
+
+      - name: Setup test environment
+        run: |
+          mkdir -p reports/performance
+          mkdir -p tests/performance/baselines
+          chmod +x scripts/run-performance-tests.sh
+
+      - name: Setup Kubernetes cluster (for integration tests)
+        if: matrix.name == 'load'
+        uses: helm/kind-action@v1.8.0
+        with:
+          cluster_name: smm-test-cluster
+          config: |
+            kind: Cluster
+            apiVersion: kind.x-k8s.io/v1alpha4
+            nodes:
+            - role: control-plane
+              kubeadmConfigPatches:
+              - |
+                kind: InitConfiguration
+                nodeRegistration:
+                  kubeletExtraArgs:
+                    node-labels: "ingress-ready=true"
+              extraPortMappings:
+              - containerPort: 80
+                hostPort: 80
+                protocol: TCP
+              - containerPort: 443
+                hostPort: 443
+                protocol: TCP
+
+      - name: Deploy mock services (for load testing)
+        if: matrix.name == 'load'
+        run: |
+          # Deploy mock Model Router service
+          kubectl create deployment model-router --image=nginx:alpine
+          kubectl expose deployment model-router --port=8080 --target-port=80
+          
+          # Deploy mock ToolHub service
+          kubectl create deployment toolhub --image=nginx:alpine  
+          kubectl expose deployment toolhub --port=8080 --target-port=80
+          
+          # Deploy mock n8n service
+          kubectl create deployment n8n --image=nginx:alpine
+          kubectl expose deployment n8n --port=5678 --target-port=80
+          
+          # Wait for services to be ready
+          kubectl wait --for=condition=ready pod -l app=model-router --timeout=120s
+          kubectl wait --for=condition=ready pod -l app=toolhub --timeout=120s
+          kubectl wait --for=condition=ready pod -l app=n8n --timeout=120s
+
+      - name: Load performance baselines
+        run: |
+          # Download baselines from previous successful runs
+          if [ -f "tests/performance/baselines/*.json" ]; then
+            echo "📁 Loading existing baselines..."
+            ls -la tests/performance/baselines/
+          else
+            echo "⚠️ No baselines found, will establish new ones"
+          fi
+
+      - name: Run ${{ matrix.name }} performance tests
+        env:
+          NODE_ENV: ${{ needs.setup.outputs.environment }}
+          PERFORMANCE_TEST_MODE: ${{ matrix.name }}
+          RUN_LOAD_TESTS: ${{ matrix.name == 'load' || matrix.name == 'all' }}
+          RUN_BENCHMARKS: ${{ matrix.name == 'benchmark' || matrix.name == 'all' }}
+          RUN_SLO_TESTS: ${{ matrix.name == 'slo' || matrix.name == 'all' }}
+        run: |
+          echo "🚀 Running ${{ matrix.name }} performance tests..."
+          
+          # Run specific test suite
+          npm run ${{ matrix.script }} || {
+            echo "❌ Performance tests failed"
+            exit 1
+          }
+
+      - name: Analyze performance results
+        if: always()
+        run: |
+          echo "📊 Analyzing performance test results..."
+          
+          # Check for performance regressions
+          if [ -f "reports/performance/benchmark-report-*.json" ]; then
+            REGRESSIONS=$(grep -o "isRegression.*true" reports/performance/benchmark-report-*.json | wc -l || echo "0")
+            echo "PERFORMANCE_REGRESSIONS=$REGRESSIONS" >> $GITHUB_ENV
+            
+            if [ "$REGRESSIONS" -gt "0" ]; then
+              echo "⚠️ $REGRESSIONS performance regressions detected"
+            else
+              echo "✅ No performance regressions detected"
+            fi
+          fi
+          
+          # Check SLO compliance
+          if [ -f "reports/performance/slo-compliance-results-*.json" ]; then
+            FAILED_SLOS=$(jq '.numFailedTests // 0' reports/performance/slo-compliance-results-*.json)
+            echo "FAILED_SLO_COUNT=$FAILED_SLOS" >> $GITHUB_ENV
+            
+            if [ "$FAILED_SLO_COUNT" -gt "0" ]; then
+              echo "❌ $FAILED_SLO_COUNT SLO violations detected"
+            else
+              echo "✅ All SLOs are compliant"
+            fi
+          fi
+
+      - name: Upload performance artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: performance-results-${{ matrix.name }}-${{ github.run_id }}
+          path: |
+            reports/performance/
+            tests/performance/baselines/
+          retention-days: 30
+
+      - name: Update performance baselines
+        if: env.UPDATE_BASELINES == 'true' && success() && env.PERFORMANCE_REGRESSIONS == '0'
+        run: |
+          echo "🔄 Updating performance baselines..."
+          
+          # Update baselines if no regressions and tests passed
+          if [ -d "reports/performance" ]; then
+            cp reports/performance/*-baseline-*.json tests/performance/baselines/ || true
+          fi
+
+      - name: Comment on PR with results
+        if: github.event_name == 'pull_request' && always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+            
+            let comment = `## 🚀 Performance Test Results - ${{ matrix.name }}\n\n`;
+            
+            // Add test summary
+            comment += `**Environment**: ${{ needs.setup.outputs.environment }}\n`;
+            comment += `**Test Type**: ${{ matrix.name }}\n`;
+            comment += `**Status**: ${{ job.status }}\n\n`;
+            
+            // Add regression analysis
+            const regressions = process.env.PERFORMANCE_REGRESSIONS || '0';
+            if (regressions > 0) {
+              comment += `⚠️ **Performance Regressions**: ${regressions} detected\n`;
+            } else {
+              comment += `✅ **Performance**: No regressions detected\n`;
+            }
+            
+            // Add SLO compliance
+            const failedSlos = process.env.FAILED_SLO_COUNT || '0';
+            if (failedSlos > 0) {
+              comment += `❌ **SLO Compliance**: ${failedSlos} violations\n`;
+            } else {
+              comment += `✅ **SLO Compliance**: All SLOs passing\n`;
+            }
+            
+            comment += `\n📊 Detailed results available in [workflow artifacts](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})`;
+            
+            // Post comment
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });
+
+  performance-summary:
+    name: Performance Test Summary
+    runs-on: ubuntu-latest
+    needs: [setup, performance-tests]
+    if: always()
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+
+      - name: Generate performance summary
+        run: |
+          echo "📋 Generating performance test summary..."
+          
+          # Create summary directory
+          mkdir -p reports/summary
+          
+          # Aggregate results from all test runs
+          TOTAL_TESTS=0
+          FAILED_TESTS=0
+          TOTAL_REGRESSIONS=0
+          
+          for artifact_dir in artifacts/performance-results-*; do
+            if [ -d "$artifact_dir" ]; then
+              echo "Processing: $artifact_dir"
+              
+              # Count test results
+              if [ -f "$artifact_dir/reports/performance/slo-compliance-results-*.json" ]; then
+                TESTS=$(jq '.numTotalTests // 0' "$artifact_dir"/reports/performance/slo-compliance-results-*.json)
+                FAILED=$(jq '.numFailedTests // 0' "$artifact_dir"/reports/performance/slo-compliance-results-*.json)
+                TOTAL_TESTS=$((TOTAL_TESTS + TESTS))
+                FAILED_TESTS=$((FAILED_TESTS + FAILED))
+              fi
+              
+              # Count regressions
+              if [ -f "$artifact_dir/reports/performance/benchmark-report-*.json" ]; then
+                REGRESSIONS=$(grep -o "isRegression.*true" "$artifact_dir"/reports/performance/benchmark-report-*.json | wc -l || echo "0")
+                TOTAL_REGRESSIONS=$((TOTAL_REGRESSIONS + REGRESSIONS))
+              fi
+            fi
+          done
+          
+          # Generate summary
+          cat > reports/summary/performance-summary.json << EOF
+          {
+            "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "environment": "${{ needs.setup.outputs.environment }}",
+            "gitRef": "${{ github.ref }}",
+            "gitSha": "${{ github.sha }}",
+            "summary": {
+              "totalTests": $TOTAL_TESTS,
+              "failedTests": $FAILED_TESTS,
+              "successRate": $(echo "scale=2; (($TOTAL_TESTS - $FAILED_TESTS) * 100) / $TOTAL_TESTS" | bc -l || echo "0"),
+              "totalRegressions": $TOTAL_REGRESSIONS,
+              "overallStatus": "$([ $FAILED_TESTS -eq 0 ] && [ $TOTAL_REGRESSIONS -eq 0 ] && echo "PASS" || echo "FAIL")"
+            }
+          }
+          EOF
+          
+          echo "TOTAL_TESTS=$TOTAL_TESTS" >> $GITHUB_ENV
+          echo "FAILED_TESTS=$FAILED_TESTS" >> $GITHUB_ENV
+          echo "TOTAL_REGRESSIONS=$TOTAL_REGRESSIONS" >> $GITHUB_ENV
+
+      - name: Upload summary artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: performance-summary-${{ github.run_id }}
+          path: reports/summary/
+
+      - name: Send Slack notification
+        if: env.SLACK_WEBHOOK_URL
+        uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          channel: '#performance-alerts'
+          webhook_url: ${{ env.SLACK_WEBHOOK_URL }}
+          fields: repo,message,commit,author,action,eventName,ref,workflow
+          custom_payload: |
+            {
+              "attachments": [{
+                "color": "${{ env.FAILED_TESTS == '0' && env.TOTAL_REGRESSIONS == '0' && 'good' || 'danger' }}",
+                "title": "Performance Test Results - ${{ needs.setup.outputs.environment }}",
+                "fields": [
+                  {
+                    "title": "Environment",
+                    "value": "${{ needs.setup.outputs.environment }}",
+                    "short": true
+                  },
+                  {
+                    "title": "Status", 
+                    "value": "${{ env.FAILED_TESTS == '0' && env.TOTAL_REGRESSIONS == '0' && '✅ PASS' || '❌ FAIL' }}",
+                    "short": true
+                  },
+                  {
+                    "title": "Tests",
+                    "value": "${{ env.TOTAL_TESTS }} total, ${{ env.FAILED_TESTS }} failed",
+                    "short": true
+                  },
+                  {
+                    "title": "Regressions",
+                    "value": "${{ env.TOTAL_REGRESSIONS }}",
+                    "short": true
+                  }
+                ]
+              }]
+            }
+
+      - name: Fail if performance issues detected
+        if: env.FAILED_TESTS != '0' || env.TOTAL_REGRESSIONS != '0'
+        run: |
+          echo "❌ Performance issues detected:"
+          echo "  - Failed tests: ${{ env.FAILED_TESTS }}"
+          echo "  - Performance regressions: ${{ env.TOTAL_REGRESSIONS }}"
+          exit 1
+
+      - name: Performance tests passed
+        if: env.FAILED_TESTS == '0' && env.TOTAL_REGRESSIONS == '0'
+        run: |
+          echo "✅ All performance tests passed successfully!"
+          echo "  - Total tests: ${{ env.TOTAL_TESTS }}"
+          echo "  - Environment: ${{ needs.setup.outputs.environment }}"

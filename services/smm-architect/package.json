@@ -1,0 +1,54 @@
+{
+  "name": "smm-architect-service",
+  "version": "1.0.0",
+  "description": "SMM Architect core service using Encore.ts",
+  "main": "src/main.ts",
+  "scripts": {
+    "dev": "encore run",
+    "build": "encore build",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "test:performance": "jest --testPathPattern=performance --runInBand --detectOpenHandles",
+    "test:schema": "jest --testPathPattern=schema",
+    "benchmark": "npm run test:performance -- --verbose --outputFile=jest-performance-results.json",
+    "test:contract": "jest --testNamePattern='pact' --runInBand",
+    "test:model-evaluation": "jest --testNamePattern='model-evaluation' --timeout=300000",
+    "test:drift-detection": "jest --testNamePattern='drift-detection' --timeout=120000",
+    "test:security": "jest --testNamePattern='security' --timeout=180000",
+    "test:schema": "jest --testNamePattern='schema' --timeout=60000",
+    "lint": "eslint src/**/*.ts",
+    "lint:fix": "eslint src/**/*.ts --fix",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "encore.dev": "^1.0.0",
+    "@google-cloud/kms": "^4.0.0",
+    "node-vault": "^0.10.0",
+    "ajv": "^8.12.0",
+    "winston": "^3.11.0",
+    "uuid": "^9.0.0",
+    "date-fns": "^2.30.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/uuid": "^9.0.0",
+    "@types/jest": "^29.5.0",
+    "@typescript-eslint/eslint-plugin": "^6.0.0",
+    "@typescript-eslint/parser": "^6.0.0",
+    "eslint": "^8.50.0",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.1.0",
+    "typescript": "^5.2.0",
+    "@pact-foundation/pact": "^12.1.0",
+    "nock": "^13.3.3"
+  },
+  "keywords": [
+    "smm",
+    "marketing",
+    "automation",
+    "encore",
+    "typescript"
+  ],
+  "license": "UNLICENSED"
+}

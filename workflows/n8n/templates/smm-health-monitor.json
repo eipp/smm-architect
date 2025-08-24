@@ -1,0 +1,203 @@
+{
+  "name": "SMM System Health Monitor",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 5
+            }
+          ]
+        }
+      },
+      "id": "health-check-trigger",
+      "name": "Health Check Schedule",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Define service endpoints to monitor\nconst services = [\n  { name: 'api-gateway', url: 'http://api-gateway.smm-system.svc.cluster.local:8080/health' },\n  { name: 'simulator', url: 'http://simulator.smm-system.svc.cluster.local:8080/health' },\n  { name: 'agent-orchestrator', url: 'http://agent-orchestrator.smm-system.svc.cluster.local:8080/health' },\n  { name: 'audit-service', url: 'http://audit.smm-system.svc.cluster.local:8080/health' },\n  { name: 'model-router', url: 'http://model-router.smm-system.svc.cluster.local:8080/health' }\n];\n\nreturn services.map(service => ({ json: service }));"
+      },
+      "id": "service-list",
+      "name": "Service List",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.url }}",
+        "options": {
+          "timeout": 5000
+        }
+      },
+      "id": "health-check-request",
+      "name": "Health Check Request",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Evaluate health status and create alerts if needed\nconst serviceName = items[0].json.name;\nconst response = items[0].json;\nconst timestamp = new Date().toISOString();\n\nlet status = 'healthy';\nlet alertLevel = 'info';\n\nif (response.statusCode !== 200) {\n  status = 'unhealthy';\n  alertLevel = 'critical';\n} else if (response.responseTime > 5000) {\n  status = 'degraded';\n  alertLevel = 'warning';\n}\n\nconst healthRecord = {\n  service: serviceName,\n  status: status,\n  responseTime: response.responseTime || 0,\n  statusCode: response.statusCode || 0,\n  timestamp: timestamp,\n  alertLevel: alertLevel\n};\n\nreturn [{ json: healthRecord }];"
+      },
+      "id": "health-evaluation",
+      "name": "Health Evaluation",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "alert-condition",
+              "leftValue": "={{ $json.alertLevel }}",
+              "rightValue": "info",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "alert-filter",
+      "name": "Alert Filter",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "url": "http://alertmanager.monitoring.svc.cluster.local:9093/api/v1/alerts",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "alerts",
+              "value": "=[{\"labels\":{\"alertname\":\"ServiceHealthAlert\",\"service\":\"{{ $json.service }}\",\"severity\":\"{{ $json.alertLevel }}\"},\"annotations\":{\"summary\":\"Service {{ $json.service }} health issue\",\"description\":\"Service {{ $json.service }} status: {{ $json.status }}, response time: {{ $json.responseTime }}ms\"}}]"
+            }
+          ]
+        }
+      },
+      "id": "send-alert",
+      "name": "Send Alert",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1340, 200]
+    },
+    {
+      "parameters": {
+        "url": "http://prometheus.monitoring.svc.cluster.local:9090/api/v1/write",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "metric",
+              "value": "smm_service_health{service=\"{{ $json.service }}\",status=\"{{ $json.status }}\"} 1"
+            }
+          ]
+        }
+      },
+      "id": "metrics-export",
+      "name": "Export Metrics",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1120, 500]
+    }
+  ],
+  "connections": {
+    "Health Check Schedule": {
+      "main": [
+        [
+          {
+            "node": "Service List",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Service List": {
+      "main": [
+        [
+          {
+            "node": "Health Check Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Health Check Request": {
+      "main": [
+        [
+          {
+            "node": "Health Evaluation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Health Evaluation": {
+      "main": [
+        [
+          {
+            "node": "Alert Filter",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Export Metrics",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Alert Filter": {
+      "main": [
+        [
+          {
+            "node": "Send Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "createdAt": "2024-01-15T10:00:00.000Z",
+  "updatedAt": "2024-01-15T10:00:00.000Z",
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "meta": {
+    "templateId": "smm-health-monitor"
+  },
+  "pinData": {},
+  "versionId": "1",
+  "triggerCount": 1,
+  "tags": [
+    {
+      "createdAt": "2024-01-15T10:00:00.000Z",
+      "updatedAt": "2024-01-15T10:00:00.000Z",
+      "id": "smm-monitoring",
+      "name": "SMM Monitoring"
+    }
+  ]
+}

@@ -1,0 +1,328 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "DecisionCard",
+  "description": "User-facing summary for campaign approval decisions with enhanced tracking and impact estimation",
+  "type": "object",
+  "properties": {
+    "actionId": {
+      "type": "string",
+      "description": "Unique identifier for this decision action"
+    },
+    "title": {
+      "type": "string",
+      "description": "Human-readable title for the campaign decision"
+    },
+    "one_line": {
+      "type": "string",
+      "description": "One-line summary of the campaign proposal"
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When this decision card was created"
+    },
+    "expiresAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When this decision card expires"
+    },
+    "workspaceId": {
+      "type": "string",
+      "description": "Associated workspace identifier"
+    },
+    "campaignId": {
+      "type": "string",
+      "description": "Associated campaign identifier"
+    },
+    "readiness_score": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "description": "Overall readiness score (0-1)"
+    },
+    "policy_pass_pct": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "description": "Percentage of policy checks that passed"
+    },
+    "citation_coverage": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "description": "Percentage of claims with proper citations"
+    },
+    "duplicate_risk": {
+      "type": "string",
+      "enum": ["low", "medium", "high"],
+      "description": "Risk level for content duplication"
+    },
+    "estimatedImpact": {
+      "type": "object",
+      "properties": {
+        "reach": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Estimated audience reach"
+        },
+        "impressions": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Estimated total impressions"
+        },
+        "ctr": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Estimated click-through rate"
+        },
+        "conversions": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Estimated conversions"
+        },
+        "engagement_rate": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Estimated engagement rate"
+        },
+        "confidence_interval": {
+          "type": "object",
+          "properties": {
+            "lower": {
+              "type": "number",
+              "description": "Lower bound of confidence interval"
+            },
+            "upper": {
+              "type": "number", 
+              "description": "Upper bound of confidence interval"
+            },
+            "confidence_level": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1,
+              "default": 0.95,
+              "description": "Confidence level (e.g., 0.95 for 95%)"
+            }
+          },
+          "required": ["lower", "upper"],
+          "description": "Statistical confidence interval for estimates"
+        }
+      },
+      "required": ["reach", "ctr", "conversions"],
+      "description": "Estimated campaign impact metrics"
+    },
+    "costBreakdown": {
+      "type": "object",
+      "properties": {
+        "paidAds": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Cost for paid advertising"
+        },
+        "llmModelSpend": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Cost for LLM model usage"
+        },
+        "rendering": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Cost for content rendering and generation"
+        },
+        "thirdPartyServices": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Cost for third-party services"
+        },
+        "total": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Total estimated cost"
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$",
+          "description": "Currency code (ISO 4217)"
+        },
+        "timeframe": {
+          "type": "string",
+          "enum": ["daily", "weekly", "monthly", "campaign_total"],
+          "description": "Timeframe for these costs"
+        }
+      },
+      "required": ["paidAds", "llmModelSpend", "rendering", "thirdPartyServices", "total", "currency"],
+      "description": "Detailed cost breakdown for the campaign"
+    },
+    "primary_action": {
+      "type": "object",
+      "properties": {
+        "label": {
+          "type": "string",
+          "description": "Display text for the primary action button"
+        },
+        "action": {
+          "type": "string",
+          "enum": ["approve_promotion", "reject_promotion", "request_changes", "schedule_review", "escalate"],
+          "description": "Action to be taken"
+        },
+        "payload": {
+          "type": "object",
+          "description": "Additional data needed for the action"
+        },
+        "requiresConfirmation": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether this action requires additional confirmation"
+        }
+      },
+      "required": ["label", "action"],
+      "description": "Primary action available for this decision"
+    },
+    "secondary_actions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "label": {
+            "type": "string"
+          },
+          "action": {
+            "type": "string"
+          },
+          "payload": {
+            "type": "object"
+          }
+        },
+        "required": ["label", "action"]
+      },
+      "description": "Additional actions available"
+    },
+    "provenance": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Key sources used for this campaign with exact spans"
+    },
+    "escalations": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Required escalations or approvals"
+    },
+    "riskFactors": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": ["policy", "budget", "content", "legal", "technical", "reputation"]
+          },
+          "level": {
+            "type": "string",
+            "enum": ["low", "medium", "high", "critical"]
+          },
+          "description": {
+            "type": "string"
+          },
+          "mitigation": {
+            "type": "string",
+            "description": "Suggested mitigation strategy"
+          }
+        },
+        "required": ["type", "level", "description"]
+      },
+      "description": "Identified risk factors and mitigations"
+    },
+    "simulationResults": {
+      "type": "object",
+      "properties": {
+        "runId": {
+          "type": "string",
+          "description": "Simulation run identifier"
+        },
+        "iterations": {
+          "type": "integer",
+          "description": "Number of simulation iterations performed"
+        },
+        "successRate": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Percentage of successful simulation runs"
+        },
+        "averageExecutionTime": {
+          "type": "number",
+          "description": "Average execution time in seconds"
+        },
+        "keyMetrics": {
+          "type": "object",
+          "description": "Key metrics from simulation"
+        }
+      },
+      "required": ["runId", "iterations", "successRate"],
+      "description": "Results from campaign simulation"
+    },
+    "approvalChain": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "role": {
+            "type": "string",
+            "description": "Role required for approval"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["pending", "approved", "rejected", "skipped"]
+          },
+          "approvedBy": {
+            "type": "string",
+            "description": "Principal who provided approval"
+          },
+          "approvedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "comments": {
+            "type": "string"
+          }
+        },
+        "required": ["role", "status"]
+      },
+      "description": "Chain of approvals required and their status"
+    },
+    "metadata": {
+      "type": "object",
+      "properties": {
+        "generatedBy": {
+          "type": "string",
+          "description": "Service/agent that generated this decision card"
+        },
+        "version": {
+          "type": "string",
+          "description": "Version of the decision card format"
+        },
+        "correlationId": {
+          "type": "string",
+          "description": "Correlation ID for tracking across services"
+        }
+      },
+      "description": "Metadata about the decision card"
+    }
+  },
+  "required": [
+    "actionId",
+    "title",
+    "one_line", 
+    "createdAt",
+    "expiresAt",
+    "readiness_score",
+    "primary_action"
+  ],
+  "additionalProperties": false
+}

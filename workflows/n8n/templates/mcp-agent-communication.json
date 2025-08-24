@@ -1,0 +1,492 @@
+{
+  "name": "MCP Agent Communication",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "mcp-agent-communicate",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "mcp-agent-webhook",
+      "name": "MCP Agent Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [240, 300],
+      "webhookId": "mcp-agent-communication"
+    },
+    {
+      "parameters": {
+        "functionCode": "// Validate MCP agent communication request\nconst request = items[0].json;\n\nif (!request.agentType || !request.task) {\n  throw new Error('Missing required fields: agentType and task');\n}\n\nif (!['research', 'creative', 'legal', 'planner', 'publisher'].includes(request.agentType)) {\n  throw new Error('Invalid agent type');\n}\n\nconst mcpAgentRequest = {\n  ...request,\n  protocol: 'mcp-2.0',\n  requestId: `mcp-agent-${Date.now()}`,\n  timestamp: new Date().toISOString(),\n  workspace: {\n    id: request.workspaceId || 'default',\n    tenant: request.tenantId || 'default'\n  },\n  routing: {\n    preferredModels: request.preferredModels || [],\n    fallbackStrategy: request.fallbackStrategy || 'best_available',\n    qualityThreshold: request.qualityThreshold || 0.8\n  }\n};\n\nreturn [{ json: mcpAgentRequest }];"
+      },
+      "id": "mcp-agent-validation",
+      "name": "MCP Agent Validation",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "url": "http://model-router.smm-system.svc.cluster.local:8080/api/agents/{{ $json.agentType }}/preferences",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth"
+      },
+      "id": "get-agent-preferences",
+      "name": "Get Agent Preferences",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Determine optimal model for agent task\nconst agentRequest = items[0].json;\nconst agentPrefs = items[1] ? items[1].json : {};\n\nconst modelSelection = {\n  agentType: agentRequest.agentType,\n  task: agentRequest.task,\n  selectedModel: null,\n  routingReason: '',\n  fallbackModels: []\n};\n\n// Priority: user preferred -> agent preferred -> system default\nif (agentRequest.routing.preferredModels.length > 0) {\n  modelSelection.selectedModel = agentRequest.routing.preferredModels[0];\n  modelSelection.routingReason = 'user_preference';\n} else if (agentPrefs.preferredModels && agentPrefs.preferredModels.length > 0) {\n  modelSelection.selectedModel = agentPrefs.preferredModels[0];\n  modelSelection.routingReason = 'agent_preference';\n  modelSelection.fallbackModels = agentPrefs.fallbackModels || [];\n} else {\n  // Default model mapping\n  const defaultModels = {\n    'research': 'claude-3-sonnet',\n    'creative': 'gpt-4-creative',\n    'legal': 'claude-3-opus',\n    'planner': 'gpt-4-turbo',\n    'publisher': 'gpt-3.5-turbo'\n  };\n  modelSelection.selectedModel = defaultModels[agentRequest.agentType] || 'gpt-4';\n  modelSelection.routingReason = 'system_default';\n}\n\nreturn [{ json: { ...agentRequest, modelSelection } }];"
+      },
+      "id": "model-selection-logic",
+      "name": "Model Selection Logic",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "url": "http://model-router.smm-system.svc.cluster.local:8080/api/route",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "id",
+              "value": "={{ $json.requestId }}"
+            },
+            {
+              "name": "agentType",
+              "value": "={{ $json.agentType }}"
+            },
+            {
+              "name": "modelId",
+              "value": "={{ $json.modelSelection.selectedModel }}"
+            },
+            {
+              "name": "task",
+              "value": "={{ JSON.stringify($json.task) }}"
+            },
+            {
+              "name": "parameters",
+              "value": "={{ JSON.stringify($json.routing) }}"
+            },
+            {
+              "name": "metadata",
+              "value": "={{ JSON.stringify({ workspace: $json.workspace, protocol: 'mcp-2.0' }) }}"
+            }
+          ]
+        }
+      },
+      "id": "route-to-model",
+      "name": "Route to Model",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Check if routing was successful\nconst routingResult = items[0].json;\n\nif (routingResult.status !== 'success') {\n  throw new Error(`Model routing failed: ${routingResult.error || 'Unknown error'}`);\n}\n\nconst taskExecution = {\n  requestId: routingResult.requestId,\n  modelId: routingResult.modelId,\n  agentType: routingResult.agentType,\n  executionStarted: new Date().toISOString(),\n  modelEndpoint: routingResult.endpoint,\n  expectedLatency: routingResult.expectedLatency || 30000\n};\n\nreturn [{ json: { ...routingResult, taskExecution } }];"
+      },
+      "id": "routing-validation",
+      "name": "Routing Validation",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1340, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "agent-type-condition",
+              "leftValue": "={{ $json.agentType }}",
+              "rightValue": "research",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "id": "agent-type-router",
+      "name": "Agent Type Router",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [1560, 300]
+    },
+    {
+      "parameters": {
+        "url": "{{ $json.modelEndpoint }}/research",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "query",
+              "value": "={{ $json.task.query }}"
+            },
+            {
+              "name": "scope",
+              "value": "={{ $json.task.scope || 'comprehensive' }}"
+            },
+            {
+              "name": "sources",
+              "value": "={{ JSON.stringify($json.task.sources || ['web', 'academic', 'industry']) }}"
+            },
+            {
+              "name": "outputFormat",
+              "value": "structured_report"
+            },
+            {
+              "name": "mcpMetadata",
+              "value": "={{ JSON.stringify({ requestId: $json.requestId, agentType: $json.agentType }) }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "research-agent-execution",
+      "name": "Research Agent Execution",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1780, 150]
+    },
+    {
+      "parameters": {
+        "url": "{{ $json.modelEndpoint }}/creative",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "brief",
+              "value": "={{ JSON.stringify($json.task.brief) }}"
+            },
+            {
+              "name": "brandGuidelines",
+              "value": "={{ JSON.stringify($json.task.brandGuidelines) }}"
+            },
+            {
+              "name": "platforms",
+              "value": "={{ JSON.stringify($json.task.platforms) }}"
+            },
+            {
+              "name": "contentTypes",
+              "value": "={{ JSON.stringify($json.task.contentTypes || ['text', 'image_prompt']) }}"
+            },
+            {
+              "name": "mcpMetadata",
+              "value": "={{ JSON.stringify({ requestId: $json.requestId, agentType: $json.agentType }) }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 90000
+        }
+      },
+      "id": "creative-agent-execution",
+      "name": "Creative Agent Execution",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1780, 250]
+    },
+    {
+      "parameters": {
+        "url": "{{ $json.modelEndpoint }}/legal",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "content",
+              "value": "={{ JSON.stringify($json.task.content) }}"
+            },
+            {
+              "name": "jurisdiction",
+              "value": "={{ $json.task.jurisdiction || 'US' }}"
+            },
+            {
+              "name": "complianceFrameworks",
+              "value": "={{ JSON.stringify($json.task.complianceFrameworks || ['FTC', 'GDPR', 'CCPA']) }}"
+            },
+            {
+              "name": "riskTolerance",
+              "value": "={{ $json.task.riskTolerance || 'low' }}"
+            },
+            {
+              "name": "mcpMetadata",
+              "value": "={{ JSON.stringify({ requestId: $json.requestId, agentType: $json.agentType }) }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 45000
+        }
+      },
+      "id": "legal-agent-execution",
+      "name": "Legal Agent Execution",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1780, 350]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Process agent execution results\nconst result = items[0].json;\nconst originalRequest = result.mcpMetadata || {};\n\n// Standardize response format across agent types\nconst mcpAgentResponse = {\n  protocol: 'mcp-2.0',\n  requestId: originalRequest.requestId,\n  agentType: originalRequest.agentType,\n  status: result.status || 'completed',\n  timestamp: new Date().toISOString(),\n  executionTime: Date.now() - new Date(result.executionStarted || Date.now()).getTime(),\n  output: {\n    primary: result.output || result.content || result.analysis,\n    metadata: {\n      confidence: result.confidence || 0.8,\n      sources: result.sources || [],\n      qualityScore: result.qualityScore || 0.8,\n      complianceStatus: result.complianceStatus || 'unknown'\n    },\n    citations: result.citations || [],\n    recommendations: result.recommendations || []\n  },\n  performance: {\n    latency: result.latency || 0,\n    tokensUsed: result.tokensUsed || 0,\n    cost: result.cost || 0\n  },\n  quality: {\n    coherence: result.coherence || 0.8,\n    relevance: result.relevance || 0.8,\n    accuracy: result.accuracy || 0.8,\n    completeness: result.completeness || 0.8\n  }\n};\n\nreturn [{ json: mcpAgentResponse }];"
+      },
+      "id": "mcp-agent-result-processor",
+      "name": "MCP Agent Result Processor",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [2000, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Validate agent output quality\nconst agentResult = items[0].json;\nconst qualityThresholds = {\n  coherence: 0.7,\n  relevance: 0.7,\n  accuracy: 0.8,\n  completeness: 0.6,\n  overallConfidence: 0.7\n};\n\nconst qualityValidation = {\n  passed: true,\n  issues: [],\n  score: 0,\n  recommendation: 'accept'\n};\n\n// Check individual quality metrics\nObject.keys(qualityThresholds).forEach(metric => {\n  const value = agentResult.quality[metric] || agentResult.output.metadata.confidence;\n  const threshold = qualityThresholds[metric];\n  \n  if (value < threshold) {\n    qualityValidation.passed = false;\n    qualityValidation.issues.push(`${metric} below threshold: ${value} < ${threshold}`);\n  }\n});\n\n// Calculate overall quality score\nconst qualityValues = Object.values(agentResult.quality).filter(v => typeof v === 'number');\nqualityValidation.score = qualityValues.reduce((sum, val) => sum + val, 0) / qualityValues.length;\n\n// Determine recommendation\nif (!qualityValidation.passed) {\n  qualityValidation.recommendation = qualityValidation.score > 0.5 ? 'retry' : 'reject';\n}\n\nreturn [{ json: { ...agentResult, qualityValidation } }];"
+      },
+      "id": "quality-validation",
+      "name": "Quality Validation",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [2220, 300]
+    },
+    {
+      "parameters": {
+        "url": "http://audit.smm-system.svc.cluster.local:8080/log-agent-execution",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "requestId",
+              "value": "={{ $json.requestId }}"
+            },
+            {
+              "name": "agentType",
+              "value": "={{ $json.agentType }}"
+            },
+            {
+              "name": "modelId",
+              "value": "={{ $json.modelId }}"
+            },
+            {
+              "name": "qualityValidation",
+              "value": "={{ JSON.stringify($json.qualityValidation) }}"
+            },
+            {
+              "name": "performance",
+              "value": "={{ JSON.stringify($json.performance) }}"
+            },
+            {
+              "name": "mcpProtocol",
+              "value": "mcp-2.0"
+            }
+          ]
+        }
+      },
+      "id": "audit-logging",
+      "name": "Audit Logging",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [2440, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "allIncomingItems",
+        "options": {}
+      },
+      "id": "mcp-agent-response",
+      "name": "MCP Agent Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [2660, 300]
+    }
+  ],
+  "connections": {
+    "MCP Agent Webhook": {
+      "main": [
+        [
+          {
+            "node": "MCP Agent Validation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "MCP Agent Validation": {
+      "main": [
+        [
+          {
+            "node": "Get Agent Preferences",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Agent Preferences": {
+      "main": [
+        [
+          {
+            "node": "Model Selection Logic",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Model Selection Logic": {
+      "main": [
+        [
+          {
+            "node": "Route to Model",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route to Model": {
+      "main": [
+        [
+          {
+            "node": "Routing Validation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Routing Validation": {
+      "main": [
+        [
+          {
+            "node": "Agent Type Router",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agent Type Router": {
+      "main": [
+        [
+          {
+            "node": "Research Agent Execution",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Creative Agent Execution",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Legal Agent Execution",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Research Agent Execution": {
+      "main": [
+        [
+          {
+            "node": "MCP Agent Result Processor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Creative Agent Execution": {
+      "main": [
+        [
+          {
+            "node": "MCP Agent Result Processor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Legal Agent Execution": {
+      "main": [
+        [
+          {
+            "node": "MCP Agent Result Processor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "MCP Agent Result Processor": {
+      "main": [
+        [
+          {
+            "node": "Quality Validation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Quality Validation": {
+      "main": [
+        [
+          {
+            "node": "Audit Logging",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Audit Logging": {
+      "main": [
+        [
+          {
+            "node": "MCP Agent Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "createdAt": "2024-01-15T10:00:00.000Z",
+  "updatedAt": "2024-01-15T10:00:00.000Z",
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "meta": {
+    "templateId": "mcp-agent-communication"
+  },
+  "pinData": {},
+  "versionId": "1",
+  "triggerCount": 1,
+  "tags": [
+    {
+      "createdAt": "2024-01-15T10:00:00.000Z",
+      "updatedAt": "2024-01-15T10:00:00.000Z",
+      "id": "mcp-integration",
+      "name": "MCP Integration"
+    }
+  ]
+}

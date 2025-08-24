@@ -1,0 +1,490 @@
+{
+  "name": "MCP Model Evaluation",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "mcp-evaluate",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "mcp-webhook",
+      "name": "MCP Evaluation Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [240, 300],
+      "webhookId": "mcp-evaluation-trigger"
+    },
+    {
+      "parameters": {
+        "functionCode": "// Validate MCP evaluation request\nconst request = items[0].json;\n\nif (!request.modelId || !request.evaluationType) {\n  throw new Error('Missing required fields: modelId and evaluationType');\n}\n\nif (!['golden_dataset', 'ab_test', 'drift_detection', 'performance_benchmark'].includes(request.evaluationType)) {\n  throw new Error('Invalid evaluation type');\n}\n\nconst mcpRequest = {\n  ...request,\n  protocol: 'mcp-2.0',\n  requestId: `mcp-eval-${Date.now()}`,\n  timestamp: new Date().toISOString(),\n  timeout: request.timeout || 300000\n};\n\nreturn [{ json: mcpRequest }];"
+      },
+      "id": "mcp-validation",
+      "name": "MCP Request Validation",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "url": "http://model-router.smm-system.svc.cluster.local:8080/api/models/{{ $json.modelId }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "model-metadata-fetch",
+      "name": "Model Metadata Fetch",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "evaluation-type-condition",
+              "leftValue": "={{ $json.evaluationType }}",
+              "rightValue": "golden_dataset",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "id": "evaluation-router",
+      "name": "Evaluation Type Router",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "url": "http://model-router.smm-system.svc.cluster.local:8080/api/evaluations/golden-dataset",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "modelId",
+              "value": "={{ $json.modelId }}"
+            },
+            {
+              "name": "datasetId",
+              "value": "={{ $json.datasetId || 'default-golden' }}"
+            },
+            {
+              "name": "mcpRequest",
+              "value": "={{ JSON.stringify($json) }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 300000
+        }
+      },
+      "id": "golden-dataset-eval",
+      "name": "Golden Dataset Evaluation",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1120, 200]
+    },
+    {
+      "parameters": {
+        "url": "http://model-router.smm-system.svc.cluster.local:8080/api/evaluations/ab-test",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "modelAId",
+              "value": "={{ $json.modelId }}"
+            },
+            {
+              "name": "modelBId",
+              "value": "={{ $json.comparisonModelId }}"
+            },
+            {
+              "name": "testConfig",
+              "value": "={{ JSON.stringify($json.testConfig) }}"
+            },
+            {
+              "name": "mcpRequest",
+              "value": "={{ JSON.stringify($json) }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 300000
+        }
+      },
+      "id": "ab-test-eval",
+      "name": "A/B Test Evaluation",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "url": "http://model-router.smm-system.svc.cluster.local:8080/api/evaluations/drift-detection",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "modelId",
+              "value": "={{ $json.modelId }}"
+            },
+            {
+              "name": "timeWindow",
+              "value": "={{ $json.timeWindow || '24h' }}"
+            },
+            {
+              "name": "baselineId",
+              "value": "={{ $json.baselineId }}"
+            },
+            {
+              "name": "mcpRequest",
+              "value": "={{ JSON.stringify($json) }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 180000
+        }
+      },
+      "id": "drift-detection-eval",
+      "name": "Drift Detection Evaluation",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1120, 400]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Process MCP evaluation results\nconst result = items[0].json;\nconst originalRequest = result.mcpRequest || {};\n\nconst mcpResponse = {\n  protocol: 'mcp-2.0',\n  requestId: originalRequest.requestId,\n  modelId: originalRequest.modelId,\n  evaluationType: originalRequest.evaluationType,\n  status: result.status || 'completed',\n  timestamp: new Date().toISOString(),\n  results: {\n    overall_score: result.overallScore || result.score,\n    metrics: result.metrics || {},\n    recommendations: result.recommendations || [],\n    quality_assessment: {\n      accuracy: result.accuracy,\n      latency: result.latency,\n      cost_efficiency: result.costEfficiency,\n      reliability: result.reliability\n    },\n    compliance: {\n      safety_check: result.safetyCheck || true,\n      bias_check: result.biasCheck || true,\n      content_policy: result.contentPolicy || true\n    }\n  },\n  metadata: {\n    evaluation_duration: result.evaluationDuration,\n    samples_tested: result.samplesTested,\n    confidence_interval: result.confidenceInterval\n  }\n};\n\nreturn [{ json: mcpResponse }];"
+      },
+      "id": "mcp-result-processor",
+      "name": "MCP Result Processor",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1340, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Determine if model should be approved for deployment\nconst mcpResult = items[0].json;\nconst thresholds = {\n  overall_score: 0.8,\n  accuracy: 0.85,\n  latency: 2000, // ms\n  cost_efficiency: 0.7,\n  reliability: 0.95\n};\n\nconst results = mcpResult.results;\nconst qualityCheck = results.quality_assessment;\nconst complianceCheck = results.compliance;\n\nconst approvalDecision = {\n  approved: (\n    results.overall_score >= thresholds.overall_score &&\n    qualityCheck.accuracy >= thresholds.accuracy &&\n    qualityCheck.latency <= thresholds.latency &&\n    qualityCheck.cost_efficiency >= thresholds.cost_efficiency &&\n    qualityCheck.reliability >= thresholds.reliability &&\n    complianceCheck.safety_check &&\n    complianceCheck.bias_check &&\n    complianceCheck.content_policy\n  ),\n  reasons: [],\n  nextActions: []\n};\n\n// Add specific failure reasons\nif (results.overall_score < thresholds.overall_score) {\n  approvalDecision.reasons.push('Overall score below threshold');\n}\nif (qualityCheck.accuracy < thresholds.accuracy) {\n  approvalDecision.reasons.push('Accuracy below minimum requirement');\n}\nif (qualityCheck.latency > thresholds.latency) {\n  approvalDecision.reasons.push('Latency exceeds maximum allowed');\n}\nif (!complianceCheck.safety_check) {\n  approvalDecision.reasons.push('Safety compliance check failed');\n}\n\n// Add recommended actions\nif (approvalDecision.approved) {\n  approvalDecision.nextActions.push('Model approved for deployment');\n  approvalDecision.nextActions.push('Proceed with canary deployment');\n} else {\n  approvalDecision.nextActions.push('Model requires improvement');\n  approvalDecision.nextActions.push('Review evaluation metrics and retrain');\n}\n\nreturn [{ json: { ...mcpResult, approvalDecision } }];"
+      },
+      "id": "approval-decision",
+      "name": "Approval Decision Engine",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1560, 300]
+    },
+    {
+      "parameters": {
+        "url": "http://model-router.smm-system.svc.cluster.local:8080/api/models/{{ $json.modelId }}/status",
+        "sendBody": true,
+        "httpMethod": "PATCH",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "evaluationResult",
+              "value": "={{ JSON.stringify($json) }}"
+            },
+            {
+              "name": "approved",
+              "value": "={{ $json.approvalDecision.approved }}"
+            },
+            {
+              "name": "timestamp",
+              "value": "={{ $json.timestamp }}"
+            }
+          ]
+        }
+      },
+      "id": "update-model-status",
+      "name": "Update Model Status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1780, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "approved-condition",
+              "leftValue": "={{ $json.approvalDecision.approved }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equal"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "deployment-decision",
+      "name": "Deployment Decision",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [2000, 300]
+    },
+    {
+      "parameters": {
+        "url": "http://model-router.smm-system.svc.cluster.local:8080/api/canary-deployments",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "name",
+              "value": "MCP Evaluated Model - {{ $json.modelId }}"
+            },
+            {
+              "name": "productionModelId",
+              "value": "{{ $json.currentProductionModel || 'default-model' }}"
+            },
+            {
+              "name": "canaryModelId",
+              "value": "={{ $json.modelId }}"
+            },
+            {
+              "name": "trafficSplit",
+              "value": "{\"production\": 95, \"canary\": 5}"
+            },
+            {
+              "name": "createdBy",
+              "value": "mcp-evaluation-workflow"
+            }
+          ]
+        }
+      },
+      "id": "trigger-canary-deployment",
+      "name": "Trigger Canary Deployment",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [2220, 200]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Send notification for rejected model\nconst result = items[0].json;\n\nconst notification = {\n  type: 'model_evaluation_failed',\n  modelId: result.modelId,\n  reasons: result.approvalDecision.reasons,\n  nextActions: result.approvalDecision.nextActions,\n  timestamp: result.timestamp,\n  severity: 'warning'\n};\n\nreturn [{ json: notification }];"
+      },
+      "id": "rejection-notification",
+      "name": "Rejection Notification",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [2220, 400]
+    },
+    {
+      "parameters": {
+        "respondWith": "allIncomingItems",
+        "options": {}
+      },
+      "id": "mcp-response",
+      "name": "MCP Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [2440, 300]
+    }
+  ],
+  "connections": {
+    "MCP Evaluation Webhook": {
+      "main": [
+        [
+          {
+            "node": "MCP Request Validation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "MCP Request Validation": {
+      "main": [
+        [
+          {
+            "node": "Model Metadata Fetch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Model Metadata Fetch": {
+      "main": [
+        [
+          {
+            "node": "Evaluation Type Router",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Evaluation Type Router": {
+      "main": [
+        [
+          {
+            "node": "Golden Dataset Evaluation",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "A/B Test Evaluation",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Drift Detection Evaluation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Golden Dataset Evaluation": {
+      "main": [
+        [
+          {
+            "node": "MCP Result Processor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "A/B Test Evaluation": {
+      "main": [
+        [
+          {
+            "node": "MCP Result Processor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Drift Detection Evaluation": {
+      "main": [
+        [
+          {
+            "node": "MCP Result Processor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "MCP Result Processor": {
+      "main": [
+        [
+          {
+            "node": "Approval Decision Engine",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Approval Decision Engine": {
+      "main": [
+        [
+          {
+            "node": "Update Model Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Model Status": {
+      "main": [
+        [
+          {
+            "node": "Deployment Decision",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Deployment Decision": {
+      "main": [
+        [
+          {
+            "node": "Trigger Canary Deployment",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Rejection Notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Trigger Canary Deployment": {
+      "main": [
+        [
+          {
+            "node": "MCP Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Rejection Notification": {
+      "main": [
+        [
+          {
+            "node": "MCP Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "createdAt": "2024-01-15T10:00:00.000Z",
+  "updatedAt": "2024-01-15T10:00:00.000Z",
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "meta": {
+    "templateId": "mcp-model-evaluation"
+  },
+  "pinData": {},
+  "versionId": "1",
+  "triggerCount": 1,
+  "tags": [
+    {
+      "createdAt": "2024-01-15T10:00:00.000Z",
+      "updatedAt": "2024-01-15T10:00:00.000Z",
+      "id": "mcp-integration",
+      "name": "MCP Integration"
+    }
+  ]
+}

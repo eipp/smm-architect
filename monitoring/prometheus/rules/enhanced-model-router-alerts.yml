@@ -1,0 +1,294 @@
+groups:
+  - name: smm_model_router_alerts
+    rules:
+      # Model Router Service Health
+      - alert: SMM_ModelRouterDown
+        expr: up{job="model-router"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          team: platform
+          service: model-router
+          component: core
+        annotations:
+          summary: "Model Router Service is down"
+          description: "Model Router Service has been down for more than 2 minutes. All AI model routing is affected."
+          runbook_url: "https://wiki.smm-architect.com/runbooks/model-router-down"
+          dashboard_url: "https://grafana.smm-architect.com/d/smm-model-router"
+
+      - alert: SMM_ModelRouterHighLatency
+        expr: histogram_quantile(0.95, rate(model_router_request_duration_seconds_bucket[5m])) > 5
+        for: 10m
+        labels:
+          severity: warning
+          team: platform
+          service: model-router
+          component: routing
+        annotations:
+          summary: "High latency in Model Router Service"
+          description: "95th percentile latency is {{ $value }}s, exceeding 5s threshold."
+          runbook_url: "https://wiki.smm-architect.com/runbooks/model-router-latency"
+
+      - alert: SMM_ModelRouterHighErrorRate
+        expr: rate(model_router_requests_total{status="error"}[5m]) / rate(model_router_requests_total[5m]) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+          service: model-router
+          component: routing
+        annotations:
+          summary: "High error rate in Model Router Service"
+          description: "Error rate is {{ $value | humanizePercentage }} over the last 5 minutes."
+
+      # Model Health Alerts
+      - alert: SMM_ModelHealthDegraded
+        expr: model_router_model_health_score < 60
+        for: 15m
+        labels:
+          severity: warning
+          team: ml
+          service: model-router
+          component: model-health
+        annotations:
+          summary: "Model {{ $labels.model_id }} health degraded"
+          description: "Model {{ $labels.model_id }} health score is {{ $value }}, below 60% threshold."
+          runbook_url: "https://wiki.smm-architect.com/runbooks/model-health-degraded"
+
+      - alert: SMM_ModelHealthCritical
+        expr: model_router_model_health_score < 30
+        for: 5m
+        labels:
+          severity: critical
+          team: ml
+          service: model-router
+          component: model-health
+        annotations:
+          summary: "Model {{ $labels.model_id }} health critical"
+          description: "Model {{ $labels.model_id }} health score is {{ $value }}, below 30% critical threshold."
+
+      - alert: SMM_ModelUnresponsive
+        expr: up{job="model-endpoint"} == 0
+        for: 3m
+        labels:
+          severity: critical
+          team: ml
+          service: model-router
+          component: model-endpoint
+        annotations:
+          summary: "Model endpoint {{ $labels.model_id }} unresponsive"
+          description: "Model endpoint for {{ $labels.model_id }} has been unresponsive for 3 minutes."
+
+  - name: smm_canary_deployment_alerts
+    rules:
+      # Canary Deployment Alerts
+      - alert: SMM_CanaryDeploymentFailed
+        expr: increase(model_router_canary_deployments_total{status="failed"}[5m]) > 0
+        for: 0m
+        labels:
+          severity: critical
+          team: ml
+          service: model-router
+          component: canary
+        annotations:
+          summary: "Canary deployment {{ $labels.deployment_id }} failed"
+          description: "Canary deployment {{ $labels.deployment_id }} has failed and was automatically rolled back."
+          runbook_url: "https://wiki.smm-architect.com/runbooks/canary-deployment-failed"
+
+      - alert: SMM_CanaryPerformanceDegradation
+        expr: model_router_canary_performance_delta > 0.2
+        for: 10m
+        labels:
+          severity: warning
+          team: ml
+          service: model-router
+          component: canary
+        annotations:
+          summary: "Canary deployment {{ $labels.deployment_id }} performance degradation"
+          description: "Canary model shows {{ $value | humanizePercentage }} performance degradation compared to production."
+
+      - alert: SMM_CanaryQualityDrop
+        expr: model_router_canary_quality_delta < -0.1
+        for: 10m
+        labels:
+          severity: warning
+          team: ml
+          service: model-router
+          component: canary
+        annotations:
+          summary: "Canary deployment {{ $labels.deployment_id }} quality drop"
+          description: "Canary model quality is {{ $value | humanizePercentage }} lower than production model."
+
+      - alert: SMM_CanaryTrafficImbalance
+        expr: abs(model_router_canary_traffic_split_canary - model_router_canary_expected_traffic) > 10
+        for: 15m
+        labels:
+          severity: warning
+          team: ml
+          service: model-router
+          component: canary
+        annotations:
+          summary: "Canary traffic split imbalance"
+          description: "Actual canary traffic ({{ $labels.actual }}%) differs from expected ({{ $labels.expected }}%) by more than 10%."
+
+  - name: smm_model_evaluation_alerts
+    rules:
+      # Model Evaluation Alerts
+      - alert: SMM_ModelEvaluationFailed
+        expr: increase(model_router_evaluation_failures_total[1h]) > 3
+        for: 0m
+        labels:
+          severity: warning
+          team: ml
+          service: model-router
+          component: evaluation
+        annotations:
+          summary: "Multiple model evaluation failures"
+          description: "{{ $value }} model evaluations have failed in the last hour."
+          runbook_url: "https://wiki.smm-architect.com/runbooks/model-evaluation-failures"
+
+      - alert: SMM_ModelDriftDetected
+        expr: model_router_drift_detection_score > 0.3
+        for: 30m
+        labels:
+          severity: warning
+          team: ml
+          service: model-router
+          component: drift-detection
+        annotations:
+          summary: "Model drift detected for {{ $labels.model_id }}"
+          description: "Model {{ $labels.model_id }} shows drift score of {{ $value }}, indicating significant performance degradation."
+
+      - alert: SMM_ABTestSignificantDifference
+        expr: model_router_ab_test_significance > 0.95 and model_router_ab_test_performance_diff > 0.1
+        for: 1h
+        labels:
+          severity: info
+          team: ml
+          service: model-router
+          component: ab-testing
+        annotations:
+          summary: "Significant A/B test results for {{ $labels.test_id }}"
+          description: "A/B test {{ $labels.test_id }} shows {{ $value | humanizePercentage }} performance difference with 95%+ confidence."
+
+  - name: smm_budget_monitoring_alerts
+    rules:
+      # Enhanced Budget Alerts
+      - alert: SMM_WorkspaceBudgetCritical
+        expr: model_router_workspace_budget_utilization > 0.95
+        for: 0m
+        labels:
+          severity: critical
+          team: finance
+          service: budget
+          component: workspace
+        annotations:
+          summary: "Critical budget utilization for workspace {{ $labels.workspace_id }}"
+          description: "Workspace {{ $labels.workspace_id }} has used {{ $value | humanizePercentage }} of allocated budget."
+          runbook_url: "https://wiki.smm-architect.com/runbooks/budget-critical"
+
+      - alert: SMM_ModelCostAnomaly
+        expr: increase(model_router_cost_total[1h]) > (avg_over_time(increase(model_router_cost_total[1h])[7d:1h]) * 3)
+        for: 30m
+        labels:
+          severity: warning
+          team: finance
+          service: model-router
+          component: cost-monitoring
+        annotations:
+          summary: "Cost anomaly detected for model {{ $labels.model_id }}"
+          description: "Model {{ $labels.model_id }} costs are 3x higher than 7-day average."
+
+      - alert: SMM_TokenUsageSpike
+        expr: rate(model_router_tokens_total[5m]) > (avg_over_time(rate(model_router_tokens_total[5m])[1h]) * 5)
+        for: 10m
+        labels:
+          severity: warning
+          team: platform
+          service: model-router
+          component: token-usage
+        annotations:
+          summary: "Token usage spike for model {{ $labels.model_id }}"
+          description: "Token usage is 5x higher than 1-hour average: {{ $value }} tokens/sec."
+
+  - name: smm_mcp_integration_alerts
+    rules:
+      # MCP Protocol Alerts
+      - alert: SMM_MCPWorkflowFailed
+        expr: increase(n8n_workflow_executions_total{status="failed",protocol="mcp-2.0"}[15m]) > 2
+        for: 0m
+        labels:
+          severity: warning
+          team: platform
+          service: mcp
+          component: workflow
+        annotations:
+          summary: "Multiple MCP workflow failures"
+          description: "{{ $value }} MCP workflows have failed in the last 15 minutes."
+          runbook_url: "https://wiki.smm-architect.com/runbooks/mcp-workflow-failures"
+
+      - alert: SMM_MCPProtocolVersionMismatch
+        expr: mcp_protocol_version_mismatch_total > 0
+        for: 0m
+        labels:
+          severity: warning
+          team: platform
+          service: mcp
+          component: protocol
+        annotations:
+          summary: "MCP protocol version mismatch detected"
+          description: "{{ $value }} requests with unsupported MCP protocol version."
+
+      - alert: SMM_MCPHealthMonitoringDown
+        expr: up{job="mcp-workflows",workflow="mcp-model-health-monitor"} == 0
+        for: 5m
+        labels:
+          severity: critical
+          team: platform
+          service: mcp
+          component: health-monitoring
+        annotations:
+          summary: "MCP health monitoring workflow is down"
+          description: "MCP health monitoring workflow has been down for 5 minutes."
+
+  - name: smm_performance_slo_alerts
+    rules:
+      # Performance SLO Alerts
+      - alert: SMM_ModelRouterSLOViolation
+        expr: (
+          rate(model_router_requests_total{status="success"}[5m]) /
+          rate(model_router_requests_total[5m])
+        ) < 0.995
+        for: 10m
+        labels:
+          severity: warning
+          team: platform
+          service: model-router
+          component: slo
+        annotations:
+          summary: "Model Router SLO violation - availability below 99.5%"
+          description: "Model Router availability is {{ $value | humanizePercentage }}, below 99.5% SLO."
+
+      - alert: SMM_ModelRouterLatencySLOViolation
+        expr: histogram_quantile(0.95, rate(model_router_request_duration_seconds_bucket[5m])) > 2
+        for: 15m
+        labels:
+          severity: warning
+          team: platform
+          service: model-router
+          component: slo
+        annotations:
+          summary: "Model Router latency SLO violation - P95 above 2s"
+          description: "Model Router P95 latency is {{ $value }}s, above 2s SLO."
+
+      - alert: SMM_AgentExecutionSLOViolation
+        expr: histogram_quantile(0.95, rate(smm_agent_execution_duration_seconds_bucket[5m])) > 60
+        for: 20m
+        labels:
+          severity: warning
+          team: platform
+          service: agents
+          component: slo
+        annotations:
+          summary: "Agent execution SLO violation - P95 above 60s"
+          description: "{{ $labels.agent_type }} agent P95 execution time is {{ $value }}s, above 60s SLO."

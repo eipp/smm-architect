@@ -1,0 +1,531 @@
+{
+  "id": "creative-agent-v1",
+  "name": "SMM Creative Agent",
+  "description": "AI-powered content creation agent that generates high-quality social media posts, images, videos, and creative assets based on campaign plans and brand guidelines",
+  "version": "1.0.0",
+  "category": "content_creation",
+  "tags": ["creative", "content-generation", "image-creation", "video-production", "copywriting", "smm"],
+  
+  "requirements": {
+    "runtime": "nodejs",
+    "version": ">=18.0.0",
+    "memory": "4096MB",
+    "timeout": "3600",
+    "concurrent_executions": 5,
+    "retry_attempts": 2,
+    "priority": "high",
+    "gpu_enabled": true,
+    "gpu_memory": "8GB"
+  },
+  
+  "triggers": [
+    {
+      "type": "webhook",
+      "endpoint": "/creative/generate",
+      "method": "POST",
+      "authentication": "bearer_token"
+    },
+    {
+      "type": "queue",
+      "queue_name": "creative_queue",
+      "batch_size": 3
+    },
+    {
+      "type": "event",
+      "source": "planner_agent",
+      "event_type": "plan_approved"
+    },
+    {
+      "type": "schedule",
+      "cron": "0 */6 * * *",
+      "timezone": "UTC",
+      "description": "Batch content generation every 6 hours"
+    }
+  ],
+  
+  "input_schema": {
+    "type": "object",
+    "required": ["workspace_id", "content_briefs", "brand_assets"],
+    "properties": {
+      "workspace_id": {
+        "type": "string",
+        "description": "Unique identifier for the workspace"
+      },
+      "content_briefs": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "required": ["brief_id", "content_type", "channel", "topic"],
+          "properties": {
+            "brief_id": { "type": "string" },
+            "content_type": {
+              "type": "string",
+              "enum": [
+                "text_post",
+                "image_post", 
+                "video_post",
+                "carousel",
+                "story",
+                "reel",
+                "thread",
+                "article",
+                "infographic"
+              ]
+            },
+            "channel": {
+              "type": "string",
+              "enum": ["linkedin", "twitter", "instagram", "facebook", "youtube", "tiktok"]
+            },
+            "topic": { "type": "string" },
+            "key_messages": { "type": "array", "items": { "type": "string" } },
+            "call_to_action": { "type": "string" },
+            "hashtags": { "type": "array", "items": { "type": "string" } },
+            "target_audience": { "type": "string" },
+            "tone": { "type": "string" },
+            "urgency": {
+              "type": "string",
+              "enum": ["low", "medium", "high"],
+              "default": "medium"
+            },
+            "specifications": {
+              "type": "object",
+              "properties": {
+                "dimensions": { "type": "string" },
+                "duration": { "type": "string" },
+                "style": { "type": "string" },
+                "color_scheme": { "type": "string" },
+                "font_preferences": { "type": "array", "items": { "type": "string" } }
+              }
+            }
+          }
+        }
+      },
+      "brand_assets": {
+        "type": "object",
+        "properties": {
+          "brand_twin": {
+            "$ref": "../../schemas/brand-twin.json"
+          },
+          "logo_variants": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "type": { "type": "string" },
+                "url": { "type": "string", "format": "uri" },
+                "format": { "type": "string" },
+                "dimensions": { "type": "string" }
+              }
+            }
+          },
+          "brand_colors": {
+            "type": "object",
+            "properties": {
+              "primary": { "type": "string" },
+              "secondary": { "type": "array", "items": { "type": "string" } },
+              "accent": { "type": "array", "items": { "type": "string" } }
+            }
+          },
+          "typography": {
+            "type": "object",
+            "properties": {
+              "primary_font": { "type": "string" },
+              "secondary_font": { "type": "string" },
+              "font_weights": { "type": "array", "items": { "type": "string" } }
+            }
+          },
+          "image_library": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "category": { "type": "string" },
+                "url": { "type": "string", "format": "uri" },
+                "usage_rights": { "type": "string" },
+                "tags": { "type": "array", "items": { "type": "string" } }
+              }
+            }
+          },
+          "style_guide": {
+            "type": "object",
+            "properties": {
+              "visual_style": { "type": "string" },
+              "photography_style": { "type": "string" },
+              "illustration_style": { "type": "string" },
+              "animation_style": { "type": "string" }
+            }
+          }
+        }
+      },
+      "creation_preferences": {
+        "type": "object",
+        "properties": {
+          "quality_level": {
+            "type": "string",
+            "enum": ["draft", "standard", "premium"],
+            "default": "standard"
+          },
+          "creativity_level": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "default": 0.7
+          },
+          "brand_consistency": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "default": 0.9
+          },
+          "variations_per_brief": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 5,
+            "default": 2
+          },
+          "include_analytics_tags": { "type": "boolean", "default": true },
+          "generate_alt_text": { "type": "boolean", "default": true }
+        }
+      },
+      "technical_requirements": {
+        "type": "object",
+        "properties": {
+          "output_formats": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": ["png", "jpg", "gif", "mp4", "mov", "json", "html"]
+            }
+          },
+          "compression_settings": { "type": "object" },
+          "watermark_settings": { "type": "object" },
+          "metadata_requirements": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    }
+  },
+  
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "creation_id": { "type": "string" },
+      "workspace_id": { "type": "string" },
+      "status": {
+        "type": "string",
+        "enum": ["completed", "partial", "failed"]
+      },
+      "execution_time": { "type": "number" },
+      "created_content": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "brief_id": { "type": "string" },
+            "content_id": { "type": "string" },
+            "content_type": { "type": "string" },
+            "channel": { "type": "string" },
+            "variations": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "variation_id": { "type": "string" },
+                  "assets": {
+                    "type": "object",
+                    "properties": {
+                      "text": { "type": "string" },
+                      "image_url": { "type": "string", "format": "uri" },
+                      "video_url": { "type": "string", "format": "uri" },
+                      "thumbnail_url": { "type": "string", "format": "uri" },
+                      "alt_text": { "type": "string" },
+                      "captions": { "type": "string" }
+                    }
+                  },
+                  "metadata": {
+                    "type": "object",
+                    "properties": {
+                      "dimensions": { "type": "string" },
+                      "file_size": { "type": "integer" },
+                      "format": { "type": "string" },
+                      "duration": { "type": "number" },
+                      "color_palette": { "type": "array", "items": { "type": "string" } },
+                      "creation_method": { "type": "string" },
+                      "model_version": { "type": "string" }
+                    }
+                  },
+                  "quality_scores": {
+                    "type": "object",
+                    "properties": {
+                      "overall": { "type": "number" },
+                      "brand_consistency": { "type": "number" },
+                      "visual_appeal": { "type": "number" },
+                      "message_clarity": { "type": "number" },
+                      "engagement_potential": { "type": "number" }
+                    }
+                  },
+                  "compliance_checks": {
+                    "type": "object",
+                    "properties": {
+                      "brand_guidelines": { "type": "boolean" },
+                      "platform_requirements": { "type": "boolean" },
+                      "content_policy": { "type": "boolean" },
+                      "accessibility": { "type": "boolean" }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "usage_analytics": {
+        "type": "object",
+        "properties": {
+          "content_generated": { "type": "integer" },
+          "total_variations": { "type": "integer" },
+          "ai_models_used": { "type": "array", "items": { "type": "string" } },
+          "generation_costs": {
+            "type": "object",
+            "properties": {
+              "text_generation": { "type": "number" },
+              "image_generation": { "type": "number" },
+              "video_generation": { "type": "number" },
+              "total": { "type": "number" }
+            }
+          },
+          "processing_time_breakdown": { "type": "object" }
+        }
+      },
+      "recommendations": {
+        "type": "object",
+        "properties": {
+          "performance_predictions": { "type": "array" },
+          "optimization_suggestions": { "type": "array", "items": { "type": "string" } },
+          "a_b_test_recommendations": { "type": "array" },
+          "content_gaps": { "type": "array", "items": { "type": "string" } }
+        }
+      },
+      "errors": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "brief_id": { "type": "string" },
+            "error_type": { "type": "string" },
+            "message": { "type": "string" },
+            "severity": { "type": "string", "enum": ["low", "medium", "high"] },
+            "retry_possible": { "type": "boolean" }
+          }
+        }
+      },
+      "metadata": {
+        "type": "object",
+        "properties": {
+          "created_at": { "type": "string", "format": "date-time" },
+          "agent_version": { "type": "string" },
+          "models_used": { "type": "object" },
+          "content_safety_scores": { "type": "object" },
+          "processing_stats": { "type": "object" }
+        }
+      }
+    }
+  },
+  
+  "environment": {
+    "variables": {
+      "TOOLHUB_API_ENDPOINT": "${TOOLHUB_URL}",
+      "VAULT_ADDR": "${VAULT_ADDR}",
+      "NODE_ENV": "production",
+      "LOG_LEVEL": "info",
+      "CREATION_TIMEOUT": "3600",
+      "MAX_CONCURRENT_GENERATIONS": "5",
+      "CONTENT_SAFETY_ENABLED": "true",
+      "GPU_ACCELERATION": "true",
+      "STORAGE_BUCKET": "${CONTENT_STORAGE_BUCKET}"
+    },
+    "secrets": [
+      "TOOLHUB_API_KEY",
+      "OPENAI_API_KEY",
+      "MIDJOURNEY_API_KEY",
+      "STABILITY_AI_KEY",
+      "ELEVEN_LABS_KEY",
+      "CONTENT_STORAGE_CREDENTIALS"
+    ]
+  },
+  
+  "monitoring": {
+    "metrics": [
+      {
+        "name": "content_generated",
+        "type": "counter",
+        "labels": ["content_type", "channel"],
+        "description": "Number of content pieces generated"
+      },
+      {
+        "name": "generation_duration",
+        "type": "histogram",
+        "labels": ["content_type"],
+        "description": "Time taken to generate content"
+      },
+      {
+        "name": "quality_scores",
+        "type": "histogram",
+        "labels": ["metric_type"],
+        "description": "Quality scores of generated content"
+      },
+      {
+        "name": "generation_costs",
+        "type": "counter",
+        "labels": ["model_provider"],
+        "description": "Costs incurred for content generation"
+      },
+      {
+        "name": "content_safety_violations",
+        "type": "counter",
+        "labels": ["violation_type"],
+        "description": "Content safety violations detected"
+      }
+    ],
+    "health_check": {
+      "endpoint": "/health",
+      "interval": "30s",
+      "timeout": "15s",
+      "healthy_threshold": 2,
+      "unhealthy_threshold": 3
+    },
+    "alerts": [
+      {
+        "name": "high_generation_costs",
+        "condition": "sum(generation_costs) > 100",
+        "severity": "warning",
+        "notification": "slack"
+      },
+      {
+        "name": "low_quality_content",
+        "condition": "avg(quality_scores{metric_type=\"overall\"}) < 0.7",
+        "severity": "warning",
+        "notification": "email"
+      }
+    ]
+  },
+  
+  "scaling": {
+    "auto_scaling": {
+      "enabled": true,
+      "min_instances": 2,
+      "max_instances": 8,
+      "target_cpu_utilization": 70,
+      "target_gpu_utilization": 80,
+      "scale_up_cooldown": "300s",
+      "scale_down_cooldown": "900s"
+    },
+    "load_balancing": {
+      "strategy": "resource_aware",
+      "health_check_grace_period": "90s"
+    }
+  },
+  
+  "security": {
+    "network_policy": {
+      "egress": [
+        {
+          "to": "toolhub.smm-architect.svc.cluster.local",
+          "ports": [443, 80]
+        },
+        {
+          "to": "vault.vault.svc.cluster.local",
+          "ports": [8200]
+        },
+        {
+          "to": "external",
+          "domains": [
+            "api.openai.com",
+            "api.midjourney.com",
+            "api.stability.ai",
+            "api.elevenlabs.io",
+            "storage.googleapis.com",
+            "s3.amazonaws.com"
+          ]
+        }
+      ]
+    },
+    "resource_limits": {
+      "max_file_size": "500MB",
+      "max_network_requests": 1000,
+      "max_execution_time": "3600s",
+      "max_storage_per_job": "2GB"
+    },
+    "content_safety": {
+      "enabled": true,
+      "providers": ["openai_moderation", "perspective_api"],
+      "block_on_violation": true,
+      "audit_all_content": true
+    }
+  },
+  
+  "integrations": {
+    "toolhub": {
+      "endpoint": "${TOOLHUB_API_ENDPOINT}",
+      "authentication": "api_key",
+      "operations": [
+        "retrieve_brand_assets",
+        "store_content",
+        "search_templates",
+        "upload_media"
+      ]
+    },
+    "vault": {
+      "endpoint": "${VAULT_ADDR}",
+      "authentication": "kubernetes",
+      "mount_paths": [
+        "secret/creative-agent",
+        "secret/ai-models",
+        "secret/storage"
+      ]
+    },
+    "content_storage": {
+      "provider": "multi_cloud",
+      "primary": "gcs",
+      "backup": "s3",
+      "cdn_enabled": true
+    },
+    "ai_models": {
+      "text_generation": {
+        "providers": ["openai", "anthropic"],
+        "fallback_enabled": true
+      },
+      "image_generation": {
+        "providers": ["midjourney", "stability_ai", "dall_e"],
+        "fallback_enabled": true
+      },
+      "video_generation": {
+        "providers": ["runway", "synthesia"],
+        "fallback_enabled": false
+      }
+    }
+  },
+  
+  "execution": {
+    "runtime_config": {
+      "node_options": "--max-old-space-size=3072",
+      "worker_threads": true,
+      "cluster_mode": true,
+      "gpu_scheduling": "exclusive"
+    },
+    "deployment": {
+      "strategy": "rolling_update",
+      "max_unavailable": "25%",
+      "max_surge": "50%",
+      "readiness_probe": {
+        "path": "/ready",
+        "initial_delay": "60s",
+        "period": "15s"
+      }
+    },
+    "restart_policy": {
+      "on_failure": "always",
+      "max_restart_count": 3,
+      "restart_delay": "120s"
+    }
+  }
+}

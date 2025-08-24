@@ -1,0 +1,173 @@
+{
+  "simulationTestData": {
+    "testSuite": "SMM Architect Monte Carlo Simulation",
+    "version": "1.0.0",
+    "scenarios": [
+      {
+        "id": "tech-startup-scenario",
+        "name": "Tech Startup LinkedIn Campaign",
+        "description": "B2B tech startup launching on LinkedIn with moderate budget",
+        "workspace": {
+          "workspaceId": "ws-test-tech-001",
+          "tenantId": "test-tenant-tech",
+          "goals": [
+            {"key": "lead_gen", "target": 150, "unit": "leads_per_month"},
+            {"key": "brand_awareness", "target": 50000, "unit": "impressions_per_week"}
+          ],
+          "primaryChannels": ["linkedin"],
+          "budget": {
+            "currency": "USD",
+            "weeklyCap": 800,
+            "hardCap": 3200,
+            "breakdown": {
+              "paidAds": 500,
+              "llmModelSpend": 150,
+              "rendering": 100,
+              "thirdPartyServices": 50
+            }
+          },
+          "simulationConfig": {
+            "iterations": 1000,
+            "randomSeed": 42,
+            "timeoutSeconds": 120
+          }
+        },
+        "expectedOutcomes": {
+          "readinessScore": {
+            "min": 0.85,
+            "max": 0.95,
+            "mean": 0.90
+          },
+          "policyPassPct": {
+            "min": 0.92,
+            "max": 0.98,
+            "mean": 0.95
+          },
+          "costEstimateUSD": {
+            "min": 700,
+            "max": 900,
+            "mean": 800
+          }
+        }
+      },
+      {
+        "id": "ecommerce-multichannel",
+        "name": "E-commerce Multi-Channel Campaign",
+        "description": "Consumer brand with aggressive multi-platform strategy",
+        "workspace": {
+          "workspaceId": "ws-test-ecom-001",
+          "tenantId": "test-tenant-ecom",
+          "goals": [
+            {"key": "sales", "target": 500, "unit": "orders_per_week"},
+            {"key": "engagement", "target": 10000, "unit": "interactions_per_week"}
+          ],
+          "primaryChannels": ["instagram", "facebook", "tiktok"],
+          "budget": {
+            "currency": "USD",
+            "weeklyCap": 2000,
+            "hardCap": 8000,
+            "breakdown": {
+              "paidAds": 1500,
+              "llmModelSpend": 300,
+              "rendering": 150,
+              "thirdPartyServices": 50
+            }
+          },
+          "simulationConfig": {
+            "iterations": 2000,
+            "randomSeed": 123,
+            "timeoutSeconds": 180
+          }
+        },
+        "expectedOutcomes": {
+          "readinessScore": {
+            "min": 0.75,
+            "max": 0.90,
+            "mean": 0.82
+          },
+          "policyPassPct": {
+            "min": 0.85,
+            "max": 0.95,
+            "mean": 0.90
+          },
+          "costEstimateUSD": {
+            "min": 1800,
+            "max": 2200,
+            "mean": 2000
+          }
+        }
+      }
+    ],
+    "testInputs": {
+      "brandTwins": [
+        {
+          "brandName": "TechFlow Solutions",
+          "brandVoice": {
+            "tone": "professional",
+            "personality": ["innovative", "reliable", "forward-thinking"],
+            "vocabulary": ["cutting-edge", "solution", "enterprise", "scalable"]
+          },
+          "competitorAnalysis": [
+            {"name": "CompetitorA", "similarity": 0.7, "differentiators": ["price", "support"]},
+            {"name": "CompetitorB", "similarity": 0.6, "differentiators": ["features", "integration"]}
+          ]
+        }
+      ],
+      "contentBriefs": [
+        {
+          "brief_id": "brief-001",
+          "content_type": "text_post",
+          "channel": "linkedin",
+          "topic": "AI in Enterprise",
+          "key_messages": ["Innovation", "Efficiency", "ROI"],
+          "target_audience": "CTOs and Tech Directors"
+        }
+      ],
+      "simulationRequests": [
+        {
+          "dryRun": true,
+          "targetChannels": ["linkedin"],
+          "iterations": 1000,
+          "scenario": "conservative"
+        },
+        {
+          "dryRun": true,
+          "targetChannels": ["instagram", "facebook"],
+          "iterations": 1500,
+          "scenario": "aggressive"
+        }
+      ]
+    },
+    "mockApiResponses": {
+      "successful_research": {
+        "research_id": "research-mock-001",
+        "status": "completed",
+        "execution_time": 45.2,
+        "brand_twin": {
+          "brandName": "Test Brand",
+          "brandVoice": {
+            "tone": "professional",
+            "confidence": 0.92
+          }
+        }
+      },
+      "successful_planning": {
+        "plan_id": "plan-mock-001",
+        "status": "completed",
+        "execution_time": 120.5,
+        "campaign_plan": {
+          "overview": {
+            "title": "Test Campaign",
+            "total_posts": 15
+          }
+        }
+      },
+      "successful_simulation": {
+        "simulationId": "sim-mock-001",
+        "readinessScore": 0.89,
+        "policyPassPct": 0.94,
+        "costEstimateUSD": 825.50
+      }
+    }
+  }
+}

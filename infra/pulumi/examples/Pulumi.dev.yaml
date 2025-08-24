@@ -1,0 +1,39 @@
+# Example Pulumi configuration for development workspace
+# Copy this to Pulumi.dev.yaml and customize for your environment
+
+config:
+  workspace:
+    workspaceId: "ws-dev-001"
+    tenantId: "dev-tenant"
+    environment: "development"
+    region: "us-east-1"
+    resourceTier: "small"
+    features:
+      enableHighAvailability: false
+      enableAutoScaling: true
+      enableMultiRegion: false
+      enableDataEncryption: true
+      enableAuditLogging: true
+      enableMonitoring: true
+      enableBackup: false
+    networking:
+      vpcCidr: "10.0.0.0/16"
+      enablePrivateSubnets: false
+      enableNatGateway: false
+      enableVpnAccess: false
+    security:
+      enableVault: true
+      vaultIntegration: "aws-kms"
+      enableOPA: true
+      enableNetworkPolicies: false
+      allowedCidrs:
+        - "0.0.0.0/0"  # Development only - restrict in production
+    storage:
+      databaseSize: "20GB"
+      storageClass: "standard"
+      backupRetentionDays: 7
+      enablePointInTimeRecovery: false
+    monitoring:
+      enablePrometheus: true
+      enableGrafana: true
+      enableAlertManager: false

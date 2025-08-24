@@ -1,0 +1,302 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AuditBundle",
+  "description": "Immutable audit bundle containing signed contract snapshots and execution metadata",
+  "type": "object",
+  "properties": {
+    "auditBundleId": {
+      "type": "string",
+      "description": "Unique identifier for the audit bundle"
+    },
+    "bundleVersion": {
+      "type": "string",
+      "pattern": "^v\\d+\\.\\d+\\.\\d+$",
+      "description": "Semantic version of the audit bundle format"
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Timestamp when audit bundle was created"
+    },
+    "contractSnapshot": {
+      "type": "object",
+      "properties": {
+        "contractId": {
+          "type": "string",
+          "description": "Contract identifier with version (e.g., ws-contract-v1.2.3)"
+        },
+        "previousContractRef": {
+          "type": "string",
+          "description": "Reference to the previous contract version"
+        },
+        "isImmutableSnapshot": {
+          "type": "boolean",
+          "const": true,
+          "description": "Confirms this is an immutable snapshot"
+        },
+        "contractHash": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "description": "SHA256 hash of the complete contract content"
+        },
+        "contractContent": {
+          "type": "object",
+          "description": "Complete workspace contract content at time of signing"
+        },
+        "contractChangeLog": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "version": {
+                "type": "string",
+                "pattern": "^v\\d+\\.\\d+\\.\\d+$"
+              },
+              "changedBy": {
+                "type": "string",
+                "description": "Principal who made the change"
+              },
+              "changedAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "changes": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Human-readable list of changes made"
+              },
+              "migrationRequired": {
+                "type": "boolean",
+                "description": "Whether this change requires data migration"
+              }
+            },
+            "required": ["version", "changedBy", "changedAt", "changes"],
+            "additionalProperties": false
+          },
+          "description": "Complete change log for contract evolution"
+        }
+      },
+      "required": [
+        "contractId", 
+        "isImmutableSnapshot", 
+        "contractHash", 
+        "contractContent", 
+        "contractChangeLog"
+      ],
+      "additionalProperties": false
+    },
+    "signatureMetadata": {
+      "type": "object",
+      "properties": {
+        "contractHashAtSigning": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "description": "Contract hash at the time of signing"
+        },
+        "signedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp when contract was signed"
+        },
+        "signedBy": {
+          "type": "string",
+          "description": "Principal who signed the contract"
+        },
+        "signatureId": {
+          "type": "string",
+          "description": "Unique identifier for the cryptographic signature"
+        },
+        "kmsKeyId": {
+          "type": "string",
+          "description": "KMS key used for signing"
+        },
+        "signatureAlgorithm": {
+          "type": "string",
+          "enum": ["RSA-SHA256", "ECDSA-SHA256"],
+          "description": "Cryptographic algorithm used for signing"
+        },
+        "signatureValue": {
+          "type": "string",
+          "description": "Base64-encoded cryptographic signature"
+        }
+      },
+      "required": [
+        "contractHashAtSigning",
+        "signedAt",
+        "signedBy",
+        "signatureId",
+        "kmsKeyId",
+        "signatureAlgorithm",
+        "signatureValue"
+      ],
+      "additionalProperties": false
+    },
+    "executionContext": {
+      "type": "object",
+      "properties": {
+        "simulationResults": {
+          "type": "object",
+          "properties": {
+            "simulationId": {
+              "type": "string"
+            },
+            "randomSeed": {
+              "type": "number"
+            },
+            "iterations": {
+              "type": "number"
+            },
+            "readinessScore": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "confidenceInterval": {
+              "type": "object",
+              "properties": {
+                "lower": {"type": "number"},
+                "upper": {"type": "number"},
+                "confidence": {"type": "number"}
+              }
+            }
+          },
+          "required": ["simulationId", "randomSeed", "iterations", "readinessScore"]
+        },
+        "policyEvaluation": {
+          "type": "object",
+          "properties": {
+            "evaluationId": {
+              "type": "string"
+            },
+            "opaVersion": {
+              "type": "string"
+            },
+            "policyBundleHash": {
+              "type": "string",
+              "pattern": "^sha256:[a-f0-9]{64}$"
+            },
+            "evaluationResults": {
+              "type": "object",
+              "properties": {
+                "allow": {"type": "boolean"},
+                "deny": {
+                  "type": "array",
+                  "items": {"type": "string"}
+                },
+                "warnings": {
+                  "type": "array", 
+                  "items": {"type": "string"}
+                }
+              }
+            }
+          },
+          "required": ["evaluationId", "opaVersion", "policyBundleHash", "evaluationResults"]
+        },
+        "agentOutputs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "agentType": {
+                "type": "string",
+                "enum": ["research", "planner", "creative", "automation", "legal", "publisher"]
+              },
+              "agentVersion": {
+                "type": "string"
+              },
+              "executionId": {
+                "type": "string"
+              },
+              "outputHash": {
+                "type": "string",
+                "pattern": "^sha256:[a-f0-9]{64}$"
+              },
+              "qualityScore": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "executedAt": {
+                "type": "string",
+                "format": "date-time"
+              }
+            },
+            "required": ["agentType", "agentVersion", "executionId", "outputHash", "qualityScore", "executedAt"]
+          }
+        }
+      },
+      "required": ["simulationResults", "policyEvaluation", "agentOutputs"]
+    },
+    "immutabilityProof": {
+      "type": "object",
+      "properties": {
+        "merkleRoot": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$",
+          "description": "Merkle tree root hash for tamper detection"
+        },
+        "timestampProof": {
+          "type": "string",
+          "description": "External timestamp service proof (RFC 3161)"
+        },
+        "bundleIntegrityHash": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "description": "Hash of entire bundle for integrity verification"
+        }
+      },
+      "required": ["merkleRoot", "bundleIntegrityHash"]
+    },
+    "auditTrail": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "timestamp": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "event": {
+            "type": "string",
+            "enum": [
+              "bundle_created",
+              "contract_signed", 
+              "simulation_executed",
+              "policy_evaluated",
+              "agent_executed",
+              "bundle_sealed"
+            ]
+          },
+          "actor": {
+            "type": "string",
+            "description": "Principal or service that performed the action"
+          },
+          "details": {
+            "type": "object",
+            "description": "Event-specific metadata"
+          },
+          "eventHash": {
+            "type": "string",
+            "pattern": "^sha256:[a-f0-9]{64}$"
+          }
+        },
+        "required": ["timestamp", "event", "actor", "eventHash"]
+      },
+      "minItems": 1,
+      "description": "Chronological audit trail of all bundle operations"
+    }
+  },
+  "required": [
+    "auditBundleId",
+    "bundleVersion", 
+    "createdAt",
+    "contractSnapshot",
+    "signatureMetadata",
+    "executionContext",
+    "immutabilityProof",
+    "auditTrail"
+  ],
+  "additionalProperties": false
+}

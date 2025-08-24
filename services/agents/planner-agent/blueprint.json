@@ -1,0 +1,205 @@
+{
+  "agentId": "planner-agent-v1",
+  "role": "planner",
+  "displayName": "Campaign Planning Agent",
+  "description": "Creates comprehensive content calendars, campaign strategies, and budget allocation plans based on brand analysis, goals, and platform best practices.",
+  "systemPrompt": "You are the Planning Agent for SMM Architect. Your role is to create strategic, data-driven marketing plans that achieve workspace goals while respecting budget constraints and platform nuances. You must: 1) Analyze brand voice and audience from BrandTwin data. 2) Create content calendars aligned with platform algorithms and audience behavior. 3) Distribute budget across channels and content types for optimal ROI. 4) Schedule content for peak engagement times based on audience analysis. 5) Plan content themes, campaigns, and promotional sequences. 6) Ensure compliance with platform guidelines and rate limits. Always balance creativity with data-driven decision making and provide clear rationale for planning choices.",
+  "version": "1.0.0",
+  "memorySchema": {
+    "type": "object",
+    "properties": {
+      "workspaceId": {
+        "type": "string",
+        "description": "Target workspace for planning"
+      },
+      "currentPlan": {
+        "type": "object",
+        "properties": {
+          "planId": {"type": "string"},
+          "createdAt": {"type": "string", "format": "date-time"},
+          "status": {"type": "string", "enum": ["draft", "approved", "active", "completed"]},
+          "version": {"type": "string"}
+        }
+      },
+      "audienceInsights": {
+        "type": "object",
+        "properties": {
+          "demographics": {"type": "object"},
+          "preferredChannels": {"type": "array", "items": {"type": "string"}},
+          "engagementPatterns": {"type": "object"},
+          "contentPreferences": {"type": "array", "items": {"type": "string"}}
+        }
+      },
+      "performanceHistory": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "contentType": {"type": "string"},
+            "platform": {"type": "string"},
+            "metrics": {"type": "object"},
+            "timestamp": {"type": "string", "format": "date-time"}
+          }
+        }
+      }
+    },
+    "required": ["workspaceId"]
+  },
+  "tools": [
+    "toolhub.vectorSearch",
+    "calendar.api",
+    "analytics.platform",
+    "budget.optimizer",
+    "audience.analyzer",
+    "trend.monitor",
+    "competitor.tracker"
+  ],
+  "outputs": {
+    "primary": {
+      "type": "ContentCalendar",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "planId": {"type": "string"},
+          "workspaceId": {"type": "string"},
+          "timeframe": {
+            "type": "object",
+            "properties": {
+              "startDate": {"type": "string", "format": "date"},
+              "endDate": {"type": "string", "format": "date"},
+              "duration": {"type": "string"}
+            }
+          },
+          "contentSchedule": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "contentId": {"type": "string"},
+                "title": {"type": "string"},
+                "platform": {"type": "string"},
+                "contentType": {"type": "string"},
+                "scheduledDate": {"type": "string", "format": "date-time"},
+                "priority": {"type": "string", "enum": ["low", "medium", "high"]},
+                "estimatedReach": {"type": "number"},
+                "budgetAllocation": {"type": "number"},
+                "themes": {"type": "array", "items": {"type": "string"}},
+                "callToAction": {"type": "string"}
+              }
+            }
+          },
+          "budgetPlan": {
+            "type": "object",
+            "properties": {
+              "totalBudget": {"type": "number"},
+              "channelDistribution": {"type": "object"},
+              "contentTypeDistribution": {"type": "object"},
+              "timeline": {"type": "object"}
+            }
+          },
+          "kpiTargets": {
+            "type": "object",
+            "properties": {
+              "reach": {"type": "number"},
+              "engagement": {"type": "number"},
+              "conversions": {"type": "number"},
+              "brandAwareness": {"type": "number"}
+            }
+          }
+        }
+      },
+      "description": "Comprehensive content calendar with scheduling, budget allocation, and KPI targets"
+    },
+    "secondary": {
+      "type": "StrategicReport",
+      "format": "markdown",
+      "description": "Strategic rationale, competitive analysis, and optimization recommendations"
+    }
+  },
+  "configuration": {
+    "runTTLSeconds": 1800,
+    "costEstimateTokens": 3000,
+    "maxContentItems": 100,
+    "planningHorizonDays": 90,
+    "minBudgetPerPost": 10
+  },
+  "tests": [
+    {
+      "name": "basic-calendar-generation",
+      "description": "Verify calendar generation for standard 4-week campaign",
+      "input": {
+        "workspaceId": "ws-test-001",
+        "goals": [{"key": "lead_gen", "target": 200, "unit": "leads_per_month"}],
+        "channels": ["linkedin", "x"],
+        "budget": {"weeklyCap": 1000, "currency": "USD"},
+        "timeframe": {"weeks": 4}
+      },
+      "assertions": [
+        "output.contentCalendar.contentSchedule.length >= 12",
+        "output.contentCalendar.budgetPlan.totalBudget <= 4000",
+        "output.contentCalendar.contentSchedule.every(item => item.platform && item.scheduledDate)",
+        "Object.keys(output.contentCalendar.budgetPlan.channelDistribution).length === 2"
+      ],
+      "expectedDuration": "< 180s"
+    },
+    {
+      "name": "budget-optimization-test",
+      "description": "Ensure budget is distributed optimally across channels",
+      "input": {
+        "workspaceId": "ws-test-002",
+        "goals": [{"key": "brand_awareness", "target": 100000, "unit": "impressions"}],
+        "channels": ["linkedin", "x", "instagram"],
+        "budget": {"weeklyCap": 2000, "currency": "USD"}
+      },
+      "assertions": [
+        "output.contentCalendar.budgetPlan.channelDistribution.linkedin >= 500",
+        "output.contentCalendar.budgetPlan.totalBudget <= 8000",
+        "output.contentCalendar.kpiTargets.reach >= 50000"
+      ],
+      "expectedDuration": "< 200s"
+    },
+    {
+      "name": "audience-alignment-test",
+      "description": "Verify content aligns with audience preferences from BrandTwin",
+      "input": {
+        "workspaceId": "ws-test-003",
+        "brandTwin": {
+          "audience": {
+            "segments": ["IT professionals", "startup founders"],
+            "demographics": {"ageRange": "25-45", "interests": ["technology", "innovation"]}
+          },
+          "voiceTone": {"primaryTone": "professional", "description": "Expert but approachable"}
+        }
+      },
+      "assertions": [
+        "output.contentCalendar.contentSchedule.some(item => item.themes.includes('technology'))",
+        "output.strategicReport.includes('IT professionals')",
+        "output.contentCalendar.contentSchedule.every(item => item.priority)"
+      ],
+      "expectedDuration": "< 150s"
+    }
+  ],
+  "errorHandling": {
+    "budgetValidation": "strict",
+    "dateConflictResolution": "reschedule_with_notification",
+    "platformLimitHandling": "distribute_across_timeframes"
+  },
+  "monitoring": {
+    "keyMetrics": [
+      "plan_generation_time",
+      "budget_utilization_efficiency",
+      "content_diversity_score",
+      "audience_alignment_rating"
+    ],
+    "alertThresholds": {
+      "budget_overrun": "> 105% of allocated budget",
+      "low_content_diversity": "< 3 content types per week",
+      "poor_timing": "< 50% posts in optimal time slots"
+    }
+  },
+  "compliance": {
+    "platformGuidelines": "All content must comply with platform-specific policies",
+    "brandConsistency": "Voice and tone must align with BrandTwin specifications",
+    "budgetCompliance": "Hard budget caps cannot be exceeded"
+  }
+}

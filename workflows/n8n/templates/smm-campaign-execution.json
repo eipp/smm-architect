@@ -1,0 +1,364 @@
+{
+  "name": "SMM Architect Campaign Execution",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "campaign-execute",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Campaign Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [240, 300],
+      "webhookId": "smm-campaign-trigger"
+    },
+    {
+      "parameters": {
+        "functionCode": "// Validate incoming workspace contract\nconst contract = items[0].json;\n\nif (!contract.workspaceId || !contract.contractId) {\n  throw new Error('Invalid contract: missing required fields');\n}\n\nif (!contract.consent?.voiceLikeness?.granted) {\n  throw new Error('Voice likeness consent not granted');\n}\n\nreturn items.map(item => ({\n  json: {\n    ...item.json,\n    validationStatus: 'passed',\n    timestamp: new Date().toISOString()\n  }\n}));"
+      },
+      "id": "contract-validation",
+      "name": "Contract Validation",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "url": "={{ $node[\"Contract Validation\"].json[\"simulationEndpoint\"] || \"http://simulator.smm-system.svc.cluster.local:8080\" }}/simulate",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "workspaceId",
+              "value": "={{ $json.workspaceId }}"
+            },
+            {
+              "name": "contract",
+              "value": "={{ JSON.stringify($json) }}"
+            },
+            {
+              "name": "iterations",
+              "value": "1000"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "monte-carlo-simulation",
+      "name": "Monte Carlo Simulation",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Check simulation results and create decision\nconst simulation = items[0].json;\nconst readinessThreshold = 0.75;\nconst policyThreshold = 0.90;\n\nconst decision = {\n  workspaceId: simulation.workspaceId,\n  simulationId: simulation.simulationId,\n  readinessScore: simulation.readinessScore,\n  policyPassPct: simulation.policyPassPct,\n  decision: simulation.readinessScore >= readinessThreshold && simulation.policyPassPct >= policyThreshold ? 'approved' : 'rejected',\n  timestamp: new Date().toISOString()\n};\n\nreturn [{ json: { ...simulation, decision } }];"
+      },
+      "id": "decision-evaluation",
+      "name": "Decision Evaluation", 
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "approved-condition",
+              "leftValue": "={{ $json.decision.decision }}",
+              "rightValue": "approved",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "decision-router",
+      "name": "Decision Router",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "url": "http://agent-orchestrator.smm-system.svc.cluster.local:8080/execute-sequence",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "workspaceId",
+              "value": "={{ $json.workspaceId }}"
+            },
+            {
+              "name": "agentSequence",
+              "value": "[\"research\", \"creative\", \"legal\"]"
+            },
+            {
+              "name": "contract",
+              "value": "={{ JSON.stringify($json) }}"
+            }
+          ]
+        }
+      },
+      "id": "agent-execution",
+      "name": "Agent Execution",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1340, 200]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Create platform-specific publishing tasks\nconst agentResults = items[0].json;\nconst platforms = agentResults.contract?.platforms || [];\n\nconst publishingTasks = platforms.map(platform => ({\n  platform: platform.type,\n  content: agentResults.creativeAgent?.output?.content?.find(c => c.platform === platform.type),\n  settings: platform.settings,\n  workspaceId: agentResults.workspaceId\n}));\n\nreturn publishingTasks.map(task => ({ json: task }));"
+      },
+      "id": "publishing-preparation",
+      "name": "Publishing Preparation",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1560, 200]
+    },
+    {
+      "parameters": {
+        "url": "http://publisher.smm-system.svc.cluster.local:8080/publish",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "platform",
+              "value": "={{ $json.platform }}"
+            },
+            {
+              "name": "content",
+              "value": "={{ JSON.stringify($json.content) }}"
+            },
+            {
+              "name": "workspaceId", 
+              "value": "={{ $json.workspaceId }}"
+            }
+          ]
+        }
+      },
+      "id": "platform-publishing",
+      "name": "Platform Publishing",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1780, 200]
+    },
+    {
+      "parameters": {
+        "url": "http://audit.smm-system.svc.cluster.local:8080/create-bundle",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "workspaceId",
+              "value": "={{ $json.workspaceId }}"
+            },
+            {
+              "name": "contract",
+              "value": "={{ JSON.stringify($json.contract) }}"
+            },
+            {
+              "name": "decisionCard",
+              "value": "={{ JSON.stringify($json.decision) }}"
+            },
+            {
+              "name": "agentExecutions",
+              "value": "={{ JSON.stringify($json.agentResults) }}"
+            }
+          ]
+        }
+      },
+      "id": "audit-bundle-creation",
+      "name": "Audit Bundle Creation",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [2000, 200]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Handle campaign rejection\nconst rejectionReason = items[0].json.decision.decision === 'rejected' ? \n  'Simulation failed quality thresholds' : 'Unknown rejection reason';\n\nreturn [{\n  json: {\n    status: 'rejected',\n    reason: rejectionReason,\n    workspaceId: items[0].json.workspaceId,\n    timestamp: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "rejection-handler",
+      "name": "Rejection Handler",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1340, 400]
+    },
+    {
+      "parameters": {
+        "respondWith": "allIncomingItems",
+        "options": {}
+      },
+      "id": "success-response",
+      "name": "Success Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [2220, 200]
+    },
+    {
+      "parameters": {
+        "respondWith": "allIncomingItems",
+        "options": {}
+      },
+      "id": "rejection-response",
+      "name": "Rejection Response", 
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1560, 400]
+    }
+  ],
+  "connections": {
+    "Campaign Webhook": {
+      "main": [
+        [
+          {
+            "node": "Contract Validation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Contract Validation": {
+      "main": [
+        [
+          {
+            "node": "Monte Carlo Simulation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Monte Carlo Simulation": {
+      "main": [
+        [
+          {
+            "node": "Decision Evaluation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Decision Evaluation": {
+      "main": [
+        [
+          {
+            "node": "Decision Router",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Decision Router": {
+      "main": [
+        [
+          {
+            "node": "Agent Execution",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Rejection Handler",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agent Execution": {
+      "main": [
+        [
+          {
+            "node": "Publishing Preparation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Publishing Preparation": {
+      "main": [
+        [
+          {
+            "node": "Platform Publishing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Platform Publishing": {
+      "main": [
+        [
+          {
+            "node": "Audit Bundle Creation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Audit Bundle Creation": {
+      "main": [
+        [
+          {
+            "node": "Success Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Rejection Handler": {
+      "main": [
+        [
+          {
+            "node": "Rejection Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "createdAt": "2024-01-15T10:00:00.000Z",
+  "updatedAt": "2024-01-15T10:00:00.000Z",
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "meta": {
+    "templateId": "smm-campaign-execution"
+  },
+  "pinData": {},
+  "versionId": "1",
+  "triggerCount": 1,
+  "tags": [
+    {
+      "createdAt": "2024-01-15T10:00:00.000Z",
+      "updatedAt": "2024-01-15T10:00:00.000Z",
+      "id": "smm-workflow",
+      "name": "SMM Architect"
+    }
+  ]
+}

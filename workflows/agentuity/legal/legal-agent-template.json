@@ -1,0 +1,552 @@
+{
+  "id": "legal-agent-v1",
+  "name": "SMM Legal Agent",
+  "description": "Legal compliance and risk assessment agent that reviews content for regulatory compliance, intellectual property issues, and legal risks across different jurisdictions",
+  "version": "1.0.0",
+  "category": "legal_compliance",
+  "tags": ["legal", "compliance", "risk-assessment", "regulatory", "intellectual-property", "smm"],
+  
+  "requirements": {
+    "runtime": "nodejs",
+    "version": ">=18.0.0",
+    "memory": "2048MB",
+    "timeout": "900",
+    "concurrent_executions": 3,
+    "retry_attempts": 2,
+    "priority": "high"
+  },
+  
+  "triggers": [
+    {
+      "type": "webhook",
+      "endpoint": "/legal/review",
+      "method": "POST",
+      "authentication": "bearer_token"
+    },
+    {
+      "type": "queue",
+      "queue_name": "legal_review_queue",
+      "batch_size": 1
+    },
+    {
+      "type": "event",
+      "source": "creative_agent",
+      "event_type": "content_created"
+    },
+    {
+      "type": "event",
+      "source": "planner_agent",
+      "event_type": "plan_requires_legal_review"
+    }
+  ],
+  
+  "input_schema": {
+    "type": "object",
+    "required": ["workspace_id", "review_request"],
+    "properties": {
+      "workspace_id": {
+        "type": "string",
+        "description": "Unique identifier for the workspace"
+      },
+      "review_request": {
+        "type": "object",
+        "required": ["request_id", "review_type", "content"],
+        "properties": {
+          "request_id": { "type": "string" },
+          "review_type": {
+            "type": "string",
+            "enum": [
+              "content_review",
+              "campaign_review",
+              "platform_compliance",
+              "regulatory_check",
+              "ip_clearance",
+              "privacy_review",
+              "emergency_review"
+            ]
+          },
+          "priority": {
+            "type": "string",
+            "enum": ["low", "medium", "high", "urgent"],
+            "default": "medium"
+          },
+          "content": {
+            "type": "object",
+            "properties": {
+              "text_content": { "type": "string" },
+              "media_urls": { "type": "array", "items": { "type": "string", "format": "uri" } },
+              "hashtags": { "type": "array", "items": { "type": "string" } },
+              "mentions": { "type": "array", "items": { "type": "string" } },
+              "links": { "type": "array", "items": { "type": "string", "format": "uri" } },
+              "claims": { "type": "array", "items": { "type": "string" } },
+              "testimonials": { "type": "array", "items": { "type": "string" } },
+              "comparative_statements": { "type": "array", "items": { "type": "string" } }
+            }
+          },
+          "context": {
+            "type": "object",
+            "properties": {
+              "target_channels": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": ["linkedin", "twitter", "instagram", "facebook", "youtube", "tiktok"]
+                }
+              },
+              "target_jurisdictions": {
+                "type": "array",
+                "items": { "type": "string" }
+              },
+              "industry_sector": { "type": "string" },
+              "target_audience": { "type": "string" },
+              "campaign_type": { "type": "string" },
+              "is_paid_promotion": { "type": "boolean" },
+              "involves_minors": { "type": "boolean" },
+              "healthcare_related": { "type": "boolean" },
+              "financial_claims": { "type": "boolean" }
+            }
+          }
+        }
+      },
+      "compliance_framework": {
+        "type": "object",
+        "properties": {
+          "regulatory_requirements": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "regulation": { "type": "string" },
+                "jurisdiction": { "type": "string" },
+                "applicable": { "type": "boolean" },
+                "strict_mode": { "type": "boolean" }
+              }
+            }
+          },
+          "industry_standards": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "platform_policies": {
+            "type": "object",
+            "patternProperties": {
+              "^(linkedin|twitter|instagram|facebook|youtube|tiktok)$": {
+                "type": "object",
+                "properties": {
+                  "community_guidelines": { "type": "string", "format": "uri" },
+                  "advertising_policies": { "type": "string", "format": "uri" },
+                  "content_policies": { "type": "string", "format": "uri" },
+                  "last_updated": { "type": "string", "format": "date" }
+                }
+              }
+            }
+          },
+          "corporate_policies": {
+            "type": "object",
+            "properties": {
+              "content_guidelines": { "type": "string", "format": "uri" },
+              "brand_guidelines": { "type": "string", "format": "uri" },
+              "legal_disclaimers": { "type": "array", "items": { "type": "string" } },
+              "approval_matrix": { "type": "object" }
+            }
+          }
+        }
+      },
+      "review_scope": {
+        "type": "object",
+        "properties": {
+          "check_intellectual_property": { "type": "boolean", "default": true },
+          "check_privacy_compliance": { "type": "boolean", "default": true },
+          "check_advertising_standards": { "type": "boolean", "default": true },
+          "check_platform_policies": { "type": "boolean", "default": true },
+          "check_regulatory_compliance": { "type": "boolean", "default": true },
+          "check_defamation_risk": { "type": "boolean", "default": true },
+          "check_data_protection": { "type": "boolean", "default": true },
+          "check_accessibility": { "type": "boolean", "default": false },
+          "thoroughness_level": {
+            "type": "string",
+            "enum": ["basic", "standard", "comprehensive"],
+            "default": "standard"
+          }
+        }
+      }
+    }
+  },
+  
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "review_id": { "type": "string" },
+      "workspace_id": { "type": "string" },
+      "status": {
+        "type": "string",
+        "enum": ["approved", "rejected", "conditional_approval", "requires_modification", "escalated"]
+      },
+      "execution_time": { "type": "number" },
+      "legal_assessment": {
+        "type": "object",
+        "properties": {
+          "overall_risk_level": {
+            "type": "string",
+            "enum": ["low", "medium", "high", "critical"]
+          },
+          "approval_recommendation": {
+            "type": "string",
+            "enum": ["approve", "reject", "modify", "escalate"]
+          },
+          "confidence_score": { "type": "number", "minimum": 0, "maximum": 1 },
+          "review_summary": { "type": "string" },
+          "legal_opinion": { "type": "string" }
+        }
+      },
+      "compliance_checks": {
+        "type": "object",
+        "properties": {
+          "intellectual_property": {
+            "type": "object",
+            "properties": {
+              "status": { "type": "string", "enum": ["pass", "fail", "warning"] },
+              "trademark_conflicts": { "type": "array", "items": { "type": "string" } },
+              "copyright_issues": { "type": "array", "items": { "type": "string" } },
+              "patent_concerns": { "type": "array", "items": { "type": "string" } },
+              "fair_use_assessment": { "type": "string" }
+            }
+          },
+          "privacy_compliance": {
+            "type": "object",
+            "properties": {
+              "status": { "type": "string", "enum": ["pass", "fail", "warning"] },
+              "gdpr_compliance": { "type": "boolean" },
+              "ccpa_compliance": { "type": "boolean" },
+              "personal_data_identified": { "type": "boolean" },
+              "consent_requirements": { "type": "array", "items": { "type": "string" } }
+            }
+          },
+          "advertising_standards": {
+            "type": "object",
+            "properties": {
+              "status": { "type": "string", "enum": ["pass", "fail", "warning"] },
+              "truthfulness": { "type": "boolean" },
+              "substantiation_required": { "type": "boolean" },
+              "disclosure_needed": { "type": "boolean" },
+              "target_audience_appropriate": { "type": "boolean" }
+            }
+          },
+          "platform_policies": {
+            "type": "object",
+            "patternProperties": {
+              "^(linkedin|twitter|instagram|facebook|youtube|tiktok)$": {
+                "type": "object",
+                "properties": {
+                  "status": { "type": "string", "enum": ["pass", "fail", "warning"] },
+                  "policy_violations": { "type": "array", "items": { "type": "string" } },
+                  "content_restrictions": { "type": "array", "items": { "type": "string" } },
+                  "age_restrictions": { "type": "boolean" }
+                }
+              }
+            }
+          },
+          "regulatory_compliance": {
+            "type": "object",
+            "properties": {
+              "status": { "type": "string", "enum": ["pass", "fail", "warning"] },
+              "ftc_compliance": { "type": "boolean" },
+              "sec_compliance": { "type": "boolean" },
+              "healthcare_regulations": { "type": "boolean" },
+              "financial_regulations": { "type": "boolean" },
+              "industry_specific": { "type": "array", "items": { "type": "string" } }
+            }
+          }
+        }
+      },
+      "identified_risks": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "risk_id": { "type": "string" },
+            "category": {
+              "type": "string",
+              "enum": [
+                "intellectual_property",
+                "privacy",
+                "defamation",
+                "regulatory",
+                "platform_policy",
+                "advertising_standard",
+                "data_protection",
+                "contractual"
+              ]
+            },
+            "severity": {
+              "type": "string",
+              "enum": ["low", "medium", "high", "critical"]
+            },
+            "description": { "type": "string" },
+            "potential_consequences": { "type": "array", "items": { "type": "string" } },
+            "likelihood": { "type": "number", "minimum": 0, "maximum": 1 },
+            "impact_score": { "type": "number", "minimum": 0, "maximum": 10 },
+            "affected_jurisdictions": { "type": "array", "items": { "type": "string" } }
+          }
+        }
+      },
+      "required_modifications": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "modification_id": { "type": "string" },
+            "type": {
+              "type": "string",
+              "enum": ["content_change", "disclaimer_addition", "removal", "legal_review"]
+            },
+            "priority": {
+              "type": "string",
+              "enum": ["required", "recommended", "optional"]
+            },
+            "description": { "type": "string" },
+            "suggested_text": { "type": "string" },
+            "rationale": { "type": "string" },
+            "deadline": { "type": "string", "format": "date-time" }
+          }
+        }
+      },
+      "required_disclaimers": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "type": { "type": "string" },
+            "text": { "type": "string" },
+            "placement": { "type": "string" },
+            "prominence": { "type": "string" },
+            "jurisdiction": { "type": "string" }
+          }
+        }
+      },
+      "escalation_requirements": {
+        "type": "object",
+        "properties": {
+          "requires_human_review": { "type": "boolean" },
+          "escalation_level": {
+            "type": "string",
+            "enum": ["none", "senior_legal", "external_counsel", "board_level"]
+          },
+          "escalation_reason": { "type": "string" },
+          "timeline_requirements": { "type": "string" },
+          "additional_expertise_needed": { "type": "array", "items": { "type": "string" } }
+        }
+      },
+      "documentation": {
+        "type": "object",
+        "properties": {
+          "review_trail": { "type": "array" },
+          "legal_precedents": { "type": "array", "items": { "type": "string" } },
+          "consultation_records": { "type": "array" },
+          "approval_chain": { "type": "array" },
+          "audit_log": { "type": "array" }
+        }
+      },
+      "metadata": {
+        "type": "object",
+        "properties": {
+          "reviewed_at": { "type": "string", "format": "date-time" },
+          "agent_version": { "type": "string" },
+          "legal_framework_version": { "type": "string" },
+          "reviewer_id": { "type": "string" },
+          "review_duration": { "type": "number" },
+          "confidence_factors": { "type": "object" }
+        }
+      }
+    }
+  },
+  
+  "environment": {
+    "variables": {
+      "TOOLHUB_API_ENDPOINT": "${TOOLHUB_URL}",
+      "VAULT_ADDR": "${VAULT_ADDR}",
+      "NODE_ENV": "production",
+      "LOG_LEVEL": "info",
+      "LEGAL_REVIEW_TIMEOUT": "900",
+      "LEGAL_DATABASE_URL": "${LEGAL_DB_URL}",
+      "EXTERNAL_LEGAL_API": "${EXTERNAL_LEGAL_API_URL}",
+      "IP_SEARCH_ENABLED": "true"
+    },
+    "secrets": [
+      "TOOLHUB_API_KEY",
+      "LEGAL_DATABASE_CREDENTIALS",
+      "TRADEMARK_SEARCH_API_KEY",
+      "COPYRIGHT_SEARCH_API_KEY",
+      "EXTERNAL_LEGAL_SERVICE_KEY"
+    ]
+  },
+  
+  "monitoring": {
+    "metrics": [
+      {
+        "name": "legal_reviews_completed",
+        "type": "counter",
+        "labels": ["review_type", "status"],
+        "description": "Number of legal reviews completed"
+      },
+      {
+        "name": "review_duration",
+        "type": "histogram",
+        "labels": ["review_type", "complexity"],
+        "description": "Time taken to complete legal reviews"
+      },
+      {
+        "name": "risk_level_distribution",
+        "type": "histogram",
+        "labels": ["risk_level"],
+        "description": "Distribution of risk levels identified"
+      },
+      {
+        "name": "escalation_rate",
+        "type": "gauge",
+        "description": "Percentage of reviews requiring escalation"
+      },
+      {
+        "name": "compliance_violations",
+        "type": "counter",
+        "labels": ["violation_type", "jurisdiction"],
+        "description": "Compliance violations detected"
+      }
+    ],
+    "health_check": {
+      "endpoint": "/health",
+      "interval": "30s",
+      "timeout": "10s",
+      "healthy_threshold": 2,
+      "unhealthy_threshold": 3
+    },
+    "alerts": [
+      {
+        "name": "high_risk_content",
+        "condition": "sum(legal_reviews_completed{status=\"critical\"}) > 0",
+        "severity": "critical",
+        "notification": "slack"
+      },
+      {
+        "name": "high_escalation_rate",
+        "condition": "escalation_rate > 0.3",
+        "severity": "warning",
+        "notification": "email"
+      }
+    ]
+  },
+  
+  "scaling": {
+    "auto_scaling": {
+      "enabled": true,
+      "min_instances": 1,
+      "max_instances": 5,
+      "target_cpu_utilization": 70,
+      "scale_up_cooldown": "300s",
+      "scale_down_cooldown": "600s"
+    },
+    "load_balancing": {
+      "strategy": "round_robin",
+      "health_check_grace_period": "60s"
+    }
+  },
+  
+  "security": {
+    "network_policy": {
+      "egress": [
+        {
+          "to": "toolhub.smm-architect.svc.cluster.local",
+          "ports": [443, 80]
+        },
+        {
+          "to": "vault.vault.svc.cluster.local",
+          "ports": [8200]
+        },
+        {
+          "to": "external",
+          "domains": [
+            "api.uspto.gov",
+            "euipo.europa.eu",
+            "api.copyright.gov",
+            "legal-research-api.com"
+          ]
+        }
+      ]
+    },
+    "resource_limits": {
+      "max_file_size": "100MB",
+      "max_network_requests": 500,
+      "max_execution_time": "900s"
+    },
+    "data_classification": "confidential",
+    "encryption_required": true
+  },
+  
+  "integrations": {
+    "toolhub": {
+      "endpoint": "${TOOLHUB_API_ENDPOINT}",
+      "authentication": "api_key",
+      "operations": [
+        "retrieve_content",
+        "store_legal_review",
+        "search_precedents"
+      ]
+    },
+    "vault": {
+      "endpoint": "${VAULT_ADDR}",
+      "authentication": "kubernetes",
+      "mount_paths": [
+        "secret/legal-agent",
+        "secret/legal-databases",
+        "secret/external-legal-services"
+      ]
+    },
+    "external_services": {
+      "trademark_search": {
+        "provider": "uspto",
+        "api_version": "v1",
+        "rate_limits": {
+          "requests_per_hour": 100
+        }
+      },
+      "copyright_search": {
+        "provider": "copyright_office",
+        "api_version": "v2"
+      },
+      "legal_research": {
+        "provider": "westlaw",
+        "fallback": "lexis_nexis"
+      }
+    },
+    "audit_service": {
+      "endpoint": "${AUDIT_SERVICE_URL}",
+      "events": [
+        "legal_review_started",
+        "risk_identified",
+        "escalation_triggered",
+        "review_completed"
+      ]
+    }
+  },
+  
+  "execution": {
+    "runtime_config": {
+      "node_options": "--max-old-space-size=1536",
+      "worker_threads": false,
+      "cluster_mode": false
+    },
+    "deployment": {
+      "strategy": "blue_green",
+      "readiness_probe": {
+        "path": "/ready",
+        "initial_delay": "30s",
+        "period": "10s"
+      }
+    },
+    "restart_policy": {
+      "on_failure": "always",
+      "max_restart_count": 2,
+      "restart_delay": "60s"
+    }
+  }
+}

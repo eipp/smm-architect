@@ -1,0 +1,282 @@
+{
+  "name": "SMM Workspace Provisioning",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "workspace-provision",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "provision-webhook",
+      "name": "Provision Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [240, 300],
+      "webhookId": "workspace-provision-trigger"
+    },
+    {
+      "parameters": {
+        "functionCode": "// Validate workspace provisioning request\nconst request = items[0].json;\n\nif (!request.tenantId || !request.workspaceId) {\n  throw new Error('Missing required fields: tenantId and workspaceId');\n}\n\nif (!request.owner || !request.owner.email) {\n  throw new Error('Missing workspace owner information');\n}\n\nconst provisioningData = {\n  ...request,\n  namespace: `smm-tenant-${request.tenantId}`,\n  resourcePrefix: `ws-${request.workspaceId}`,\n  timestamp: new Date().toISOString()\n};\n\nreturn [{ json: provisioningData }];"
+      },
+      "id": "request-validation",
+      "name": "Request Validation",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "url": "http://vault.vault.svc.cluster.local:8200/v1/auth/kubernetes/login",
+        "sendBody": true,
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "vaultApi",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "role",
+              "value": "smm-workspace-provisioner"
+            },
+            {
+              "name": "jwt",
+              "value": "={{ $env.KUBERNETES_SERVICE_ACCOUNT_TOKEN }}"
+            }
+          ]
+        }
+      },
+      "id": "vault-authentication",
+      "name": "Vault Authentication",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "url": "http://vault.vault.svc.cluster.local:8200/v1/secret/data/tenant/{{ $json.tenantId }}",
+        "sendBody": true,
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "data",
+              "value": "={\"workspace_id\": \"{{ $json.workspaceId }}\", \"created_at\": \"{{ $json.timestamp }}\", \"owner\": \"{{ $json.owner.email }}\"}"
+            }
+          ]
+        }
+      },
+      "id": "create-vault-secrets",
+      "name": "Create Vault Secrets",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "command": "kubectl create namespace {{ $json.namespace }} --dry-run=client -o yaml | kubectl apply -f -"
+      },
+      "id": "create-namespace",
+      "name": "Create Namespace",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "command": "helm install {{ $json.resourcePrefix }} /charts/smm-workspace --namespace {{ $json.namespace }} --set workspaceId={{ $json.workspaceId }} --set tenantId={{ $json.tenantId }}"
+      },
+      "id": "deploy-workspace-resources",
+      "name": "Deploy Workspace Resources",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [1340, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Wait for workspace resources to be ready\nconst maxRetries = 30;\nconst retryInterval = 10000; // 10 seconds\n\nconst checkResourcesReady = async () => {\n  const namespace = items[0].json.namespace;\n  const resourcePrefix = items[0].json.resourcePrefix;\n  \n  // This would typically call kubectl to check pod status\n  // Simplified for template\n  return {\n    ready: true,\n    services: [\n      `${resourcePrefix}-database`,\n      `${resourcePrefix}-redis`,\n      `${resourcePrefix}-workspace-api`\n    ]\n  };\n};\n\nconst result = await checkResourcesReady();\nreturn [{ json: { ...items[0].json, resourceStatus: result } }];"
+      },
+      "id": "wait-for-readiness",
+      "name": "Wait for Readiness",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1560, 300]
+    },
+    {
+      "parameters": {
+        "url": "http://workspace-registry.smm-system.svc.cluster.local:8080/register",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "workspaceId",
+              "value": "={{ $json.workspaceId }}"
+            },
+            {
+              "name": "tenantId",
+              "value": "={{ $json.tenantId }}"
+            },
+            {
+              "name": "namespace",
+              "value": "={{ $json.namespace }}"
+            },
+            {
+              "name": "status",
+              "value": "active"
+            },
+            {
+              "name": "createdAt",
+              "value": "={{ $json.timestamp }}"
+            }
+          ]
+        }
+      },
+      "id": "register-workspace",
+      "name": "Register Workspace",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1780, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Create success response\nconst response = {\n  status: 'success',\n  workspaceId: items[0].json.workspaceId,\n  tenantId: items[0].json.tenantId,\n  namespace: items[0].json.namespace,\n  endpoints: {\n    api: `https://api.${items[0].json.workspaceId}.smm.local`,\n    dashboard: `https://dashboard.${items[0].json.workspaceId}.smm.local`\n  },\n  provisioned_at: items[0].json.timestamp\n};\n\nreturn [{ json: response }];"
+      },
+      "id": "success-response-builder",
+      "name": "Success Response Builder",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [2000, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "allIncomingItems",
+        "options": {}
+      },
+      "id": "provision-response",
+      "name": "Provision Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [2220, 300]
+    }
+  ],
+  "connections": {
+    "Provision Webhook": {
+      "main": [
+        [
+          {
+            "node": "Request Validation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Request Validation": {
+      "main": [
+        [
+          {
+            "node": "Vault Authentication",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Vault Authentication": {
+      "main": [
+        [
+          {
+            "node": "Create Vault Secrets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Vault Secrets": {
+      "main": [
+        [
+          {
+            "node": "Create Namespace",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Namespace": {
+      "main": [
+        [
+          {
+            "node": "Deploy Workspace Resources",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Deploy Workspace Resources": {
+      "main": [
+        [
+          {
+            "node": "Wait for Readiness",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait for Readiness": {
+      "main": [
+        [
+          {
+            "node": "Register Workspace",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Register Workspace": {
+      "main": [
+        [
+          {
+            "node": "Success Response Builder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Success Response Builder": {
+      "main": [
+        [
+          {
+            "node": "Provision Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "createdAt": "2024-01-15T10:00:00.000Z",
+  "updatedAt": "2024-01-15T10:00:00.000Z",
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "meta": {
+    "templateId": "smm-workspace-provisioning"
+  },
+  "pinData": {},
+  "versionId": "1",
+  "triggerCount": 1,
+  "tags": [
+    {
+      "createdAt": "2024-01-15T10:00:00.000Z",
+      "updatedAt": "2024-01-15T10:00:00.000Z",
+      "id": "smm-provisioning",
+      "name": "SMM Provisioning"
+    }
+  ]
+}

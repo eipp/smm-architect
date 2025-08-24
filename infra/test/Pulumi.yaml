@@ -1,0 +1,212 @@
+{
+  "name": "smm-architect-test-infrastructure",
+  "description": "SMM Architect test infrastructure provisioning with Pulumi",
+  "main": "dist/index.js",
+  "runtime": "nodejs",
+  "template": {
+    "description": "A TypeScript program for AWS infrastructure testing"
+  },
+  "config": {
+    "aws:region": {
+      "description": "AWS region for infrastructure deployment",
+      "default": "us-west-2"
+    },
+    "smm:environment": {
+      "description": "Environment type (ephemeral, staging, production)",
+      "default": "ephemeral"
+    },
+    "smm:testId": {
+      "description": "Unique test identifier for resource naming",
+      "default": "auto-generated"
+    },
+    "smm:enableMonitoring": {
+      "description": "Enable CloudWatch monitoring and logging",
+      "default": "true"
+    },
+    "smm:enableBackups": {
+      "description": "Enable automated backups for databases",
+      "default": "false"
+    },
+    "smm:costOptimization": {
+      "description": "Use cost-optimized instance types",
+      "default": "true"
+    }
+  },
+  "dependencies": {
+    "@pulumi/pulumi": "^3.0.0",
+    "@pulumi/aws": "^6.0.0",
+    "@pulumi/kubernetes": "^4.0.0",
+    "@pulumi/awsx": "^2.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "jest",
+    "preview": "pulumi preview",
+    "up": "pulumi up",
+    "destroy": "pulumi destroy",
+    "clean": "rm -rf dist/",
+    "validate": "pulumi config validate && pulumi preview --diff"
+  },
+  "pulumiConfig": {
+    "defaults": {
+      "aws:region": "us-west-2",
+      "aws:profile": "default"
+    },
+    "staging": {
+      "aws:region": "us-east-1",
+      "smm:environment": "staging",
+      "smm:enableMonitoring": "true",
+      "smm:enableBackups": "true"
+    },
+    "production": {
+      "aws:region": "us-east-1",
+      "smm:environment": "production",
+      "smm:enableMonitoring": "true",
+      "smm:enableBackups": "true",
+      "smm:costOptimization": "false"
+    }
+  },
+  "resourceLimits": {
+    "ephemeral": {
+      "maxInstances": 5,
+      "maxStorageGB": 100,
+      "maxCostPerHour": 1.0,
+      "autoDestroyAfterHours": 4
+    },
+    "staging": {
+      "maxInstances": 20,
+      "maxStorageGB": 500,
+      "maxCostPerHour": 10.0,
+      "autoDestroyAfterHours": 24
+    },
+    "production": {
+      "maxInstances": 100,
+      "maxStorageGB": 5000,
+      "maxCostPerHour": 100.0,
+      "autoDestroyAfterHours": null
+    }
+  },
+  "monitoring": {
+    "cloudWatch": {
+      "logGroups": [
+        "/smm/application",
+        "/smm/infrastructure",
+        "/smm/security"
+      ],
+      "metrics": [
+        "CPU",
+        "Memory",
+        "Network",
+        "Storage",
+        "RequestCount",
+        "ErrorRate"
+      ],
+      "alarms": {
+        "highCPU": {
+          "threshold": 80,
+          "comparisonOperator": "GreaterThanThreshold",
+          "evaluationPeriods": 2
+        },
+        "highMemory": {
+          "threshold": 85,
+          "comparisonOperator": "GreaterThanThreshold",
+          "evaluationPeriods": 2
+        },
+        "errorRate": {
+          "threshold": 5,
+          "comparisonOperator": "GreaterThanThreshold",
+          "evaluationPeriods": 1
+        }
+      }
+    }
+  },
+  "security": {
+    "encryption": {
+      "atRest": true,
+      "inTransit": true,
+      "kmsKeyRotation": true
+    },
+    "networking": {
+      "vpcFlowLogs": true,
+      "privateSubnetsOnly": true,
+      "restrictedSecurityGroups": true
+    },
+    "iam": {
+      "leastPrivilege": true,
+      "roleBasedAccess": true,
+      "regularAudit": true
+    },
+    "compliance": {
+      "frameworks": ["SOC2", "ISO27001"],
+      "dataClassification": "internal",
+      "retentionPolicies": true
+    }
+  },
+  "backup": {
+    "databases": {
+      "retentionDays": 7,
+      "backupWindow": "03:00-04:00",
+      "maintenanceWindow": "sun:04:00-sun:05:00",
+      "pointInTimeRecovery": true
+    },
+    "storage": {
+      "versioning": true,
+      "crossRegionReplication": false,
+      "lifecyclePolicies": true
+    }
+  },
+  "networking": {
+    "vpc": {
+      "cidr": "10.0.0.0/16",
+      "availabilityZones": 2,
+      "natGateways": 1,
+      "enableDnsHostnames": true,
+      "enableDnsSupport": true
+    },
+    "subnets": {
+      "public": {
+        "cidr": "10.0.1.0/24",
+        "mapPublicIp": true
+      },
+      "private": {
+        "cidr": "10.0.2.0/24",
+        "mapPublicIp": false
+      },
+      "database": {
+        "cidr": "10.0.3.0/24",
+        "mapPublicIp": false
+      }
+    }
+  },
+  "testing": {
+    "environments": {
+      "unit": {
+        "mockAws": true,
+        "localstack": false,
+        "duration": "5m"
+      },
+      "integration": {
+        "realAws": true,
+        "ephemeralStacks": true,
+        "duration": "30m"
+      },
+      "e2e": {
+        "fullDeployment": true,
+        "loadTesting": true,
+        "duration": "2h"
+      }
+    },
+    "validation": {
+      "resourceTags": true,
+      "securityGroups": true,
+      "encryption": true,
+      "backups": true,
+      "monitoring": true,
+      "costs": true
+    }
+  }
+}

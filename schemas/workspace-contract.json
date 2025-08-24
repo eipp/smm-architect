@@ -1,0 +1,452 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "WorkspaceContract",
+  "description": "Authoritative, signed, declarative specification that defines workspace behavior, goals, and constraints",
+  "type": "object",
+  "properties": {
+    "workspaceId": {
+      "type": "string",
+      "description": "Unique identifier for the workspace"
+    },
+    "tenantId": {
+      "type": "string",
+      "description": "Tenant organization identifier"
+    },
+    "createdBy": {
+      "type": "string",
+      "description": "Principal (user/service) who created the contract"
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Contract creation timestamp"
+    },
+    "lifecycle": {
+      "type": "string",
+      "enum": ["draft", "validated", "signed", "provisioning", "active", "paused", "decommissioned"],
+      "default": "draft",
+      "description": "Current lifecycle state of the workspace contract"
+    },
+    "contractVersion": {
+      "type": "string",
+      "description": "Semantic version of this contract (e.g., 'v1.2.3')"
+    },
+    "signedBy": {
+      "type": "object",
+      "properties": {
+        "principal": {
+          "type": "string",
+          "description": "Principal who signed the contract"
+        },
+        "signedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp when contract was signed"
+        },
+        "signatureId": {
+          "type": "string",
+          "description": "Unique identifier for the signature"
+        }
+      },
+      "required": ["principal", "signedAt", "signatureId"],
+      "description": "Signature metadata for contract authorization"
+    },
+    "effectiveFrom": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When this contract becomes effective"
+    },
+    "effectiveTo": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When this contract expires"
+    },
+    "goals": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "description": "Goal identifier (e.g., 'lead_gen', 'brand_awareness')"
+          },
+          "target": {
+            "type": "number",
+            "description": "Numeric target value"
+          },
+          "unit": {
+            "type": "string",
+            "description": "Unit of measurement (e.g., 'leads_per_month', 'impressions')"
+          }
+        },
+        "required": ["key", "target", "unit"]
+      },
+      "minItems": 1,
+      "description": "Marketing goals and targets for this workspace"
+    },
+    "primaryChannels": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": ["linkedin", "x", "instagram", "facebook", "youtube", "tiktok"]
+      },
+      "minItems": 1,
+      "description": "Primary social media channels for campaigns"
+    },
+    "connectors": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "platform": {
+            "type": "string",
+            "enum": ["linkedin", "x", "instagram", "facebook", "youtube", "tiktok"],
+            "description": "Social media platform"
+          },
+          "connectorId": {
+            "type": "string",
+            "description": "Internal connector identifier"
+          },
+          "accountId": {
+            "type": "string",
+            "description": "Platform-specific account/organization ID"
+          },
+          "displayName": {
+            "type": "string",
+            "description": "Human-readable account name"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["unconnected", "connected", "degraded", "revoked"],
+            "description": "Current connection status"
+          },
+          "lastConnectedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Last successful connection timestamp"
+          },
+          "scopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "OAuth scopes granted"
+          },
+          "ownerContact": {
+            "type": "string",
+            "description": "Contact information for account owner"
+          }
+        },
+        "required": ["platform", "connectorId", "accountId", "displayName", "status"]
+      },
+      "description": "Platform connectors and their connection status"
+    },
+    "consentRecords": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "consentId": {
+            "type": "string",
+            "description": "Unique consent record identifier"
+          },
+          "type": {
+            "type": "string",
+            "enum": ["voice_likeness", "ugc_license", "celebrity_release", "data_processing", "marketing_use"],
+            "description": "Type of consent granted"
+          },
+          "grantedBy": {
+            "type": "string",
+            "description": "Principal who granted consent"
+          },
+          "grantedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When consent was granted"
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When consent expires"
+          },
+          "documentRef": {
+            "type": "string",
+            "description": "Reference to signed consent document in storage"
+          },
+          "verifierSignature": {
+            "type": "string",
+            "description": "Cryptographic signature of the consent"
+          }
+        },
+        "required": ["consentId", "type", "grantedBy", "grantedAt", "expiresAt"],
+        "description": "Legal consent records for various use cases"
+      }
+    },
+    "budget": {
+      "type": "object",
+      "properties": {
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$",
+          "description": "Currency code (ISO 4217)"
+        },
+        "weeklyCap": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Maximum weekly spend"
+        },
+        "hardCap": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Absolute maximum spend limit"
+        },
+        "breakdown": {
+          "type": "object",
+          "properties": {
+            "paidAds": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Budget allocated for paid advertising"
+            },
+            "llmModelSpend": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Budget for LLM model usage"
+            },
+            "rendering": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Budget for content rendering and generation"
+            },
+            "thirdPartyServices": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Budget for third-party service costs"
+            }
+          },
+          "required": ["paidAds", "llmModelSpend", "rendering", "thirdPartyServices"],
+          "description": "Budget breakdown by category"
+        },
+        "forecast": {
+          "type": "object",
+          "properties": {
+            "estimatedWeeklySpend": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Estimated weekly spend based on historical data"
+            },
+            "confidence": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1,
+              "description": "Confidence level of the forecast (0-1)"
+            }
+          },
+          "required": ["estimatedWeeklySpend", "confidence"],
+          "description": "Budget forecasting information"
+        }
+      },
+      "required": ["currency", "weeklyCap", "hardCap", "breakdown"],
+      "description": "Budget configuration and limits"
+    },
+    "approvalPolicy": {
+      "type": "object",
+      "properties": {
+        "autoApproveReadinessThreshold": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Minimum readiness score for auto-approval"
+        },
+        "canaryInitialPct": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Initial canary deployment percentage"
+        },
+        "canaryWatchWindowHours": {
+          "type": "number",
+          "minimum": 1,
+          "description": "Hours to monitor canary before full deployment"
+        },
+        "manualApprovalForPaid": {
+          "type": "boolean",
+          "description": "Require manual approval for paid campaigns"
+        },
+        "legalManualApproval": {
+          "type": "boolean",
+          "description": "Require legal team approval"
+        }
+      },
+      "required": ["autoApproveReadinessThreshold", "canaryInitialPct", "canaryWatchWindowHours", "manualApprovalForPaid", "legalManualApproval"],
+      "description": "Campaign approval and deployment policies"
+    },
+    "riskProfile": {
+      "type": "string",
+      "enum": ["low", "medium", "high", "enterprise"],
+      "description": "Risk tolerance level for the workspace"
+    },
+    "dataRetention": {
+      "type": "object",
+      "properties": {
+        "auditRetentionDays": {
+          "type": "integer",
+          "minimum": 30,
+          "description": "Days to retain audit logs"
+        }
+      },
+      "required": ["auditRetentionDays"],
+      "description": "Data retention policies"
+    },
+    "ttlHours": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Time-to-live for workspace resources in hours"
+    },
+    "policyBundleRef": {
+      "type": "string",
+      "description": "Reference to the policy bundle used"
+    },
+    "policyBundleChecksum": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$",
+      "description": "SHA-256 checksum of the policy bundle for immutability"
+    },
+    "lastRun": {
+      "type": "object",
+      "properties": {
+        "runId": {
+          "type": "string",
+          "description": "Unique identifier for the last run"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["pending", "running", "completed", "failed", "cancelled"],
+          "description": "Status of the last run"
+        },
+        "startedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the last run started"
+        },
+        "finishedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the last run finished"
+        }
+      },
+      "required": ["runId", "status", "startedAt"],
+      "description": "Information about the last execution run"
+    },
+    "currentCanary": {
+      "type": "object",
+      "properties": {
+        "pct": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Current canary deployment percentage"
+        },
+        "startedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When canary deployment started"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["monitoring", "passed", "rolled_back"],
+          "description": "Current canary deployment status"
+        }
+      },
+      "required": ["pct", "startedAt", "status"],
+      "description": "Current canary deployment information"
+    },
+    "audit": {
+      "type": "object",
+      "properties": {
+        "retentionDays": {
+          "type": "integer",
+          "minimum": 30,
+          "description": "Days to retain audit bundles"
+        },
+        "storageRef": {
+          "type": "string",
+          "description": "Storage location reference for audit bundles"
+        },
+        "lastBundleId": {
+          "type": "string",
+          "description": "ID of the most recent audit bundle"
+        }
+      },
+      "required": ["retentionDays", "storageRef"],
+      "description": "Audit configuration and references"
+    },
+    "simulationConfig": {
+      "type": "object",
+      "properties": {
+        "iterations": {
+          "type": "integer",
+          "minimum": 100,
+          "default": 1000,
+          "description": "Number of Monte Carlo iterations"
+        },
+        "randomSeed": {
+          "type": "integer",
+          "default": 42,
+          "description": "Random seed for deterministic simulation"
+        },
+        "timeoutSeconds": {
+          "type": "integer",
+          "minimum": 30,
+          "default": 120,
+          "description": "Maximum simulation timeout"
+        }
+      },
+      "description": "Configuration for campaign simulation"
+    },
+    "emergencyFlags": {
+      "type": "object",
+      "properties": {
+        "pauseAll": {
+          "type": "boolean",
+          "default": false,
+          "description": "Emergency flag to pause all workspace activities"
+        },
+        "pausedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the workspace was paused"
+        },
+        "reason": {
+          "type": "string",
+          "description": "Reason for emergency pause"
+        }
+      },
+      "description": "Emergency control flags"
+    },
+    "kmsKeyRef": {
+      "type": "string",
+      "description": "Reference to KMS key for signing audit bundles"
+    },
+    "vaultMount": {
+      "type": "string",
+      "description": "Vault mount path for this workspace"
+    }
+  },
+  "required": [
+    "workspaceId",
+    "tenantId", 
+    "createdBy",
+    "createdAt",
+    "lifecycle",
+    "contractVersion",
+    "goals",
+    "primaryChannels",
+    "budget",
+    "approvalPolicy",
+    "ttlHours",
+    "policyBundleRef",
+    "policyBundleChecksum"
+  ],
+  "additionalProperties": false
+}

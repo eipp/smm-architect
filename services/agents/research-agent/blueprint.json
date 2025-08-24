@@ -1,0 +1,146 @@
+{
+  "agentId": "research-agent-v1",
+  "role": "research",
+  "displayName": "Brand Research Agent",
+  "description": "Gathers authoritative sources about workspace domains, produces exact-span claims, identifies competitors and audience signals, and creates comprehensive BrandTwin profiles.",
+  "systemPrompt": "You are the Research Agent for SMM Architect. Your primary responsibility is to gather comprehensive, factual information about brands and create detailed BrandTwin profiles. You must: 1) Ingest content from multiple authoritative sources including websites, social media, and industry reports. 2) Extract factual claims with exact text spans and confidence scores. 3) Identify brand voice, audience segments, competitors, and available assets. 4) Ensure all claims are properly cited with provenance tracking. 5) Output a complete BrandTwin JSON that meets schema requirements. Always prioritize accuracy over speed and mark uncertain information with appropriate confidence levels.",
+  "version": "1.0.0",
+  "memorySchema": {
+    "type": "object",
+    "properties": {
+      "brandId": {
+        "type": "string",
+        "description": "Brand being researched"
+      },
+      "lastSnapshotAt": {
+        "type": "string",
+        "format": "date-time",
+        "description": "Last completed snapshot timestamp"
+      },
+      "sources": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "url": {"type": "string"},
+            "sourceId": {"type": "string"},
+            "ingestedAt": {"type": "string", "format": "date-time"},
+            "status": {"type": "string", "enum": ["pending", "processed", "failed"]}
+          }
+        },
+        "description": "List of sources being tracked"
+      },
+      "progressMetrics": {
+        "type": "object",
+        "properties": {
+          "factsExtracted": {"type": "integer"},
+          "sourcesProcessed": {"type": "integer"},
+          "qualityScore": {"type": "number"}
+        }
+      }
+    },
+    "required": ["brandId"]
+  },
+  "tools": [
+    "toolhub.ingestSource",
+    "toolhub.vectorIndex", 
+    "toolhub.vectorSearch",
+    "http.fetch",
+    "screenshot.capture",
+    "text.extract",
+    "competitor.analyze"
+  ],
+  "outputs": {
+    "primary": {
+      "type": "BrandTwin",
+      "schema": "schemas/brand-twin.json",
+      "description": "Complete brand profile with facts, voice analysis, and competitive intelligence"
+    },
+    "secondary": {
+      "type": "ResearchReport", 
+      "format": "markdown",
+      "description": "Detailed research methodology and findings report"
+    }
+  },
+  "configuration": {
+    "runTTLSeconds": 3600,
+    "costEstimateTokens": 5000,
+    "maxConcurrentSources": 10,
+    "minFactsRequired": 5,
+    "minCitationCoverage": 0.9
+  },
+  "tests": [
+    {
+      "name": "icblabs-smoke-test",
+      "description": "Basic functionality test using ICB Labs as target",
+      "input": {
+        "workspaceId": "ws-test-001", 
+        "domain": "icblabs.com",
+        "additionalSources": [
+          "https://linkedin.com/company/icb-labs"
+        ]
+      },
+      "assertions": [
+        "output.brandTwin.facts.length >= 3",
+        "output.brandTwin.facts.every(f => f.sourceUrl && f.spanStart >= 0 && f.spanEnd > f.spanStart)",
+        "output.brandTwin.metadata.ingestedBy === 'research-agent-v1'",
+        "output.brandTwin.qualityScore >= 0.7"
+      ],
+      "expectedDuration": "< 300s",
+      "mockResponses": {
+        "https://icblabs.com": "<!DOCTYPE html><html><head><title>ICB Labs - Innovation Consulting</title></head><body><h1>About ICB Labs</h1><p>ICB Labs is a leading technology consulting firm specializing in digital transformation and innovation strategy. Founded in 2018, we help Fortune 500 companies accelerate their digital initiatives.</p></body></html>"
+      }
+    },
+    {
+      "name": "competitor-analysis-test",
+      "description": "Verify competitor identification works correctly",
+      "input": {
+        "workspaceId": "ws-test-002",
+        "domain": "example-consulting.com"
+      },
+      "assertions": [
+        "output.brandTwin.competitors.length >= 1",
+        "output.brandTwin.competitors.every(c => c.name && c.profileUrl && c.notes)"
+      ],
+      "expectedDuration": "< 400s"
+    },
+    {
+      "name": "voice-tone-extraction-test", 
+      "description": "Ensure voice and tone analysis is comprehensive",
+      "input": {
+        "workspaceId": "ws-test-003",
+        "domain": "tech-startup.com"
+      },
+      "assertions": [
+        "output.brandTwin.voiceTone.primaryTone",
+        "output.brandTwin.voiceTone.description.length > 50",
+        "output.brandTwin.voiceTone.examples.length >= 2"
+      ],
+      "expectedDuration": "< 250s"
+    }
+  ],
+  "errorHandling": {
+    "rateLimitStrategy": "exponential_backoff",
+    "maxRetries": 3,
+    "timeoutSeconds": 30,
+    "fallbackBehavior": "continue_with_partial_data"
+  },
+  "monitoring": {
+    "keyMetrics": [
+      "facts_per_source_ratio",
+      "citation_coverage_percentage", 
+      "processing_time_per_source",
+      "quality_score_distribution"
+    ],
+    "alertThresholds": {
+      "low_fact_extraction": "< 2 facts per source",
+      "poor_citation_coverage": "< 80%",
+      "slow_processing": "> 60s per source"
+    }
+  },
+  "compliance": {
+    "dataRetention": "90 days for intermediate data, permanent for BrandTwin output",
+    "privacyCompliance": "GDPR, CCPA",
+    "auditRequirements": "Log all source URLs and extraction timestamps"
+  }
+}
