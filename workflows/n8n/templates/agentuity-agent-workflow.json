@@ -1,0 +1,443 @@
+{
+  "name": "Agentuity Agent Workflow",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "agentuity-agent-trigger",
+      "name": "Agentuity Agent Trigger",
+      "type": "n8n-nodes-base.trigger",
+      "typeVersion": 1,
+      "position": [
+        240,
+        300
+      ],
+      "webhookId": "agentuity-agent-webhook",
+      "credentials": {}
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "agentuity/trigger",
+        "authentication": "headerAuth",
+        "options": {
+          "allowedOrigins": "*",
+          "responseHeaders": {
+            "X-Agent-ID": "agentuity-my-agent",
+            "X-Workflow-Version": "1.0.0"
+          }
+        }
+      },
+      "id": "agentuity-webhook-node",
+      "name": "Webhook: Agentuity Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        460,
+        300
+      ],
+      "webhookId": "agentuity-agent-webhook",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "agentuity-auth-header",
+          "name": "Agentuity Webhook Auth"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "functionCode": "// Validate and enrich Agentuity agent request\nconst requestBody = $input.first().json.body;\n\n// Validate required fields\nif (!requestBody.tenantId) {\n  throw new Error('tenantId is required for multi-tenant compliance');\n}\n\nif (!requestBody.workspaceId) {\n  throw new Error('workspaceId is required for workspace scoping');\n}\n\n// Validate tenant access and permissions\nconst enrichedRequest = {\n  ...requestBody,\n  agent_id: 'agentuity-my-agent',\n  protocol_version: '2.0',\n  request_id: `agentuity_${Date.now()}_${Math.random().toString(36).substring(2)}`,\n  timestamp: new Date().toISOString(),\n  source: 'n8n-workflow',\n  workflow_id: $workflow.id,\n  execution_id: $execution.id\n};\n\n// Add MCP metadata\nenrichedRequest.mcp_context = {\n  previous_agents: [],\n  workflow_sequence: ['agentuity_agent'],\n  expected_outputs: ['agent_result', 'toolhub_data'],\n  tenant_context: {\n    tenant_id: requestBody.tenantId,\n    workspace_id: requestBody.workspaceId\n  }\n};\n\n// Log request for audit trail\nconsole.log('Agentuity agent request validated and enriched:', {\n  tenant_id: enrichedRequest.tenantId,\n  workspace_id: enrichedRequest.workspaceId,\n  request_id: enrichedRequest.request_id,\n  action: enrichedRequest.action || 'general'\n});\n\nreturn enrichedRequest;"
+      },
+      "id": "validate-request",
+      "name": "Validate Request",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        680,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.POLICY_SERVICE_URL || 'http://localhost:8090' }}/api/v1/evaluate",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpBearerAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Tenant-ID",
+              "value": "={{ $json.tenantId }}"
+            },
+            {
+              "name": "X-Workspace-ID", 
+              "value": "={{ $json.workspaceId }}"
+            },
+            {
+              "name": "X-Agent-ID",
+              "value": "agentuity-my-agent"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "input",
+              "value": "={{ $json }}"
+            },
+            {
+              "name": "policies",
+              "value": [
+                "agent_execution_policy",
+                "tenant_isolation_policy",
+                "cost_budget_policy",
+                "content_safety_policy"
+              ]
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000,
+          "retry": {
+            "enabled": true,
+            "maxRetries": 2
+          }
+        }
+      },
+      "id": "policy-check",
+      "name": "Policy Check",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        900,
+        300
+      ],
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "policy-service-auth",
+          "name": "Policy Service Auth"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.allow }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "policy-gate",
+      "name": "Policy Gate",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        1120,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.AGENTUITY_AGENT_WEBHOOK_URL }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpBearerAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "X-Tenant-ID",
+              "value": "={{ $('Validate Request').item.json.tenantId }}"
+            },
+            {
+              "name": "X-Workspace-ID",
+              "value": "={{ $('Validate Request').item.json.workspaceId }}"
+            },
+            {
+              "name": "X-Request-ID",
+              "value": "={{ $('Validate Request').item.json.request_id }}"
+            },
+            {
+              "name": "X-Workflow-ID",
+              "value": "={{ $workflow.id }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "body": "={{ JSON.stringify($('Validate Request').item.json) }}",
+        "options": {
+          "timeout": 120000,
+          "retry": {
+            "enabled": true,
+            "maxRetries": 3,
+            "retryOnHttpStatusCodes": [
+              {
+                "values": "502,503,504"
+              }
+            ]
+          }
+        }
+      },
+      "id": "call-agentuity-agent",
+      "name": "Call Agentuity Agent",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        1340,
+        220
+      ],
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "agentuity-agent-auth",
+          "name": "Agentuity Agent Auth"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "functionCode": "// Process Agentuity agent response and prepare for MCP\nconst agentResponse = $input.first().json;\nconst originalRequest = $('Validate Request').item.json;\n\n// Validate agent response\nif (agentResponse.status !== 'completed') {\n  throw new Error(`Agentuity agent failed: ${agentResponse.error || 'Unknown error'}`);\n}\n\n// Create MCP-compliant response\nconst mcpResponse = {\n  protocol_version: '2.0',\n  agent_id: 'agentuity-my-agent',\n  request_id: originalRequest.request_id,\n  tenant_id: originalRequest.tenantId,\n  workspace_id: originalRequest.workspaceId,\n  status: 'completed',\n  result: {\n    content: agentResponse.result,\n    metadata: agentResponse.metadata,\n    toolhub_processed: agentResponse.toolhub_processed,\n    tenant_context_set: agentResponse.tenant_context_set\n  },\n  processing_time: agentResponse.metadata?.processing_time || 0,\n  tokens_used: agentResponse.metadata?.tokens_consumed || 0,\n  estimated_cost: agentResponse.metadata?.estimated_cost || 0,\n  actual_cost: agentResponse.metadata?.actual_cost || 0,\n  completed_at: new Date().toISOString(),\n  next_agents: [], // Could be populated based on workflow logic\n  quality_score: null, // Could be computed based on response quality\n  audit_trail: {\n    agent_called: true,\n    policy_checked: true,\n    toolhub_integrated: agentResponse.toolhub_processed,\n    workflow_id: $workflow.id,\n    execution_id: $execution.id\n  }\n};\n\n// Log successful completion\nconsole.log('Agentuity agent completed successfully:', {\n  tenant_id: mcpResponse.tenant_id,\n  workspace_id: mcpResponse.workspace_id,\n  processing_time: mcpResponse.processing_time,\n  tokens_used: mcpResponse.tokens_used,\n  cost: mcpResponse.actual_cost\n});\n\nreturn mcpResponse;"
+      },
+      "id": "process-response",
+      "name": "Process Response",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        1560,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.AUDIT_SERVICE_URL || 'http://localhost:8092' }}/api/v1/audit/log",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpBearerAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Tenant-ID",
+              "value": "={{ $json.tenant_id }}"
+            },
+            {
+              "name": "X-Agent-ID",
+              "value": "agentuity-my-agent"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "event_type",
+              "value": "agent_execution_completed"
+            },
+            {
+              "name": "agent_id",
+              "value": "agentuity-my-agent"
+            },
+            {
+              "name": "tenant_id",
+              "value": "={{ $json.tenant_id }}"
+            },
+            {
+              "name": "workspace_id",
+              "value": "={{ $json.workspace_id }}"
+            },
+            {
+              "name": "execution_data",
+              "value": "={{ $json }}"
+            },
+            {
+              "name": "workflow_context",
+              "value": {
+                "workflow_id": "{{ $workflow.id }}",
+                "execution_id": "{{ $execution.id }}",
+                "node_count": "{{ Object.keys($workflow.nodes).length }}"
+              }
+            }
+          ]
+        }
+      },
+      "id": "audit-log",
+      "name": "Audit Log",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        1780,
+        220
+      ],
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "audit-service-auth",
+          "name": "Audit Service Auth"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($('Process Response').item.json) }}"
+      },
+      "id": "respond-success",
+      "name": "Respond Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        2000,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseCode": 403,
+        "responseBody": "{{ JSON.stringify({ error: 'Policy violation', policy_results: $json, agent_id: 'agentuity-my-agent' }) }}"
+      },
+      "id": "respond-policy-denied",
+      "name": "Respond Policy Denied",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1340,
+        380
+      ]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Error handling for Agentuity agent failures\nconst error = $input.first().json;\nconst originalRequest = $('Validate Request').item.json;\n\n// Create error response\nconst errorResponse = {\n  protocol_version: '2.0',\n  agent_id: 'agentuity-my-agent',\n  request_id: originalRequest.request_id,\n  tenant_id: originalRequest.tenantId,\n  workspace_id: originalRequest.workspaceId,\n  status: 'failed',\n  error: error.message || 'Agent execution failed',\n  error_code: error.code || 'AGENT_EXECUTION_ERROR',\n  timestamp: new Date().toISOString(),\n  workflow_context: {\n    workflow_id: $workflow.id,\n    execution_id: $execution.id,\n    failed_node: 'call-agentuity-agent'\n  }\n};\n\n// Log error for monitoring\nconsole.error('Agentuity agent execution failed:', {\n  tenant_id: errorResponse.tenant_id,\n  workspace_id: errorResponse.workspace_id,\n  error: errorResponse.error,\n  request_id: errorResponse.request_id\n});\n\nreturn errorResponse;"
+      },
+      "id": "handle-agent-error",
+      "name": "Handle Agent Error",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        1560,
+        380
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseCode": 500,
+        "responseBody": "={{ JSON.stringify($json) }}"
+      },
+      "id": "respond-error",
+      "name": "Respond Error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1780,
+        380
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook: Agentuity Trigger": {
+      "main": [
+        [
+          {
+            "node": "Validate Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Request": {
+      "main": [
+        [
+          {
+            "node": "Policy Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Policy Check": {
+      "main": [
+        [
+          {
+            "node": "Policy Gate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Policy Gate": {
+      "main": [
+        [
+          {
+            "node": "Call Agentuity Agent",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Policy Denied",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call Agentuity Agent": {
+      "main": [
+        [
+          {
+            "node": "Process Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Response": {
+      "main": [
+        [
+          {
+            "node": "Audit Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Audit Log": {
+      "main": [
+        [
+          {
+            "node": "Respond Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": "agentuity-agent-error-handler"
+  },
+  "versionId": "1.0.0",
+  "meta": {
+    "templateCreatedBy": "SMM Architect Platform",
+    "description": "N8N workflow template for Agentuity agent integration with MCP protocol, policy enforcement, and audit logging",
+    "tags": ["agentuity", "agent", "mcp", "smm-architect"],
+    "compatibility": {
+      "n8n_version": ">=1.0.0",
+      "smm_platform_version": ">=1.0.0"
+    }
+  }
+}

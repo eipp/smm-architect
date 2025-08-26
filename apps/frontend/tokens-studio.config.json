@@ -1,0 +1,165 @@
+{
+  "source": "figma",
+  "figma": {
+    "personalAccessToken": "$FIGMA_PERSONAL_ACCESS_TOKEN",
+    "fileId": "$FIGMA_FILE_ID"
+  },
+  "platforms": {
+    "css": {
+      "transformGroup": "css",
+      "buildPath": "src/design-system/",
+      "files": [
+        {
+          "destination": "tokens.css",
+          "format": "css/variables",
+          "selector": ":root",
+          "options": {
+            "showFileHeader": true,
+            "outputReferences": true
+          }
+        }
+      ]
+    },
+    "js": {
+      "transformGroup": "js",
+      "buildPath": "src/design-system/",
+      "files": [
+        {
+          "destination": "tokens.js",
+          "format": "javascript/es6",
+          "options": {
+            "showFileHeader": true,
+            "outputReferences": true
+          }
+        }
+      ]
+    },
+    "ts": {
+      "transformGroup": "js",
+      "buildPath": "src/design-system/",
+      "files": [
+        {
+          "destination": "tokens.ts",
+          "format": "typescript/es6-declarations",
+          "options": {
+            "showFileHeader": true,
+            "outputReferences": true
+          }
+        }
+      ]
+    },
+    "tailwind": {
+      "transformGroup": "js",
+      "buildPath": "./",
+      "files": [
+        {
+          "destination": "tailwind.tokens.js",
+          "format": "javascript/tailwind-config",
+          "options": {
+            "showFileHeader": true,
+            "outputReferences": false
+          }
+        }
+      ]
+    }
+  },
+  "transforms": [
+    {
+      "name": "size/px",
+      "type": "value",
+      "matcher": {
+        "type": "dimension"
+      },
+      "transformer": {
+        "type": "name",
+        "value": "px"
+      }
+    },
+    {
+      "name": "color/hsl",
+      "type": "value",
+      "matcher": {
+        "type": "color"
+      },
+      "transformer": {
+        "type": "hsl"
+      }
+    }
+  ],
+  "formatHelpers": {
+    "createPropertyFormatter": {
+      "prefix": "--",
+      "suffix": ""
+    }
+  },
+  "hooks": {
+    "pre": [
+      "echo 'Starting design token sync from Figma...'",
+      "npm run lint:tokens"
+    ],
+    "post": [
+      "npm run build:tokens",
+      "npm run format:tokens",
+      "echo 'Design tokens successfully synced and formatted!'"
+    ]
+  },
+  "sync": {
+    "enabled": true,
+    "schedule": "0 */6 * * *",
+    "webhook": {
+      "enabled": true,
+      "secret": "$FIGMA_WEBHOOK_SECRET",
+      "endpoint": "/api/figma/webhook"
+    },
+    "gitCommit": {
+      "enabled": true,
+      "message": "chore: sync design tokens from Figma",
+      "branch": "design-tokens-sync",
+      "createPR": true,
+      "prTitle": "🎨 Design Token Sync from Figma",
+      "prBody": "Automated sync of design tokens from Figma design system.\n\nChanges:\n- Updated color tokens\n- Updated typography tokens\n- Updated spacing tokens\n- Updated motion tokens\n\nReview the changes and merge if everything looks correct."
+    }
+  },
+  "validation": {
+    "enabled": true,
+    "rules": [
+      {
+        "name": "color-contrast",
+        "description": "Ensure sufficient color contrast",
+        "severity": "error",
+        "matcher": {
+          "type": "color"
+        },
+        "validator": "wcag-aa"
+      },
+      {
+        "name": "spacing-scale",
+        "description": "Maintain 8px baseline grid",
+        "severity": "warning",
+        "matcher": {
+          "type": "dimension",
+          "category": "spacing"
+        },
+        "validator": "multiple-of-8"
+      },
+      {
+        "name": "typography-scale",
+        "description": "Maintain modular scale ratio",
+        "severity": "warning",
+        "matcher": {
+          "type": "dimension",
+          "category": "fontSize"
+        },
+        "validator": "modular-scale-1.25"
+      }
+    ]
+  },
+  "documentation": {
+    "enabled": true,
+    "format": "markdown",
+    "output": "design-system/README.md",
+    "template": "design-system/docs/token-template.md",
+    "includeExamples": true,
+    "includePreviews": true
+  }
+}

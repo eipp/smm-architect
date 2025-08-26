@@ -1,0 +1,257 @@
+name: 🎨 Design Token Sync
+
+on:
+  # Scheduled sync every 6 hours
+  schedule:
+    - cron: '0 */6 * * *'
+  
+  # Manual trigger
+  workflow_dispatch:
+  
+  # Webhook trigger from Figma
+  repository_dispatch:
+    types: [figma-tokens-updated]
+  
+  # On push to main for token files
+  push:
+    paths:
+      - 'apps/frontend/src/design-system/tokens.json'
+      - 'apps/frontend/tokens-studio.config.json'
+      - '.github/workflows/design-tokens.yml'
+
+env:
+  FIGMA_PERSONAL_ACCESS_TOKEN: ${{ secrets.FIGMA_PERSONAL_ACCESS_TOKEN }}
+  FIGMA_FILE_ID: ${{ secrets.FIGMA_FILE_ID }}
+  FIGMA_WEBHOOK_SECRET: ${{ secrets.FIGMA_WEBHOOK_SECRET }}
+
+jobs:
+  sync-tokens:
+    name: Sync Design Tokens
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: 📦 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: '**/package-lock.json'
+
+      - name: 📥 Install dependencies
+        run: |
+          npm ci
+          npm install -g @tokens-studio/sd-transforms
+          npm install -g style-dictionary
+
+      - name: 🎨 Fetch tokens from Figma
+        run: |
+          echo "Fetching design tokens from Figma..."
+          npx @tokens-studio/sd-transforms \
+            --input tokens-studio.config.json \
+            --output src/design-system/tokens.json \
+            --figma-file-id $FIGMA_FILE_ID \
+            --figma-access-token $FIGMA_PERSONAL_ACCESS_TOKEN
+
+      - name: 🔧 Transform tokens with Style Dictionary
+        run: |
+          echo "Transforming tokens with Style Dictionary..."
+          cd apps/frontend
+          npx style-dictionary build --config tokens-studio.config.json
+
+      - name: 🎯 Generate Tailwind config
+        run: |
+          echo "Generating Tailwind configuration from tokens..."
+          cd apps/frontend
+          node scripts/generate-tailwind-config.js
+
+      - name: 🧹 Format generated files
+        run: |
+          npx prettier --write "apps/frontend/src/design-system/**/*.{css,js,ts}"
+          npx prettier --write "apps/frontend/tailwind.config.ts"
+
+      - name: ✅ Validate tokens
+        run: |
+          echo "Validating design tokens..."
+          cd apps/frontend
+          npm run lint:tokens
+          npm run test:tokens
+
+      - name: 📊 Check bundle impact
+        run: |
+          echo "Analyzing bundle size impact..."
+          cd apps/frontend
+          npm run build:analyze
+
+      - name: 🔍 Detect changes
+        id: changes
+        run: |
+          if git diff --quiet; then
+            echo "changed=false" >> $GITHUB_OUTPUT
+            echo "No changes detected"
+          else
+            echo "changed=true" >> $GITHUB_OUTPUT
+            echo "Changes detected:"
+            git diff --name-only
+          fi
+
+      - name: 📝 Create Pull Request
+        if: steps.changes.outputs.changed == 'true'
+        uses: peter-evans/create-pull-request@v5
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: 'chore: sync design tokens from Figma'
+          title: '🎨 Design Token Sync from Figma'
+          body: |
+            ## 🎨 Design Token Sync
+            
+            This PR contains automated updates to design tokens synced from Figma.
+            
+            ### Changes Made
+            - ✅ Fetched latest tokens from Figma
+            - ✅ Transformed tokens with Style Dictionary
+            - ✅ Generated Tailwind CSS configuration
+            - ✅ Validated token consistency
+            - ✅ Analyzed bundle size impact
+            
+            ### Files Changed
+            ```
+            ${{ steps.changes.outputs.files }}
+            ```
+            
+            ### Review Checklist
+            - [ ] Color contrast meets WCAG AA standards
+            - [ ] Spacing follows 8px baseline grid
+            - [ ] Typography maintains modular scale
+            - [ ] Bundle size impact is acceptable
+            - [ ] Visual regression tests pass
+            
+            ---
+            
+            🤖 This PR was created automatically by the Design Token Sync workflow.
+            
+            **Triggered by:** ${{ github.event_name }}
+            **Figma File:** ${{ env.FIGMA_FILE_ID }}
+            **Workflow:** [${{ github.workflow }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+
+          branch: design-tokens-sync-${{ github.run_number }}
+          delete-branch: true
+          draft: false
+          labels: |
+            design-system
+            tokens
+            automated
+
+      - name: 📈 Update metrics
+        if: steps.changes.outputs.changed == 'true'
+        run: |
+          echo "Recording sync metrics..."
+          echo "Sync completed at: $(date -u +%Y-%m-%dT%H:%M:%SZ)" >> metrics.log
+          echo "Files changed: $(git diff --name-only | wc -l)" >> metrics.log
+          echo "Lines changed: $(git diff --stat | tail -1)" >> metrics.log
+
+  visual-regression:
+    name: Visual Regression Tests
+    needs: sync-tokens
+    if: needs.sync-tokens.outputs.changed == 'true'
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+
+      - name: 📦 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: 📥 Install dependencies
+        run: npm ci
+
+      - name: 🎭 Install Playwright
+        run: npx playwright install --with-deps
+
+      - name: 🔧 Build Storybook
+        run: |
+          cd apps/frontend
+          npm run build-storybook
+
+      - name: 📸 Run visual regression tests
+        run: |
+          cd apps/frontend
+          npx playwright test --config=playwright.visual.config.ts
+
+      - name: 📊 Upload test results
+        uses: actions/upload-artifact@v3
+        if: failure()
+        with:
+          name: visual-regression-results
+          path: apps/frontend/test-results/
+
+      - name: 💬 Comment on PR
+        if: failure()
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const prNumber = context.payload.pull_request?.number;
+            
+            if (prNumber) {
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number: prNumber,
+                body: `
+                ⚠️ **Visual Regression Tests Failed**
+                
+                The design token changes have caused visual regressions. Please review:
+                
+                - Check the visual diff artifacts
+                - Verify the changes are intentional
+                - Update visual baselines if needed
+                
+                [View Test Results](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+                `
+              });
+            }
+
+  accessibility-audit:
+    name: Accessibility Audit
+    needs: sync-tokens
+    if: needs.sync-tokens.outputs.changed == 'true'
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+
+      - name: 📦 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: 📥 Install dependencies
+        run: npm ci
+
+      - name: ♿ Run accessibility tests
+        run: |
+          cd apps/frontend
+          npm run test:a11y
+
+      - name: 📊 Generate accessibility report
+        run: |
+          cd apps/frontend
+          npx @axe-core/cli --tags wcag2a,wcag2aa --exit http://localhost:3000
+
+      - name: 📋 Upload accessibility results
+        uses: actions/upload-artifact@v3
+        with:
+          name: accessibility-audit
+          path: apps/frontend/accessibility-results.json

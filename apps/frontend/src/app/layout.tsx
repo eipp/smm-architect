@@ -1,20 +1,53 @@
 import type { Metadata } from "next"
-import { Inter, JetBrains_Mono } from "next/font/google"
+import { Inter } from "next/font/google"
+import "../design-system/tokens.css"
 import "./globals.css"
 import { Navigation } from "@/components/navigation"
 import { Toaster } from "@/components/ui/toaster"
 import { ErrorBoundary } from "@/components/error-boundary"
-import { TooltipProvider } from "@smm-architect/ui"
+import { TooltipProvider } from "@/components/ui/tooltip"
 import { I18nProvider } from "@/lib/i18n"
+import PerformanceMonitoring from "@/components/core-web-vitals"
 
+// Inter Variable font with optimized loading strategy
 const inter = Inter({
-  subsets: ["latin"],
+  subsets: ["latin", "latin-ext"],
   variable: "--font-sans",
+  display: "swap", // Ensures text remains visible during font load
+  preload: true,
+  fallback: [
+    // System font stack fallbacks for better CLS
+    "-apple-system",
+    "BlinkMacSystemFont", 
+    "Segoe UI",
+    "Roboto",
+    "Oxygen",
+    "Ubuntu",
+    "Cantarell",
+    "Open Sans",
+    "Helvetica Neue",
+    "sans-serif"
+  ],
+  adjustFontFallback: true, // Automatic fallback font metrics adjustment
+  weight: ["100", "200", "300", "400", "500", "600", "700", "800", "900"],
+  style: ["normal", "italic"],
 })
 
-const jetbrainsMono = JetBrains_Mono({
+// JetBrains Mono for code blocks
+const jetbrainsMono = Inter({
   subsets: ["latin"],
   variable: "--font-mono",
+  display: "swap",
+  preload: false, // Only preload if needed on page
+  fallback: [
+    "Menlo",
+    "Monaco",
+    "Consolas",
+    "Liberation Mono",
+    "Courier New",
+    "monospace"
+  ],
+  adjustFontFallback: true
 })
 
 export const metadata: Metadata = {
@@ -61,6 +94,26 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
+      <head>
+        {/* Font preloading for performance */}
+        <link
+          rel="preload"
+          href="/fonts/Inter-Variable.woff2"
+          as="font"
+          type="font/woff2"
+          crossOrigin="anonymous"
+        />
+        <link
+          rel="preload"
+          href="/fonts/JetBrainsMono-Variable.woff2"
+          as="font"
+          type="font/woff2"
+          crossOrigin="anonymous"
+        />
+        {/* Preconnect to external font services */}
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+      </head>
       <body
         className={`${inter.variable} ${jetbrainsMono.variable} font-sans antialiased bg-background text-foreground`}
       >
@@ -74,6 +127,7 @@ export default function RootLayout({
                 </main>
               </div>
               <Toaster />
+              <PerformanceMonitoring />
             </TooltipProvider>
           </I18nProvider>
         </ErrorBoundary>

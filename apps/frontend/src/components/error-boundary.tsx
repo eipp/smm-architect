@@ -1,7 +1,7 @@
 "use client"
 
 import React from 'react'
-import { Button } from '@smm-architect/ui'
+import { Button } from '@/components/ui/button'
 
 interface ErrorBoundaryState {
   hasError: boolean

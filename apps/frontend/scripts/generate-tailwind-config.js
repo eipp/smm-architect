@@ -1,0 +1,315 @@
+#!/usr/bin/env node
+
+/**
+ * Generate Tailwind CSS configuration from design tokens
+ * This script reads the design tokens and generates a Tailwind config
+ * that stays in sync with Figma through the Tokens Studio pipeline
+ */
+
+const fs = require('fs')
+const path = require('path')
+
+// Paths
+const TOKENS_PATH = path.join(__dirname, '../src/design-system/tokens.json')
+const TAILWIND_CONFIG_PATH = path.join(__dirname, '../tailwind.config.ts')
+
+// Read design tokens
+function readTokens() {
+  try {
+    const tokensContent = fs.readFileSync(TOKENS_PATH, 'utf8')
+    return JSON.parse(tokensContent)
+  } catch (error) {
+    console.error('Error reading tokens:', error.message)
+    process.exit(1)
+  }
+}
+
+// Convert token value to Tailwind format
+function convertTokenValue(value, type) {
+  if (typeof value === 'string') {
+    // Handle HSL color values
+    if (value.startsWith('hsl(') && value.endsWith(')')) {
+      return value
+    }
+    
+    // Handle pixel values
+    if (value.endsWith('px')) {
+      return value
+    }
+    
+    // Handle other string values
+    return value
+  }
+  
+  if (typeof value === 'number') {
+    // Assume pixels for numeric values
+    return `${value}px`
+  }
+  
+  return value
+}
+
+// Generate color scale from tokens
+function generateColorScale(colorTokens) {
+  const scale = {}
+  
+  Object.entries(colorTokens).forEach(([key, value]) => {
+    if (typeof value === 'object' && value !== null) {
+      // Handle nested color objects (e.g., primary.100, primary.200)
+      scale[key] = {}
+      Object.entries(value).forEach(([shade, color]) => {
+        if (typeof color === 'object' && color.value) {
+          scale[key][shade] = convertTokenValue(color.value, 'color')
+        } else {
+          scale[key][shade] = convertTokenValue(color, 'color')
+        }
+      })
+    } else if (typeof value === 'object' && value.value) {
+      // Handle single color tokens
+      scale[key] = convertTokenValue(value.value, 'color')
+    } else {
+      scale[key] = convertTokenValue(value, 'color')
+    }
+  })
+  
+  return scale
+}
+
+// Generate spacing scale from tokens
+function generateSpacingScale(spacingTokens) {
+  const scale = {}
+  
+  Object.entries(spacingTokens).forEach(([key, value]) => {
+    if (typeof value === 'object' && value.value) {
+      scale[key] = convertTokenValue(value.value, 'spacing')
+    } else {
+      scale[key] = convertTokenValue(value, 'spacing')
+    }
+  })
+  
+  return scale
+}
+
+// Generate typography from tokens
+function generateTypography(typographyTokens) {
+  const typography = {}
+  
+  if (typographyTokens.fontFamily) {
+    typography.fontFamily = {}
+    Object.entries(typographyTokens.fontFamily).forEach(([key, value]) => {
+      if (typeof value === 'object' && value.value) {
+        typography.fontFamily[key] = value.value.split(', ')
+      } else {
+        typography.fontFamily[key] = value.split(', ')
+      }
+    })
+  }
+  
+  if (typographyTokens.fontSize) {
+    typography.fontSize = {}
+    Object.entries(typographyTokens.fontSize).forEach(([key, value]) => {
+      if (typeof value === 'object' && value.value) {
+        typography.fontSize[key] = convertTokenValue(value.value, 'fontSize')
+      } else {
+        typography.fontSize[key] = convertTokenValue(value, 'fontSize')
+      }
+    })
+  }
+  
+  if (typographyTokens.lineHeight) {
+    typography.lineHeight = {}
+    Object.entries(typographyTokens.lineHeight).forEach(([key, value]) => {
+      if (typeof value === 'object' && value.value) {
+        typography.lineHeight[key] = value.value
+      } else {
+        typography.lineHeight[key] = value
+      }
+    })
+  }
+  
+  return typography
+}
+
+// Generate Tailwind config
+function generateTailwindConfig(tokens) {
+  const config = {
+    colors: {},
+    spacing: {},
+    ...generateTypography(tokens.typography || {})
+  }
+  
+  // Process colors
+  if (tokens.color) {
+    config.colors = generateColorScale(tokens.color)
+  }
+  
+  // Process spacing
+  if (tokens.spacing) {
+    config.spacing = generateSpacingScale(tokens.spacing)
+  }
+  
+  // Process additional token categories
+  if (tokens.borderRadius) {
+    config.borderRadius = {}
+    Object.entries(tokens.borderRadius).forEach(([key, value]) => {
+      if (typeof value === 'object' && value.value) {
+        config.borderRadius[key] = convertTokenValue(value.value, 'borderRadius')
+      } else {
+        config.borderRadius[key] = convertTokenValue(value, 'borderRadius')
+      }
+    })
+  }
+  
+  if (tokens.shadow) {
+    config.boxShadow = {}
+    Object.entries(tokens.shadow).forEach(([key, value]) => {
+      if (typeof value === 'object' && value.value) {
+        config.boxShadow[key] = value.value
+      } else {
+        config.boxShadow[key] = value
+      }
+    })
+  }
+  
+  return config
+}
+
+// Write Tailwind config file
+function writeTailwindConfig(config) {
+  const configTemplate = `import type { Config } from "tailwindcss"
+
+// Auto-generated Tailwind config from design tokens
+// DO NOT EDIT MANUALLY - This file is generated by scripts/generate-tailwind-config.js
+
+const tokenConfig = ${JSON.stringify(config, null, 2)}
+
+const tailwindConfig: Config = {
+  darkMode: "class",
+  content: [
+    "./src/pages/**/*.{js,ts,jsx,tsx,mdx}",
+    "./src/components/**/*.{js,ts,jsx,tsx,mdx}",
+    "./src/app/**/*.{js,ts,jsx,tsx,mdx}",
+    "../../packages/ui/src/**/*.{js,ts,jsx,tsx}",
+  ],
+  prefix: "",
+  theme: {
+    container: {
+      center: true,
+      padding: "2rem",
+      screens: {
+        "2xl": "1400px",
+      },
+    },
+    extend: {
+      // Design token integration
+      ...tokenConfig,
+      
+      // Design system specific additions
+      animation: {
+        "fade-in": "fadeIn 0.5s ease-in-out",
+        "slide-in": "slideIn 0.3s ease-out",
+        "bounce-in": "bounceIn 0.6s ease-out",
+      },
+      keyframes: {
+        fadeIn: {
+          "0%": { opacity: "0" },
+          "100%": { opacity: "1" },
+        },
+        slideIn: {
+          "0%": { transform: "translateY(10px)", opacity: "0" },
+          "100%": { transform: "translateY(0)", opacity: "1" },
+        },
+        bounceIn: {
+          "0%": { transform: "scale(0.3)", opacity: "0" },
+          "50%": { transform: "scale(1.05)" },
+          "70%": { transform: "scale(0.9)" },
+          "100%": { transform: "scale(1)", opacity: "1" },
+        },
+      },
+    },
+  },
+  plugins: [require("tailwindcss-animate")],
+}
+
+export default tailwindConfig
+`
+
+  try {
+    fs.writeFileSync(TAILWIND_CONFIG_PATH, configTemplate)
+    console.log('✅ Tailwind config generated successfully!')
+    console.log(`📁 Generated: ${TAILWIND_CONFIG_PATH}`)
+  } catch (error) {
+    console.error('❌ Error writing Tailwind config:', error.message)
+    process.exit(1)
+  }
+}
+
+// Validate tokens structure
+function validateTokens(tokens) {
+  const required = ['color', 'spacing', 'typography']
+  const missing = required.filter(key => !tokens[key])
+  
+  if (missing.length > 0) {
+    console.warn(`⚠️  Missing token categories: ${missing.join(', ')}`)
+  }
+  
+  // Validate color tokens have proper HSL format
+  if (tokens.color) {
+    const validateColorValue = (value) => {
+      if (typeof value === 'string' && value.startsWith('hsl(')) {
+        return true
+      }
+      return false
+    }
+    
+    const invalidColors = []
+    const checkColors = (obj, path = '') => {
+      Object.entries(obj).forEach(([key, value]) => {
+        const currentPath = path ? `${path}.${key}` : key
+        if (typeof value === 'object' && value !== null) {
+          if (value.value) {
+            if (!validateColorValue(value.value)) {
+              invalidColors.push(currentPath)
+            }
+          } else {
+            checkColors(value, currentPath)
+          }
+        } else if (!validateColorValue(value)) {
+          invalidColors.push(currentPath)
+        }
+      })
+    }
+    
+    checkColors(tokens.color)
+    
+    if (invalidColors.length > 0) {
+      console.warn(`⚠️  Invalid color format in: ${invalidColors.join(', ')}`)
+    }
+  }
+}
+
+// Main execution
+function main() {
+  console.log('🎨 Generating Tailwind config from design tokens...')
+  
+  const tokens = readTokens()
+  validateTokens(tokens)
+  
+  const tailwindConfig = generateTailwindConfig(tokens)
+  writeTailwindConfig(tailwindConfig)
+  
+  console.log('🎉 Tailwind config generation complete!')
+}
+
+// Run if called directly
+if (require.main === module) {
+  main()
+}
+
+module.exports = {
+  generateTailwindConfig,
+  convertTokenValue,
+  generateColorScale,
+  generateSpacingScale,
+  generateTypography
+}

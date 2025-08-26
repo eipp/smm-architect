@@ -108,6 +108,38 @@ export {
   type Alert,
   type MetricCard
 } from "./components/monitoring-dashboard"
+export {
+  SearchInput,
+  type SearchInputProps
+} from "./components/search-input"
+export {
+  SimulationDashboard,
+  type SimulationDashboardProps
+} from "./components/simulation-dashboard"
+export {
+  MicroInteractions,
+  type MicroInteractionsProps
+} from "./components/microinteractions"
+export {
+  PageTransitions,
+  type PageTransitionsProps
+} from "./components/page-transitions"
+export {
+  WorkspaceCreationFlow,
+  type WorkspaceCreationFlowProps
+} from "./components/workspace-creation-flow"
+export {
+  CampaignApprovalFlow,
+  type CampaignApprovalFlowProps
+} from "./components/campaign-approval-flow"
+export {
+  ProgressiveDisclosureSystem,
+  type ProgressiveDisclosureSystemProps
+} from "./components/progressive-disclosure"
+export {
+  AIAssistedFeatures,
+  type AIAssistedFeaturesProps
+} from "./components/ai-assisted-features"
 
 // Utilities
 export { 

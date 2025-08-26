@@ -55,7 +55,7 @@ const usePermissions = () => {
   return { hasPermission }
 }
 
-// Permission Gate Component
+// Enhanced Permission Gate Component with progressive disclosure
 export interface PermissionGateProps {
   resource: string
   action: string
@@ -63,6 +63,10 @@ export interface PermissionGateProps {
   fallback?: React.ReactNode
   children: React.ReactNode
   className?: string
+  showFallback?: boolean
+  level?: 'basic' | 'intermediate' | 'advanced'
+  tooltip?: string
+  onUnauthorized?: () => void
 }
 
 export const PermissionGate: React.FC<PermissionGateProps> = ({
@@ -71,12 +75,46 @@ export const PermissionGate: React.FC<PermissionGateProps> = ({
   scope,
   fallback = null,
   children,
-  className
+  className,
+  showFallback = true,
+  level = 'basic',
+  tooltip,
+  onUnauthorized
 }) => {
   const { hasPermission } = usePermissions()
+  const [showTooltip, setShowTooltip] = React.useState(false)
   
-  if (!hasPermission(resource, action, scope)) {
-    return <div className={className}>{fallback}</div>
+  const hasAccess = hasPermission(resource, action, scope)
+  
+  React.useEffect(() => {
+    if (!hasAccess && onUnauthorized) {
+      onUnauthorized()
+    }
+  }, [hasAccess, onUnauthorized])
+  
+  if (!hasAccess) {
+    if (!showFallback) {
+      return null
+    }
+    
+    const unauthorizedContent = fallback || (
+      <div className="relative inline-block">
+        <div 
+          className="p-2 bg-neutral-100 rounded border border-dashed border-neutral-300 text-neutral-500 text-sm cursor-help"
+          onMouseEnter={() => setShowTooltip(true)}
+          onMouseLeave={() => setShowTooltip(false)}
+        >
+          🔒 {level === 'advanced' ? `${resource}.${action}${scope ? `.${scope}` : ''}` : 'Restricted'}
+        </div>
+        {showTooltip && tooltip && (
+          <div className="absolute z-10 px-2 py-1 text-xs bg-black text-white rounded shadow-lg -top-8 left-0 whitespace-nowrap">
+            {tooltip}
+          </div>
+        )}
+      </div>
+    )
+    
+    return <div className={className}>{unauthorizedContent}</div>
   }
   
   return <div className={className}>{children}</div>

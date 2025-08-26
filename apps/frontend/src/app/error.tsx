@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect } from 'react'
-import { Button } from '@smm-architect/ui'
+import { Button } from '@/components/ui/button'
 
 export default function Error({
   error,

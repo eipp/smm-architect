@@ -8,13 +8,7 @@ Sentry.init({
   
   // Configure integrations for server-side
   integrations: [
-    new Sentry.NodeSDK.Integrations.Http(),
-    new Sentry.NodeSDK.Integrations.OnUncaughtException({
-      exitEvenIfOtherHandlersAreRegistered: false,
-    }),
-    new Sentry.NodeSDK.Integrations.OnUnhandledRejection({
-      mode: 'warn',
-    }),
+    // Use basic integrations that are available in @sentry/nextjs
   ],
   
   // Environment and release information

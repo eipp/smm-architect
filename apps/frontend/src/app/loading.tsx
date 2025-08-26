@@ -1,4 +1,4 @@
-import { DashboardSkeleton } from '@smm-architect/ui'
+import { DashboardSkeleton } from '@/components/ui/skeleton'
 
 export default function Loading() {
   return (

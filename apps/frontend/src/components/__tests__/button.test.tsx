@@ -1,10 +1,10 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { Button } from '@smm-architect/ui'
+import { Button } from '@/components/ui/button'
 
 describe('Button', () => {
   it('renders with correct variant classes', () => {
-    render(<Button variant=\"outline\">Test Button</Button>)
+    render(<Button variant="outline">Test Button</Button>)
     expect(screen.getByRole('button')).toHaveClass('border border-input')
   })
   
@@ -54,20 +54,20 @@ describe('Button', () => {
   })
   
   it('applies size variants correctly', () => {
-    const { rerender } = render(<Button size=\"sm\">Small</Button>)
+    const { rerender } = render(<Button size="sm">Small</Button>)
     expect(screen.getByRole('button')).toHaveClass('h-9 px-3')
     
-    rerender(<Button size=\"lg\">Large</Button>)
+    rerender(<Button size="lg">Large</Button>)
     expect(screen.getByRole('button')).toHaveClass('h-11 px-8')
     
-    rerender(<Button size=\"icon\">Icon</Button>)
+    rerender(<Button size="icon">Icon</Button>)
     expect(screen.getByRole('button')).toHaveClass('h-10 w-10')
   })
   
   it('supports asChild prop with Slot', () => {
     render(
       <Button asChild>
-        <a href=\"/test\">Link Button</a>
+        <a href="/test">Link Button</a>
       </Button>
     )
     
@@ -77,7 +77,7 @@ describe('Button', () => {
   })
   
   it('has proper accessibility attributes', () => {
-    render(<Button aria-label=\"Custom label\">Button</Button>)
+    render(<Button aria-label="Custom label">Button</Button>)
     
     const button = screen.getByRole('button')
     expect(button).toHaveAttribute('aria-label', 'Custom label')
@@ -94,4 +94,4 @@ describe('Button', () => {
     expect(button).toHaveFocus()
     expect(button).toHaveClass('focus-visible:ring-2')
   })
-})"
+})
