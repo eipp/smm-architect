@@ -35,7 +35,9 @@
     "joi": "^17.11.0",
     "jsonwebtoken": "^9.0.2",
     "@sentry/node": "^7.99.0",
-    "@sentry/profiling-node": "^7.99.0"
+    "@sentry/profiling-node": "^7.99.0",
+    "@aws-sdk/client-kms": "^3.490.0",
+    "@google-cloud/kms": "^4.2.0"
   },
   "devDependencies": {
     "@types/express": "^4.17.21",

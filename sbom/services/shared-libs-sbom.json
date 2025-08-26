@@ -2,10 +2,10 @@
   "$schema": "http://cyclonedx.org/schema/bom-1.6.schema.json",
   "bomFormat": "CycloneDX",
   "specVersion": "1.6",
-  "serialNumber": "urn:uuid:fcbb6d3d-482d-40b3-b808-fd1ea2320bf2",
+  "serialNumber": "urn:uuid:12e6a526-1ad4-467f-9d2d-993b8d960447",
   "version": 1,
   "metadata": {
-    "timestamp": "2025-08-24T16:24:42Z",
+    "timestamp": "2025-08-26T14:35:36Z",
     "tools": {
       "components": [
         {
@@ -20,7 +20,7 @@
       "bom-ref": "9783d76e6be5ec44",
       "type": "file",
       "name": "shared-libs",
-      "version": "0dc0b5079c988312185b9e8f797692fe5fe95cae"
+      "version": "ddf059f7a08aa86ddf23ce05447e87313ea0d9f8"
     },
     "supplier": {
       "name": "SMM Architect",

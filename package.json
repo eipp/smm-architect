@@ -24,12 +24,21 @@
     "sbom:check": "./scripts/generate-sbom.sh && echo 'SBOM generation completed. Check ./sbom/ directory for results.'",
     "security:sbom": "npm run sbom:generate",
     "supply-chain:scan": "./scripts/generate-sbom.sh && echo 'Supply chain security scan completed.'",
+    "api:validate": "./scripts/validate-api-docs.sh validate",
+    "api:docs": "./scripts/validate-api-docs.sh docs-only",
+    "api:lint": "./scripts/validate-api-docs.sh lint-only",
+    "security:run": "./scripts/run-security-tests.sh",
     "lint": "eslint tests/ --ext .ts,.js",
-    "lint:fix": "eslint tests/ --ext .ts,.js --fix"
+    "lint:fix": "eslint tests/ --ext .ts,.js --fix",
+    "test:quick": "jest --testPathPattern='(security|contracts)' --testTimeout=30000",
+    "test:production": "./scripts/run-production-tests.sh",
+    "test:critical": "jest tests/security/ tests/dsr/ --testTimeout=60000",
+    "validate:all": "npm run lint && npm run test:critical"
   },
   "devDependencies": {
     "@jest/globals": "^29.7.0",
     "@types/jest": "^29.5.8",
+    "@types/minimatch": "^6.0.0",
     "@types/node": "^20.10.0",
     "@typescript-eslint/eslint-plugin": "^6.13.0",
     "@typescript-eslint/parser": "^6.13.0",
@@ -39,19 +48,27 @@
     "typescript": "^5.3.0"
   },
   "dependencies": {
+    "@sentry/node": "^7.99.0",
+    "@sentry/profiling-node": "^7.99.0",
+    "@types/js-yaml": "^4.0.9",
     "artillery": "^2.0.4",
     "axios": "^1.6.2",
-    "js-yaml": "^4.1.0",
-    "@types/js-yaml": "^4.0.9",
     "fast-check": "^3.15.0",
-    "prom-client": "^15.1.0",
-    "@sentry/node": "^7.99.0",
-    "@sentry/profiling-node": "^7.99.0"
+    "js-yaml": "^4.1.0",
+    "prom-client": "^15.1.0"
+  },
+  "pnpm": {
+    "overrides": {
+      "ws": ">=8.17.1",
+      "tar-fs": ">=2.1.3"
+    }
   },
   "jest": {
     "preset": "ts-jest",
     "testEnvironment": "node",
-    "roots": ["<rootDir>/tests"],
+    "roots": [
+      "<rootDir>/tests"
+    ],
     "testMatch": [
       "**/*.test.ts",
       "**/*.spec.ts"
@@ -71,18 +88,28 @@
       "html"
     ],
     "testTimeout": 300000,
-    "setupFilesAfterEnv": ["<rootDir>/tests/setup.ts"]
+    "setupFilesAfterEnv": [
+      "<rootDir>/tests/setup.ts"
+    ]
   },
   "eslintConfig": {
     "parser": "@typescript-eslint/parser",
+    "plugins": [
+      "@typescript-eslint"
+    ],
     "extends": [
       "eslint:recommended",
       "@typescript-eslint/recommended"
     ],
+    "parserOptions": {
+      "ecmaVersion": 2020,
+      "sourceType": "module",
+      "project": "./tsconfig.json"
+    },
     "rules": {
       "@typescript-eslint/no-unused-vars": "error",
       "@typescript-eslint/explicit-function-return-type": "off",
-      "@typescript-eslint/no-explicit-any": "off"
+      "@typescript-eslint/no-explicit-any": "warn"
     }
   },
   "keywords": [

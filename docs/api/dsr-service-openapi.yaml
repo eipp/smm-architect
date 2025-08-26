@@ -1,0 +1,683 @@
+openapi: 3.0.3
+info:
+  title: Data Subject Rights (DSR) API
+  description: |
+    GDPR/CCPA compliant Data Subject Rights service for SMM Architect platform.
+    
+    Provides comprehensive data subject rights implementation including:
+    - Right to Access (data export)
+    - Right to Rectification (data correction) 
+    - Right to Erasure (data deletion with cascade)
+    - Right to Portability (data export in standard formats)
+    
+    All operations include cryptographic audit trails and compliance attestations.
+
+    ## Security & Compliance
+    
+    - All deletion operations use cryptographic proofs
+    - Cascade deletion across PostgreSQL, Pinecone, S3, Redis
+    - GDPR Article 17 compliant erasure
+    - Audit trails signed with KMS
+    - Real-time verification and integrity checks
+
+    ## Multi-tenant Isolation
+    
+    All operations are tenant-scoped with Row-Level Security enforcement.
+    Cross-tenant access is cryptographically prevented.
+
+  version: v1.0.0
+  contact:
+    name: SMM Architect Data Protection Team
+    email: privacy@smmarchitect.com
+  license:
+    name: Proprietary
+
+servers:
+  - url: https://dsr.smmarchitect.com
+    description: Production DSR service
+  - url: https://dsr-staging.smmarchitect.com
+    description: Staging DSR service
+  - url: http://localhost:4001
+    description: Development server
+
+security:
+  - BearerAuth: []
+
+tags:
+  - name: Erasure
+    description: Right to Erasure (GDPR Article 17)
+  - name: Access
+    description: Right to Access (GDPR Article 15)
+  - name: Rectification
+    description: Right to Rectification (GDPR Article 16)
+  - name: Portability
+    description: Right to Data Portability (GDPR Article 20)
+  - name: Verification
+    description: Compliance verification and audit
+
+paths:
+  /erasure:
+    post:
+      tags: [Erasure]
+      summary: Request data erasure (Right to be Forgotten)
+      description: |
+        Execute complete data erasure for a data subject across all systems.
+        
+        Implements GDPR Article 17 - Right to Erasure with:
+        - Cascade deletion across PostgreSQL, Pinecone, S3, Redis
+        - Cryptographic deletion proofs
+        - Audit trail with KMS signatures
+        - Real-time verification
+        
+        **WARNING**: This operation is irreversible and will permanently delete all data.
+      operationId: requestErasure
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - userId
+                - tenantId
+                - reason
+              properties:
+                userId:
+                  type: string
+                  description: User ID to be erased
+                  example: "user-123e4567-e89b-12d3-a456-426614174000"
+                tenantId:
+                  type: string
+                  description: Tenant ID for data scoping
+                  example: "tenant-abc123"
+                reason:
+                  type: string
+                  enum: [user_request, gdpr_article_17, ccpa_deletion, account_closure, legal_requirement]
+                  description: Legal basis for erasure
+                scope:
+                  type: string
+                  enum: [user, tenant, workspace]
+                  default: user
+                  description: Scope of deletion
+                requestedBy:
+                  type: string
+                  description: Who requested the deletion
+                  example: "user@example.com"
+                verificationToken:
+                  type: string
+                  description: User verification token
+                  example: "verify_abc123def456"
+                options:
+                  type: object
+                  properties:
+                    skipBackups:
+                      type: boolean
+                      default: false
+                      description: Skip backup marking (immediate deletion)
+                    notifyCompletion:
+                      type: boolean
+                      default: true
+                      description: Send completion notification
+            example:
+              userId: "user-123e4567-e89b-12d3-a456-426614174000"
+              tenantId: "tenant-abc123"
+              reason: "user_request"
+              scope: "user"
+              requestedBy: "user@example.com"
+              verificationToken: "verify_abc123def456"
+      responses:
+        '202':
+          description: Erasure request accepted and processing
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErasureResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /erasure/{requestId}/status:
+    get:
+      tags: [Erasure]
+      summary: Get erasure request status
+      description: Check the status and progress of a data erasure request
+      operationId: getErasureStatus
+      parameters:
+        - name: requestId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Erasure request ID
+      responses:
+        '200':
+          description: Erasure status retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErasureStatusResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /erasure/{requestId}/report:
+    get:
+      tags: [Erasure]
+      summary: Get erasure completion report
+      description: |
+        Retrieve the cryptographically signed erasure completion report.
+        Includes deletion proofs and compliance attestation.
+      operationId: getErasureReport
+      parameters:
+        - name: requestId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Erasure request ID
+      responses:
+        '200':
+          description: Erasure report retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DSRDeletionReport'
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+                description: PDF compliance report
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /access/export:
+    post:
+      tags: [Access]
+      summary: Export user data (Right to Access)
+      description: |
+        Generate a comprehensive data export for a data subject.
+        
+        Implements GDPR Article 15 - Right of Access including:
+        - All personal data across all systems
+        - Data categories and processing purposes
+        - Structured, machine-readable format
+        - Integrity verification
+      operationId: exportUserData
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - userId
+                - tenantId
+              properties:
+                userId:
+                  type: string
+                  description: User ID to export data for
+                tenantId:
+                  type: string
+                  description: Tenant ID for data scoping
+                format:
+                  type: string
+                  enum: [json, csv, xml, pdf]
+                  default: json
+                  description: Export format
+                categories:
+                  type: array
+                  items:
+                    type: string
+                    enum: [personal, workspaces, interactions, consents, audit_logs]
+                  description: Data categories to include (all if not specified)
+                includeMetadata:
+                  type: boolean
+                  default: true
+                  description: Include processing metadata
+            example:
+              userId: "user-123e4567-e89b-12d3-a456-426614174000"
+              tenantId: "tenant-abc123"
+              format: "json"
+              categories: ["personal", "workspaces", "interactions"]
+              includeMetadata: true
+      responses:
+        '200':
+          description: Data export completed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DSRExportData'
+            application/zip:
+              schema:
+                type: string
+                format: binary
+                description: ZIP archive with exported data
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /rectification:
+    post:
+      tags: [Rectification]
+      summary: Request data rectification (Right to Rectification)
+      description: |
+        Correct or update personal data for a data subject.
+        
+        Implements GDPR Article 16 - Right to Rectification with:
+        - Controlled data updates
+        - Audit trail of changes
+        - Verification requirements
+      operationId: rectifyData
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - userId
+                - tenantId
+                - corrections
+              properties:
+                userId:
+                  type: string
+                  description: User ID to update data for
+                tenantId:
+                  type: string
+                  description: Tenant ID for data scoping
+                corrections:
+                  type: object
+                  description: Data corrections to apply
+                  properties:
+                    profile:
+                      type: object
+                      properties:
+                        name:
+                          type: string
+                        email:
+                          type: string
+                        phone:
+                          type: string
+                    workspaces:
+                      type: object
+                      additionalProperties:
+                        type: object
+                        description: Workspace-specific corrections
+                    consents:
+                      type: object
+                      description: Consent record corrections
+                reason:
+                  type: string
+                  description: Reason for rectification
+                verificationRequired:
+                  type: boolean
+                  default: true
+                  description: Require additional verification
+            example:
+              userId: "user-123e4567-e89b-12d3-a456-426614174000"
+              tenantId: "tenant-abc123"
+              corrections:
+                profile:
+                  name: "Updated User Name"
+                  email: "newemail@example.com"
+              reason: "User requested email update"
+              verificationRequired: true
+      responses:
+        '200':
+          description: Rectification completed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RectificationResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /verification/integrity:
+    post:
+      tags: [Verification]
+      summary: Verify data integrity and compliance
+      description: |
+        Verify the integrity of stored data and compliance with data protection regulations.
+        Performs cryptographic verification of audit trails and deletion proofs.
+      operationId: verifyIntegrity
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - tenantId
+              properties:
+                tenantId:
+                  type: string
+                  description: Tenant ID to verify
+                userId:
+                  type: string
+                  description: Specific user ID to verify (optional)
+                scope:
+                  type: string
+                  enum: [data, audit_trails, deletion_proofs, all]
+                  default: all
+                  description: Verification scope
+            example:
+              tenantId: "tenant-abc123"
+              scope: "all"
+      responses:
+        '200':
+          description: Verification completed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IntegrityVerificationResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    ErasureResponse:
+      type: object
+      properties:
+        requestId:
+          type: string
+          description: Unique request identifier
+          example: "er_123e4567-e89b-12d3-a456-426614174000"
+        status:
+          type: string
+          enum: [accepted, processing, completed, failed]
+          description: Current status
+        estimatedCompletionTime:
+          type: string
+          format: date-time
+          description: Estimated completion time
+        subsystems:
+          type: array
+          items:
+            type: string
+            enum: [postgres, pinecone, s3, redis, logs, backups]
+          description: Systems that will be processed
+        trackingUrl:
+          type: string
+          format: uri
+          description: URL to track progress
+
+    ErasureStatusResponse:
+      type: object
+      properties:
+        requestId:
+          type: string
+        status:
+          type: string
+          enum: [processing, completed, failed, cancelled]
+        progress:
+          type: object
+          properties:
+            percentage:
+              type: integer
+              minimum: 0
+              maximum: 100
+            currentSubsystem:
+              type: string
+            recordsDeleted:
+              type: integer
+            estimatedTimeRemaining:
+              type: string
+        completedSubsystems:
+          type: array
+          items:
+            $ref: '#/components/schemas/SubsystemDeletionResult'
+        errors:
+          type: array
+          items:
+            type: string
+
+    DSRDeletionReport:
+      type: object
+      properties:
+        requestId:
+          type: string
+        userId:
+          type: string
+        tenantId:
+          type: string
+        deletionScope:
+          type: string
+          enum: [user, tenant, workspace]
+        startedAt:
+          type: string
+          format: date-time
+        completedAt:
+          type: string
+          format: date-time
+        subsystemResults:
+          type: array
+          items:
+            $ref: '#/components/schemas/SubsystemDeletionResult'
+        verificationResults:
+          type: array
+          items:
+            $ref: '#/components/schemas/VerificationResult'
+        integrityHash:
+          type: string
+          description: SHA-256 hash of the complete report
+        signedReport:
+          type: string
+          description: Cryptographically signed report
+        auditTrail:
+          type: array
+          items:
+            $ref: '#/components/schemas/AuditEntry'
+
+    SubsystemDeletionResult:
+      type: object
+      properties:
+        subsystem:
+          type: string
+          enum: [postgres, pinecone, s3, redis, logs, backups]
+        status:
+          type: string
+          enum: [success, failed, partial]
+        recordsDeleted:
+          type: integer
+        duration:
+          type: integer
+          description: Duration in milliseconds
+        verificationHash:
+          type: string
+          description: Cryptographic proof of deletion
+        errors:
+          type: array
+          items:
+            type: string
+
+    VerificationResult:
+      type: object
+      properties:
+        subsystem:
+          type: string
+        verified:
+          type: boolean
+        residualCount:
+          type: integer
+          description: Number of records still found (should be 0)
+        verificationMethod:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+
+    AuditEntry:
+      type: object
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+        event:
+          type: string
+        actor:
+          type: string
+        details:
+          type: object
+        signature:
+          type: string
+          description: Cryptographic signature of the entry
+
+    DSRExportData:
+      type: object
+      properties:
+        exportId:
+          type: string
+        userId:
+          type: string
+        tenantId:
+          type: string
+        generatedAt:
+          type: string
+          format: date-time
+        dataCategories:
+          type: object
+          properties:
+            personal:
+              type: object
+              description: Personal data records
+            workspaces:
+              type: array
+              items:
+                type: object
+              description: Workspace data
+            interactions:
+              type: array
+              items:
+                type: object
+              description: User interaction data
+            consents:
+              type: array
+              items:
+                type: object
+              description: Consent records
+            auditLogs:
+              type: array
+              items:
+                type: object
+              description: Audit trail entries
+        metadata:
+          type: object
+          properties:
+            totalRecords:
+              type: integer
+            exportSize:
+              type: integer
+              description: Size in bytes
+            integrityHash:
+              type: string
+
+    RectificationResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        recordsUpdated:
+          type: integer
+        auditTrail:
+          type: array
+          items:
+            $ref: '#/components/schemas/AuditEntry'
+        verificationRequired:
+          type: boolean
+        verificationToken:
+          type: string
+
+    IntegrityVerificationResult:
+      type: object
+      properties:
+        tenantId:
+          type: string
+        verifiedAt:
+          type: string
+          format: date-time
+        overallStatus:
+          type: string
+          enum: [pass, fail, warning]
+        verifications:
+          type: array
+          items:
+            type: object
+            properties:
+              category:
+                type: string
+              status:
+                type: string
+                enum: [pass, fail, warning]
+              details:
+                type: string
+              recordsChecked:
+                type: integer
+        signature:
+          type: string
+          description: Cryptographic signature of verification result
+
+    APIError:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Error message
+        code:
+          type: string
+          description: Error code
+        details:
+          type: object
+          description: Additional error details
+        timestamp:
+          type: string
+          format: date-time
+
+  responses:
+    BadRequest:
+      description: Bad request - invalid input
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/APIError'
+
+    Unauthorized:
+      description: Authentication required
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/APIError'
+
+    Forbidden:
+      description: Insufficient permissions for DSR operation
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/APIError'
+
+    NotFound:
+      description: DSR request not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/APIError'

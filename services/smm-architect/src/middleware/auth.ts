@@ -1,158 +1,493 @@
 import { Header } from "encore.dev/api";
-import log from "encore.dev/log";
-import { AuthenticationService } from '../../../shared/auth-service';
+import { Request, Response, NextFunction } from 'express';
+import { setTenantContext, getCurrentTenantContext, getPrismaClient } from '../../../shared/database/client';
 import { VaultClient } from '../../../shared/vault-client';
-import { setTenantContext, getPrismaClient } from '../../../shared/database/client';
+import jwt from 'jsonwebtoken';
+import winston from 'winston';
 
-// Initialize authentication service
-const authService = new AuthenticationService(
-  {
-    address: process.env.VAULT_ADDR || 'http://localhost:8200',
-    token: process.env.VAULT_TOKEN
-  },
-  {
-    secret: process.env.JWT_SECRET || 'dev-secret',
-    issuer: 'smm-architect',
-    audience: 'smm-architect'
-  }
-);
+const logger = winston.createLogger({
+  level: process.env.LOG_LEVEL || 'info',
+  format: winston.format.combine(
+    winston.format.timestamp(),
+    winston.format.json()
+  ),
+  transports: [
+    new winston.transports.Console()
+  ]
+});
 
-// Initialize once
-let authServiceInitialized = false;
-const initAuthService = async () => {
-  if (!authServiceInitialized) {
-    await authService.initialize();
-    authServiceInitialized = true;
-  }
-};
-
-export interface AuthContext {
+export interface AuthenticatedUser {
   userId: string;
   tenantId: string;
+  email: string;
   roles: string[];
-  scopes: string[];
+  permissions: string[];
+  sessionId?: string;
 }
 
-export async function authMiddleware(
-  authorization: Header<"authorization">
-): Promise<AuthContext> {
-  if (!authorization) {
-    throw new Error("Authorization header is required");
+export interface TenantContext {
+  tenantId: string;
+  tenantName?: string;
+  subscription?: string;
+  features?: string[];
+}
+
+// Extend Express Request to include auth context
+declare global {
+  namespace Express {
+    interface Request {
+      user?: AuthenticatedUser;
+      tenant?: TenantContext;
+      tenantId?: string; // For backward compatibility
+    }
   }
+}
 
-  try {
-    // Parse the authorization header
-    const [scheme, token] = authorization.split(" ");
-    
-    if (scheme !== "Bearer") {
-      throw new Error("Invalid authorization scheme. Expected 'Bearer'");
-    }
+export class AuthenticationError extends Error {
+  constructor(
+    message: string,
+    public statusCode: number = 401,
+    public code: string = 'AUTHENTICATION_FAILED'
+  ) {
+    super(message);
+    this.name = 'AuthenticationError';
+  }
+}
 
-    if (!token) {
-      throw new Error("Authorization token is required");
-    }
+export class AuthorizationError extends Error {
+  constructor(
+    message: string,
+    public statusCode: number = 403,
+    public code: string = 'AUTHORIZATION_FAILED'
+  ) {
+    super(message);
+    this.name = 'AuthorizationError';
+  }
+}
 
-    // Validate the token
-    const authContext = await validateToken(token);
-    
-    // CRITICAL: Set tenant context for RLS immediately after authentication
-    await setTenantContextForRequest(authContext.tenantId);
-    
-    log.info("User authenticated and tenant context set", { 
-      userId: authContext.userId, 
-      tenantId: authContext.tenantId 
-    });
-
-    return authContext;
-
-  } catch (error) {
-    log.error("Authentication failed", { error: error.message });
-    throw new Error(`Authentication failed: ${error.message}`);
+export class TenantContextError extends Error {
+  constructor(
+    message: string,
+    public statusCode: number = 400,
+    public code: string = 'TENANT_CONTEXT_ERROR'
+  ) {
+    super(message);
+    this.name = 'TenantContextError';
   }
 }
 
 /**
- * Set tenant context for the current request
- * This ensures all database operations are properly isolated to the tenant
+ * Extract tenant ID from various sources in order of preference:
+ * 1. JWT token claim
+ * 2. X-Tenant-ID header  \
+ * 3. URL path parameter
+ * 4. Subdomain
  */
-async function setTenantContextForRequest(tenantId: string): Promise<void> {
-  if (!tenantId || tenantId.trim() === '') {
-    throw new Error('Valid tenant ID is required for database operations');
+export function extractTenantId(req: Request): string | null {
+  // 1. From JWT token (most secure)
+  if (req.user?.tenantId) {
+    return req.user.tenantId;
   }
-
-  try {
-    const client = getPrismaClient();
-    await setTenantContext(client, tenantId);
-    
-    log.debug('Tenant context set for request', { tenantId });
-  } catch (error) {
-    log.error('Failed to set tenant context for request', {
-      tenantId,
-      error: error instanceof Error ? error.message : error
-    });
-    throw new Error(`Critical security error: Failed to set tenant context for ${tenantId}`);
-  }
-}
-
-async function validateToken(token: string): Promise<AuthContext> {
-  // Ensure auth service is initialized
-  await initAuthService();
-
-  try {
-    // Use real authentication service for validation
-    const authContext = await authService.validateToken(token);
-    return authContext;
-  } catch (error) {
-    throw new Error(`Token validation failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
-  }
-}
-
-export function checkScope(requiredScope: string, userScopes: string[]): boolean {
-  // Check for exact match
-  if (userScopes.includes(requiredScope)) {
-    return true;
-  }
-
-  // Check for wildcard matches
-  const [resource, action] = requiredScope.split(":");
-  const wildcardScope = `${resource}:*`;
   
-  if (userScopes.includes(wildcardScope)) {
-    return true;
+  // 2. From X-Tenant-ID header
+  const headerTenantId = req.headers['x-tenant-id'] as string;
+  if (headerTenantId) {
+    return headerTenantId;
   }
-
-  // Check for admin wildcard
-  if (userScopes.includes("*")) {
-    return true;
+  
+  // 3. From URL path parameter
+  if (req.params.tenantId) {
+    return req.params.tenantId;
   }
-
-  return false;
+  
+  // 4. From subdomain (format: tenant.smm-architect.com)
+  const host = req.headers.host;
+  if (host && host.includes('.')) {
+    const subdomain = host.split('.')[0];
+    // Exclude common subdomains
+    if (!['www', 'api', 'app', 'admin'].includes(subdomain)) {
+      return subdomain;
+    }
+  }
+  
+  return null;
 }
 
-export function checkRole(requiredRole: string, userRoles: string[]): boolean {
-  return userRoles.includes(requiredRole) || userRoles.includes("admin");
+/**
+ * Extract user from JWT token
+ */
+export async function extractUserFromToken(token: string): Promise<AuthenticatedUser> {
+  try {
+    const secretKey = process.env.JWT_SECRET || await getJWTSecret();
+    const decoded = jwt.verify(token, secretKey) as any;
+    
+    // Validate required fields
+    if (!decoded.userId || !decoded.tenantId) {
+      throw new AuthenticationError('Invalid token: missing required claims');
+    }
+    
+    return {
+      userId: decoded.userId,
+      tenantId: decoded.tenantId,
+      email: decoded.email,
+      roles: decoded.roles || [],
+      permissions: decoded.permissions || [],
+      sessionId: decoded.sessionId
+    };
+  } catch (error) {
+    if (error instanceof jwt.JsonWebTokenError) {
+      throw new AuthenticationError(`Invalid token: ${error.message}`);
+    }
+    throw error;
+  }
 }
 
-export function requireScope(scope: string) {
-  return function(authContext: AuthContext) {
-    if (!checkScope(scope, authContext.scopes)) {
-      throw new Error(`Insufficient permissions. Required scope: ${scope}`);
+/**
+ * Get JWT secret from Vault or environment
+ */
+async function getJWTSecret(): Promise<string> {
+  try {
+    const vaultClient = new VaultClient({
+      address: process.env.VAULT_ADDR || 'http://localhost:8200',
+      token: process.env.VAULT_TOKEN
+    });
+    
+    const secret = await vaultClient.read('secret/data/jwt');
+    return secret.data?.secret_key || process.env.JWT_SECRET || 'fallback-secret-key';
+  } catch (error) {
+    logger.warn('Failed to retrieve JWT secret from Vault, using environment variable', {
+      error: error.message
+    });
+    return process.env.JWT_SECRET || 'fallback-secret-key';
+  }
+}
+
+/**
+ * Middleware to authenticate and extract user from JWT token
+ */
+export function authenticateUser() {
+  return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      // Extract token from Authorization header
+      const authHeader = req.headers.authorization;
+      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        throw new AuthenticationError('Missing or invalid Authorization header');
+      }
+      
+      const token = authHeader.substring(7); // Remove 'Bearer ' prefix
+      
+      // Extract and validate user
+      const user = await extractUserFromToken(token);
+      req.user = user;
+      
+      logger.debug('User authenticated', {
+        userId: user.userId,
+        tenantId: user.tenantId,
+        roles: user.roles
+      });
+      
+      next();
+    } catch (error) {
+      if (error instanceof AuthenticationError) {
+        logger.warn('Authentication failed', {
+          error: error.message,
+          ip: req.ip,
+          userAgent: req.get('User-Agent'),
+          path: req.path
+        });
+        
+        res.status(error.statusCode).json({
+          error: 'Authentication failed',
+          code: error.code,
+          message: error.message
+        });
+        return;
+      }
+      
+      logger.error('Unexpected authentication error', {
+        error: error.message,
+        stack: error.stack
+      });
+      
+      res.status(500).json({
+        error: 'Internal server error',
+        code: 'INTERNAL_ERROR'
+      });
     }
   };
 }
 
-export function requireRole(role: string) {
-  return function(authContext: AuthContext) {
-    if (!checkRole(role, authContext.roles)) {
-      throw new Error(`Insufficient permissions. Required role: ${role}`);
+/**
+ * Middleware to automatically set tenant context for database operations
+ * This MUST be used after authentication middleware
+ */
+export function setAutomaticTenantContext() {
+  return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      // Extract tenant ID from multiple sources
+      const tenantId = extractTenantId(req);
+      
+      if (!tenantId) {
+        throw new TenantContextError('Tenant ID is required but not found in request');
+      }
+      
+      // Validate tenant ID format
+      if (!isValidTenantId(tenantId)) {
+        throw new TenantContextError(`Invalid tenant ID format: ${tenantId}`);
+      }
+      
+      // If user is authenticated, verify tenant access
+      if (req.user && req.user.tenantId !== tenantId) {
+        throw new AuthorizationError(
+          `User does not have access to tenant: ${tenantId}`,
+          403,
+          'TENANT_ACCESS_DENIED'
+        );
+      }
+      
+      // Set tenant context in database session
+      const prismaClient = getPrismaClient();
+      await setTenantContext(prismaClient, tenantId);
+      
+      // Add tenant context to request
+      req.tenantId = tenantId;
+      req.tenant = {
+        tenantId,
+        // Additional tenant info could be loaded here
+      };
+      
+      logger.debug('Tenant context set', {
+        tenantId,
+        userId: req.user?.userId,
+        path: req.path
+      });
+      
+      next();
+    } catch (error) {
+      if (error instanceof TenantContextError || error instanceof AuthorizationError) {
+        logger.warn('Tenant context error', {
+          error: error.message,
+          ip: req.ip,
+          path: req.path,
+          headers: {
+            'x-tenant-id': req.headers['x-tenant-id'],
+            'host': req.headers.host
+          }
+        });
+        
+        res.status(error.statusCode).json({
+          error: 'Tenant context error',
+          code: error.code,
+          message: error.message
+        });
+        return;
+      }
+      
+      logger.error('Unexpected tenant context error', {
+        error: error.message,
+        stack: error.stack
+      });
+      
+      res.status(500).json({
+        error: 'Internal server error',
+        code: 'INTERNAL_ERROR'
+      });
     }
   };
 }
 
-export function requireTenant(tenantId: string) {
-  return function(authContext: AuthContext) {
-    if (authContext.tenantId !== tenantId && authContext.tenantId !== "system") {
-      throw new Error(`Access denied. Required tenant: ${tenantId}`);
+/**
+ * Combined middleware for authentication and automatic tenant context
+ */
+export function requireAuthWithTenantContext() {
+  return [
+    authenticateUser(),
+    setAutomaticTenantContext()
+  ];
+}
+
+/**
+ * Middleware for tenant context only (no authentication required)
+ * Useful for webhook endpoints or public APIs that need tenant context
+ */
+export function requireTenantContext() {
+  return setAutomaticTenantContext();
+}
+
+/**
+ * Middleware to require specific permissions
+ */
+export function requirePermissions(...permissions: string[]) {
+  return (req: Request, res: Response, next: NextFunction): void => {
+    if (!req.user) {
+      res.status(401).json({
+        error: 'Authentication required',
+        code: 'AUTHENTICATION_REQUIRED'
+      });
+      return;
     }
+    
+    const hasAllPermissions = permissions.every(permission => 
+      req.user!.permissions.includes(permission)
+    );
+    
+    if (!hasAllPermissions) {
+      const missingPermissions = permissions.filter(permission => 
+        !req.user!.permissions.includes(permission)
+      );
+      
+      logger.warn('Insufficient permissions', {
+        userId: req.user.userId,
+        tenantId: req.user.tenantId,
+        requiredPermissions: permissions,
+        userPermissions: req.user.permissions,
+        missingPermissions
+      });
+      
+      res.status(403).json({
+        error: 'Insufficient permissions',
+        code: 'INSUFFICIENT_PERMISSIONS',
+        required: permissions,
+        missing: missingPermissions
+      });
+      return;
+    }
+    
+    next();
+  };
+}
+
+/**
+ * Middleware to require specific roles
+ */
+export function requireRoles(...roles: string[]) {
+  return (req: Request, res: Response, next: NextFunction): void => {
+    if (!req.user) {
+      res.status(401).json({
+        error: 'Authentication required',
+        code: 'AUTHENTICATION_REQUIRED'
+      });
+      return;
+    }
+    
+    const hasAnyRole = roles.some(role => req.user!.roles.includes(role));
+    
+    if (!hasAnyRole) {
+      logger.warn('Insufficient roles', {
+        userId: req.user.userId,
+        tenantId: req.user.tenantId,
+        requiredRoles: roles,
+        userRoles: req.user.roles
+      });
+      
+      res.status(403).json({
+        error: 'Insufficient roles',
+        code: 'INSUFFICIENT_ROLES',
+        required: roles,
+        current: req.user.roles
+      });
+      return;
+    }
+    
+    next();
+  };
+}
+
+/**
+ * Validate tenant ID format
+ */
+function isValidTenantId(tenantId: string): boolean {
+  // Tenant ID should be alphanumeric with hyphens, between 3-50 characters
+  const tenantIdRegex = /^[a-zA-Z0-9][a-zA-Z0-9-]{1,48}[a-zA-Z0-9]$/;
+  return tenantIdRegex.test(tenantId);
+}
+
+/**
+ * Middleware to verify tenant context is properly set
+ * Use this in critical endpoints to ensure RLS is working
+ */
+export function verifyTenantContext() {
+  return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const prismaClient = getPrismaClient();
+      const currentTenantId = await getCurrentTenantContext(prismaClient);
+      
+      if (!currentTenantId) {
+        throw new TenantContextError('Database tenant context is not set');
+      }
+      
+      if (req.tenantId && currentTenantId !== req.tenantId) {
+        throw new TenantContextError(
+          `Database tenant context mismatch: expected ${req.tenantId}, got ${currentTenantId}`
+        );
+      }
+      
+      logger.debug('Tenant context verified', {
+        tenantId: currentTenantId,
+        requestTenantId: req.tenantId
+      });
+      
+      next();
+    } catch (error) {
+      logger.error('Tenant context verification failed', {
+        error: error.message,
+        requestTenantId: req.tenantId,
+        path: req.path
+      });
+      
+      res.status(500).json({
+        error: 'Tenant context verification failed',
+        code: 'TENANT_CONTEXT_VERIFICATION_FAILED'
+      });
+    }
+  };
+}
+
+/**
+ * Helper function to be used in job queues and background tasks
+ */
+export async function withTenantContextForJob<T>(
+  tenantId: string,
+  operation: () => Promise<T>
+): Promise<T> {
+  const prismaClient = getPrismaClient();
+  
+  try {
+    await setTenantContext(prismaClient, tenantId);
+    return await operation();
+  } catch (error) {
+    logger.error('Job with tenant context failed', {
+      tenantId,
+      error: error.message
+    });
+    throw error;
+  }
+}
+
+/**
+ * Audit middleware to log tenant-scoped operations
+ */
+export function auditTenantOperations() {
+  return (req: Request, res: Response, next: NextFunction): void => {
+    const originalJson = res.json;
+    
+    res.json = function(obj) {
+      // Log the operation after successful completion
+      if (res.statusCode < 400 && req.tenantId) {
+        logger.info('Tenant operation completed', {
+          tenantId: req.tenantId,
+          userId: req.user?.userId,
+          method: req.method,
+          path: req.path,
+          statusCode: res.statusCode,
+          userAgent: req.get('User-Agent'),
+          ip: req.ip
+        });
+      }
+      
+      return originalJson.call(this, obj);
+    };
+    
+    next();
   };
 }

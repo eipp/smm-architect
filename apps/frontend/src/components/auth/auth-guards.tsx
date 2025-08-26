@@ -1,7 +1,7 @@
 "use client"
 
 import React from 'react'
-import { useAuth } from '@/contexts/auth-context'
+import { useAuth } from '@/contexts/production-auth-context'
 import { PermissionCheck, ResourceAction } from '@/types/auth'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'

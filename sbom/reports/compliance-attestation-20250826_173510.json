@@ -1,0 +1,50 @@
+{
+  "attestation_type": "Supply Chain Security Compliance",
+  "generated_at": "2025-08-26T14:35:43Z",
+  "project": "SMM Architect",
+  "version": "ddf059f7a08aa86ddf23ce05447e87313ea0d9f8",
+  "compliance_frameworks": {
+    "NIST_SSDF": {
+      "implemented": true,
+      "practices": [
+        "PO.1.1: Define and use naming and numbering schemes",
+        "PO.3.2: Implement and maintain SBOM processes",
+        "PS.1.1: Use secure coding practices",
+        "PS.3.1: Archive and protect software",
+        "PW.4.1: Audit the software"
+      ]
+    },
+    "SLSA": {
+      "level": 2,
+      "requirements_met": [
+        "Source integrity",
+        "Build service",
+        "Provenance available",
+        "Provenance authenticated"
+      ]
+    },
+    "NTIA_SBOM": {
+      "minimum_elements": true,
+      "elements": [
+        "Supplier name",
+        "Component name", 
+        "Version of component",
+        "Other unique identifiers",
+        "Dependency relationships",
+        "Author of SBOM data",
+        "Timestamp"
+      ]
+    }
+  },
+  "security_measures": {
+    "container_image_signing": true,
+    "vulnerability_scanning": true,
+    "dependency_analysis": true,
+    "license_compliance": true,
+    "supply_chain_attestation": true
+  },
+  "attestor": {
+    "name": "SMM Architect Build System",
+    "timestamp": "2025-08-26T14:35:43Z"
+  }
+}

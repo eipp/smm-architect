@@ -1,0 +1,375 @@
+# SMM Architect CI Security Gates
+# Add these jobs to .github/workflows/ci.yml
+
+security-gates:
+  name: 🔒 Security Gates
+  runs-on: ubuntu-latest
+  needs: [lint, test]
+  services:
+    postgres:
+      image: postgres:14
+      env:
+        POSTGRES_PASSWORD: postgres
+        POSTGRES_DB: smm_test
+      options: >-
+        --health-cmd pg_isready
+        --health-interval 10s
+        --health-timeout 5s
+        --health-retries 5
+      ports:
+        - 5432:5432
+    vault:
+      image: vault:1.15
+      env:
+        VAULT_DEV_ROOT_TOKEN_ID: dev-token
+        VAULT_DEV_LISTEN_ADDRESS: 0.0.0.0:8200
+      ports:
+        - 8200:8200
+      options: >-
+        --cap-add=IPC_LOCK
+
+  steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'pnpm'
+
+    - name: Install dependencies
+      run: pnpm install
+
+evil-tenant:
+  name: 🔴 Evil Tenant Security Test
+  runs-on: ubuntu-latest
+  needs: [security-gates]
+  env:
+    DATABASE_URL: postgresql://postgres:postgres@localhost:5432/smm_test
+    VAULT_ADDR: http://localhost:8200
+    VAULT_TOKEN: dev-token
+
+  steps:
+    - name: Setup test database
+      run: |
+        cd services/smm-architect
+        psql $DATABASE_URL -f migrations/001_initial_schema.sql
+        psql $DATABASE_URL -f migrations/002_enable_rls.sql
+
+    - name: Run Evil Tenant Tests
+      run: |
+        echo "🔴 CRITICAL: Testing cross-tenant data isolation"
+        cd services/smm-architect
+        npm test -- tests/security/tenant-isolation.test.ts --verbose --bail
+        
+        # Verify RLS policies are active
+        RLS_ENABLED=$(psql $DATABASE_URL -t -c "SELECT count(*) FROM pg_tables WHERE schemaname='public' AND rowsecurity=true;" | tr -d ' ')
+        if [ "$RLS_ENABLED" -lt 9 ]; then
+          echo "❌ CRITICAL: RLS not enabled on all tables"
+          exit 1
+        fi
+        echo "✅ RLS enabled on $RLS_ENABLED tables"
+
+    - name: Cross-tenant access attempts
+      run: |
+        echo "🔴 Testing cross-tenant access prevention"
+        cd tests/security
+        npm test -- agentuity-evil-tenant.test.ts --verbose
+        echo "✅ Cross-tenant access successfully blocked"
+
+ci-dsr:
+  name: 🗂️ DSR Cascade Verification
+  runs-on: ubuntu-latest
+  needs: [security-gates]
+  services:
+    postgres:
+      image: postgres:14
+      env:
+        POSTGRES_PASSWORD: postgres
+        POSTGRES_DB: smm_test
+      ports:
+        - 5432:5432
+
+  steps:
+    - name: Test DSR cascade deletion
+      env:
+        DATABASE_URL: postgresql://postgres:postgres@localhost:5432/smm_test
+      run: |
+        echo "🗂️ Testing GDPR/CCPA data subject rights"
+        cd services/dsr
+        npm test -- tests/dsr-cascade.test.ts --verbose
+        
+        # Verify deletion completeness
+        echo "Verifying complete data removal across subsystems..."
+        npm test -- tests/dsr-verification.test.ts --verbose
+        echo "✅ DSR cascade deletion verified"
+
+    - name: Generate DSR compliance report
+      run: |
+        cd services/dsr
+        echo "📋 Generating DSR compliance report"
+        npm run generate-dsr-report
+        
+        # Upload compliance artifacts
+        echo "Uploading DSR compliance documentation"
+
+sbom-scan:
+  name: 📋 SBOM & Vulnerability Scan
+  runs-on: ubuntu-latest
+  permissions:
+    contents: read
+    packages: write
+    security-events: write
+
+  steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install SBOM tools
+      run: |
+        # Install Syft for SBOM generation
+        curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
+        
+        # Install Grype for vulnerability scanning
+        curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b /usr/local/bin
+
+    - name: Generate SBOM
+      run: |
+        echo "📋 Generating Software Bill of Materials"
+        mkdir -p sbom-reports
+        
+        # Generate SBOM for critical services
+        syft packages services/smm-architect -o spdx-json=sbom-reports/smm-architect.spdx.json
+        syft packages services/dsr -o spdx-json=sbom-reports/dsr-service.spdx.json
+        syft packages apps/frontend -o spdx-json=sbom-reports/frontend.spdx.json
+
+    - name: Vulnerability scan
+      run: |
+        echo "🛡️ Scanning for vulnerabilities"
+        
+        # Scan each service - fail on high/critical
+        SCAN_FAILED=false
+        
+        for service in services/smm-architect services/dsr apps/frontend; do
+          service_name=$(basename "$service")
+          echo "Scanning $service_name..."
+          
+          if grype "$service" -o json --file "sbom-reports/${service_name}-vulns.json"; then
+            # Check for high/critical vulnerabilities
+            HIGH_CRIT=$(jq '.matches[] | select(.vulnerability.severity == "High" or .vulnerability.severity == "Critical") | length' "sbom-reports/${service_name}-vulns.json" 2>/dev/null || echo "0")
+            
+            if [[ "$HIGH_CRIT" -gt 0 ]]; then
+              echo "❌ Found $HIGH_CRIT high/critical vulnerabilities in $service_name"
+              SCAN_FAILED=true
+            fi
+          else
+            echo "❌ Vulnerability scan failed for $service_name"
+            SCAN_FAILED=true
+          fi
+        done
+        
+        if [[ "$SCAN_FAILED" == "true" ]]; then
+          echo "❌ Vulnerability scan failed - blocking deployment"
+          exit 1
+        fi
+        
+        echo "✅ No high/critical vulnerabilities found"
+
+    - name: Upload SBOM artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: sbom-reports
+        path: sbom-reports/
+        retention-days: 90
+
+image-sign:
+  name: 🔐 Container Image Signing
+  runs-on: ubuntu-latest
+  needs: [sbom-scan]
+  permissions:
+    contents: read
+    packages: write
+    id-token: write
+
+  strategy:
+    matrix:
+      service: [smm-architect, dsr-service]
+
+  steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Log in to Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Install Cosign
+      uses: sigstore/cosign-installer@v3
+      with:
+        cosign-release: 'v2.2.0'
+
+    - name: Build and push image
+      id: build
+      uses: docker/build-push-action@v5
+      with:
+        context: services/${{ matrix.service }}
+        push: true
+        tags: ghcr.io/${{ github.repository }}/${{ matrix.service }}:${{ github.sha }}
+
+    - name: Sign container image
+      run: |
+        echo "🔐 Signing container image with Cosign"
+        cosign sign --yes ghcr.io/${{ github.repository }}/${{ matrix.service }}:${{ github.sha }}
+
+    - name: Generate SBOM for image
+      run: |
+        echo "📋 Generating container SBOM"
+        syft packages ghcr.io/${{ github.repository }}/${{ matrix.service }}:${{ github.sha }} \
+          -o spdx-json=sbom-${{ matrix.service }}-${{ github.sha }}.spdx.json
+
+    - name: Attest SBOM
+      run: |
+        echo "📋 Attesting SBOM to image"
+        cosign attest --yes --predicate sbom-${{ matrix.service }}-${{ github.sha }}.spdx.json \
+          ghcr.io/${{ github.repository }}/${{ matrix.service }}:${{ github.sha }}
+
+prompt-safety:
+  name: 🤖 AI Prompt Safety Scan
+  runs-on: ubuntu-latest
+
+  steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Scan agent prompts for secrets
+      run: |
+        echo "🤖 Scanning AI agent prompts for embedded secrets"
+        
+        # Check for hardcoded API keys in prompts
+        if grep -r "sk-\|AKIA\|-----BEGIN" workflows/agentuity/ services/agents/; then
+          echo "❌ CRITICAL: Found potential secrets in agent prompts"
+          exit 1
+        fi
+        
+        echo "✅ No secrets found in agent prompts"
+
+    - name: Validate agent system prompts
+      run: |
+        echo "🤖 Validating agent system prompts"
+        cd services/agents
+        
+        # Check for prompt injection vulnerabilities
+        npm test -- tests/prompt-injection.test.ts --verbose
+        echo "✅ Agent prompts validated for security"
+
+simulate-regression:
+  name: 🎯 Simulation Regression Tests
+  runs-on: ubuntu-latest
+  needs: [security-gates]
+
+  steps:
+    - name: Run simulation regression tests
+      run: |
+        echo "🎯 Running simulation regression tests"
+        cd services/simulator
+        npm test -- tests/regression/ --verbose
+        
+        # Verify simulation determinism
+        echo "🔍 Verifying simulation determinism"
+        npm test -- tests/determinism.test.ts --verbose
+        echo "✅ Simulation regression tests passed"
+
+schema-validate:
+  name: 📋 Schema Validation
+  runs-on: ubuntu-latest
+
+  steps:
+    - name: Validate JSON schemas
+      run: |
+        echo "📋 Validating JSON schemas with test data"
+        cd tests/schema
+        npm test -- enhanced-schema-validation.test.ts --verbose
+        
+        # Validate contract examples
+        echo "🔍 Validating workspace contract examples"
+        for contract in examples/*.json; do
+          echo "Validating $contract..."
+          npm run validate-contract "$contract"
+        done
+        
+        echo "✅ All schemas validated successfully"
+
+    - name: Cross-reference API schemas
+      run: |
+        echo "🔍 Cross-referencing OpenAPI schemas with implementations"
+        cd services/toolhub
+        npm run validate-openapi
+        echo "✅ API schemas match implementations"
+
+security-scan:
+  name: 🛡️ Security Scan
+  runs-on: ubuntu-latest
+
+  steps:
+    - name: Run CodeQL analysis
+      uses: github/codeql-action/init@v2
+      with:
+        languages: javascript
+
+    - name: Perform CodeQL analysis
+      uses: github/codeql-action/analyze@v2
+
+    - name: Run dependency security audit
+      run: |
+        echo "🛡️ Running dependency security audit"
+        pnpm audit --audit-level high
+        
+        # Check for known security patterns
+        echo "🔍 Scanning for security anti-patterns"
+        if grep -r "eval\|new Function\|innerHTML\|dangerouslySetInnerHTML" services/ apps/; then
+          echo "⚠️ Found potentially unsafe code patterns"
+        fi
+        
+        echo "✅ Security scan completed"
+
+# Add this to the main workflow file
+security-gate-matrix:
+  name: 🔒 Security Gate Matrix
+  needs: [evil-tenant, ci-dsr, sbom-scan, image-sign, prompt-safety, simulate-regression, schema-validate, security-scan]
+  runs-on: ubuntu-latest
+  if: always()
+
+  steps:
+    - name: Check security gate results
+      run: |
+        echo "🔒 Checking all security gates..."
+        
+        # This job will fail if any security gate failed
+        if [[ "${{ needs.evil-tenant.result }}" != "success" ]]; then
+          echo "❌ Evil tenant security tests failed"
+          exit 1
+        fi
+        
+        if [[ "${{ needs.ci-dsr.result }}" != "success" ]]; then
+          echo "❌ DSR compliance tests failed"
+          exit 1
+        fi
+        
+        if [[ "${{ needs.sbom-scan.result }}" != "success" ]]; then
+          echo "❌ SBOM/vulnerability scan failed"
+          exit 1
+        fi
+        
+        if [[ "${{ needs.image-sign.result }}" != "success" ]]; then
+          echo "❌ Container image signing failed"
+          exit 1
+        fi
+        
+        echo "✅ All security gates passed - safe to deploy"

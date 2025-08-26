@@ -14,6 +14,10 @@
 import { PrismaClient } from '../../shared/database/generated/client';
 import { withTenantContext, withSystemContext } from '../../shared/database/client';
 import { VaultClient } from '../../shared/vault-client';
+import { PineconeClient, createPineconeClient } from '../../shared/pinecone-client';
+import { S3StorageClient, createS3Client } from '../../shared/s3-client';
+import { KMSService } from '../../audit/src/services/kms-service';
+import Redis from 'ioredis';
 import winston from 'winston';
 import crypto from 'crypto';
 import { pipeline } from 'stream/promises';
@@ -106,26 +110,36 @@ export interface DSRExportData {
 export class DataSubjectRightsService {
   private prisma: PrismaClient;
   private vaultClient: VaultClient;
+  private kmsService: KMSService;
   
-  // Subsystem clients (would be injected in real implementation)
-  private pineconeClient: any; // Mock for now
-  private s3Client: any; // Mock for now
-  private redisClient: any; // Mock for now
+  // Production subsystem clients
+  private pineconeClient: PineconeClient;
+  private s3Client: S3StorageClient;
+  private redisClient: Redis;
 
   constructor(
     prisma: PrismaClient,
     vaultClient: VaultClient,
+    kmsService: KMSService,
     subsystemClients?: {
-      pinecone?: any;
-      s3?: any;
-      redis?: any;
+      pinecone?: PineconeClient;
+      s3?: S3StorageClient;
+      redis?: Redis;
     }
   ) {
     this.prisma = prisma;
     this.vaultClient = vaultClient;
-    this.pineconeClient = subsystemClients?.pinecone;
-    this.s3Client = subsystemClients?.s3;
-    this.redisClient = subsystemClients?.redis;
+    this.kmsService = kmsService;
+    
+    // Initialize production clients
+    this.pineconeClient = subsystemClients?.pinecone || createPineconeClient();
+    this.s3Client = subsystemClients?.s3 || createS3Client();
+    this.redisClient = subsystemClients?.redis || new Redis({
+      host: process.env.REDIS_HOST || 'localhost',
+      port: parseInt(process.env.REDIS_PORT || '6379'),
+      password: process.env.REDIS_PASSWORD,
+      db: parseInt(process.env.REDIS_DB || '0')
+    });
   }
 
   /**
@@ -592,44 +606,52 @@ export class DataSubjectRightsService {
   ): Promise<SubsystemDeletionResult> {
     const startTime = Date.now();
     let recordsDeleted = 0;
+    const errors: string[] = [];
 
     try {
-      // Mock Pinecone deletion - in real implementation would use Pinecone client
-      if (this.pineconeClient) {
-        // Delete vectors by metadata filter
-        const deleteResult = await this.pineconeClient.delete({
-          filter: {
-            tenant_id: tenantId,
-            user_id: userId
-          }
-        });
-        recordsDeleted = deleteResult.deleted || 0;
+      // Initialize Pinecone client if needed
+      await this.pineconeClient.initialize();
+      
+      // Execute cascade deletion using production Pinecone client
+      const deletionResult = await this.pineconeClient.cascadeDelete(userId, tenantId);
+      
+      recordsDeleted = deletionResult.deleted;
+      if (deletionResult.errors) {
+        errors.push(...deletionResult.errors);
       }
 
       const duration = Date.now() - startTime;
 
       auditTrail.push(this.createAuditEntry('pinecone_deletion_completed', 'pinecone', {
         recordsDeleted,
+        duration,
+        verificationHash: deletionResult.verificationHash
+      }));
+
+      return {
+        subsystem: 'pinecone',
+        status: errors.length === 0 ? 'success' : 'partial',
+        recordsDeleted,
+        duration,
+        verificationHash: deletionResult.verificationHash,
+        errors: errors.length > 0 ? errors : undefined
+      };
+
+    } catch (error) {
+      const duration = Date.now() - startTime;
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      
+      auditTrail.push(this.createAuditEntry('pinecone_deletion_failed', 'pinecone', {
+        error: errorMsg,
         duration
       }));
 
       return {
         subsystem: 'pinecone',
-        status: this.pineconeClient ? 'success' : 'skipped',
-        recordsDeleted,
-        duration,
-        verificationHash: crypto.createHash('sha256')
-          .update(`pinecone:${userId}:${tenantId}:${recordsDeleted}`)
-          .digest('hex')
-      };
-
-    } catch (error) {
-      return {
-        subsystem: 'pinecone',
         status: 'failed',
         recordsDeleted,
-        duration: Date.now() - startTime,
-        errors: [error instanceof Error ? error.message : String(error)]
+        duration,
+        errors: [errorMsg]
       };
     }
   }
@@ -641,44 +663,50 @@ export class DataSubjectRightsService {
   ): Promise<SubsystemDeletionResult> {
     const startTime = Date.now();
     let recordsDeleted = 0;
+    const errors: string[] = [];
 
     try {
-      // Mock S3 deletion - in real implementation would use AWS SDK
-      if (this.s3Client) {
-        // List and delete objects with user/tenant prefix
-        const objects = await this.s3Client.listObjects({
-          Prefix: `${tenantId}/${userId}/`
-        });
-        
-        for (const object of objects.Contents || []) {
-          await this.s3Client.deleteObject({
-            Key: object.Key
-          });
-          recordsDeleted++;
-        }
+      // Execute cascade deletion using production S3 client
+      const deletionResult = await this.s3Client.cascadeDelete(userId, tenantId);
+      
+      recordsDeleted = deletionResult.deleted;
+      if (deletionResult.errors) {
+        errors.push(...deletionResult.errors);
       }
 
       const duration = Date.now() - startTime;
 
       auditTrail.push(this.createAuditEntry('s3_deletion_completed', 's3', {
         recordsDeleted,
+        versionsDeleted: deletionResult.versionsDeleted,
+        duration,
+        verificationHash: deletionResult.verificationHash
+      }));
+
+      return {
+        subsystem: 's3',
+        status: errors.length === 0 ? 'success' : 'partial',
+        recordsDeleted,
+        duration,
+        verificationHash: deletionResult.verificationHash,
+        errors: errors.length > 0 ? errors : undefined
+      };
+
+    } catch (error) {
+      const duration = Date.now() - startTime;
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      
+      auditTrail.push(this.createAuditEntry('s3_deletion_failed', 's3', {
+        error: errorMsg,
         duration
       }));
 
       return {
         subsystem: 's3',
-        status: this.s3Client ? 'success' : 'skipped',
-        recordsDeleted,
-        duration
-      };
-
-    } catch (error) {
-      return {
-        subsystem: 's3',
         status: 'failed',
         recordsDeleted,
-        duration: Date.now() - startTime,
-        errors: [error instanceof Error ? error.message : String(error)]
+        duration,
+        errors: [errorMsg]
       };
     }
   }
@@ -690,23 +718,34 @@ export class DataSubjectRightsService {
   ): Promise<SubsystemDeletionResult> {
     const startTime = Date.now();
     let recordsDeleted = 0;
+    const errors: string[] = [];
 
     try {
-      // Mock Redis deletion - in real implementation would use Redis client
-      if (this.redisClient) {
-        // Delete keys matching user/tenant patterns
-        const patterns = [
-          `user:${userId}:*`,
-          `tenant:${tenantId}:user:${userId}:*`,
-          `session:${userId}:*`
-        ];
+      // Delete keys matching user/tenant patterns
+      const patterns = [
+        `user:${userId}:*`,
+        `tenant:${tenantId}:user:${userId}:*`,
+        `session:${userId}:*`,
+        `workspace:${tenantId}:${userId}:*`,
+        `cache:${tenantId}:${userId}:*`
+      ];
 
-        for (const pattern of patterns) {
+      for (const pattern of patterns) {
+        try {
           const keys = await this.redisClient.keys(pattern);
           if (keys.length > 0) {
-            await this.redisClient.del(keys);
-            recordsDeleted += keys.length;
+            const deleted = await this.redisClient.del(...keys);
+            recordsDeleted += deleted;
+            
+            logger.debug('Deleted Redis keys', {
+              pattern,
+              keysFound: keys.length,
+              deleted
+            });
           }
+        } catch (patternError) {
+          const errorMsg = `Failed to delete pattern ${pattern}: ${patternError.message}`;
+          errors.push(errorMsg);
         }
       }
 
@@ -714,23 +753,36 @@ export class DataSubjectRightsService {
 
       auditTrail.push(this.createAuditEntry('redis_deletion_completed', 'redis', {
         recordsDeleted,
+        duration,
+        patterns
+      }));
+
+      return {
+        subsystem: 'redis',
+        status: errors.length === 0 ? 'success' : 'partial',
+        recordsDeleted,
+        duration,
+        verificationHash: crypto.createHash('sha256')
+          .update(`redis:${userId}:${tenantId}:${recordsDeleted}:${Date.now()}`)
+          .digest('hex'),
+        errors: errors.length > 0 ? errors : undefined
+      };
+
+    } catch (error) {
+      const duration = Date.now() - startTime;
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      
+      auditTrail.push(this.createAuditEntry('redis_deletion_failed', 'redis', {
+        error: errorMsg,
         duration
       }));
 
       return {
         subsystem: 'redis',
-        status: this.redisClient ? 'success' : 'skipped',
-        recordsDeleted,
-        duration
-      };
-
-    } catch (error) {
-      return {
-        subsystem: 'redis',
         status: 'failed',
         recordsDeleted,
-        duration: Date.now() - startTime,
-        errors: [error instanceof Error ? error.message : String(error)]
+        duration,
+        errors: [errorMsg]
       };
     }
   }
@@ -883,12 +935,25 @@ export class DataSubjectRightsService {
 
   private async signDeletionReport(report: DSRDeletionReport): Promise<string> {
     try {
-      // Mock signing - in real implementation would use KMS
+      // Use real KMS service for cryptographic signing
       const dataToSign = `${report.requestId}:${report.integrityHash}:${report.completedAt}`;
-      return crypto.createHash('sha256').update(dataToSign).digest('hex');
+      const signature = await this.kmsService.sign(
+        Buffer.from(dataToSign, 'utf8'), 
+        'dsr-deletion-proof-key'
+      );
+      
+      logger.info('DSR deletion report signed', {
+        requestId: report.requestId,
+        signatureLength: signature.length
+      });
+      
+      return signature;
     } catch (error) {
-      logger.error('Failed to sign deletion report', { error });
-      throw error;
+      logger.error('Failed to sign deletion report', { 
+        requestId: report.requestId,
+        error: error.message 
+      });
+      throw new Error(`KMS signing failed: ${error.message}`);
     }
   }
 

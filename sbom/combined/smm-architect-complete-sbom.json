@@ -1,14 +1,14 @@
 {
   "bomFormat": "CycloneDX",
   "specVersion": "1.4",
-  "serialNumber": "urn:uuid:84B82310-4026-4BDD-8AAE-FFFF2F23C2F4",
+  "serialNumber": "urn:uuid:11392456-5B73-4364-9F63-AFEC9AF803F7",
   "version": 1,
   "metadata": {
-    "timestamp": "2025-08-24T16:24:48Z",
+    "timestamp": "2025-08-26T14:35:43Z",
     "component": {
       "type": "application",
       "name": "smm-architect-complete",
-      "version": "0dc0b5079c988312185b9e8f797692fe5fe95cae",
+      "version": "ddf059f7a08aa86ddf23ce05447e87313ea0d9f8",
       "description": "Complete Software Bill of Materials for SMM Architect platform"
     },
     "supplier": {
@@ -5340,14 +5340,14 @@
       ]
     },
     {
-      "bom-ref": "pkg:npm/%40typescript-eslint/typescript-estree@8.40.0?package-id=fdfc994618882fa4",
+      "bom-ref": "pkg:npm/%40typescript-eslint/typescript-estree@8.40.0?package-id=52f2dbf716b0e1bf",
       "type": "library",
       "name": "@typescript-eslint/typescript-estree",
       "version": "8.40.0",
       "licenses": [
         {
           "license": {
-            "id": "MIT"
+            "id": "BSD-2-Clause"
           }
         }
       ],
@@ -22639,6 +22639,58 @@
       ]
     },
     {
+      "bom-ref": "pkg:github/actions/checkout@v2?package-id=0142d34cd68d6835",
+      "type": "library",
+      "name": "actions/checkout",
+      "version": "v2",
+      "cpe": "cpe:2.3:a:actions\\/checkout:actions\\/checkout:v2:*:*:*:*:*:*:*",
+      "purl": "pkg:github/actions/checkout@v2",
+      "properties": [
+        {
+          "name": "syft:package:foundBy",
+          "value": "github-actions-usage-cataloger"
+        },
+        {
+          "name": "syft:package:type",
+          "value": "github-action"
+        },
+        {
+          "name": "syft:package:metadataType",
+          "value": "github-actions-use-statement"
+        },
+        {
+          "name": "syft:location:0:path",
+          "value": "/node_modules/ajv/node_modules/json-schema-traverse/.github/workflows/build.yml"
+        }
+      ]
+    },
+    {
+      "bom-ref": "pkg:github/actions/checkout@v2?package-id=8dde07f657280dec",
+      "type": "library",
+      "name": "actions/checkout",
+      "version": "v2",
+      "cpe": "cpe:2.3:a:actions\\/checkout:actions\\/checkout:v2:*:*:*:*:*:*:*",
+      "purl": "pkg:github/actions/checkout@v2",
+      "properties": [
+        {
+          "name": "syft:package:foundBy",
+          "value": "github-actions-usage-cataloger"
+        },
+        {
+          "name": "syft:package:type",
+          "value": "github-action"
+        },
+        {
+          "name": "syft:package:metadataType",
+          "value": "github-actions-use-statement"
+        },
+        {
+          "name": "syft:location:0:path",
+          "value": "/node_modules/ajv/node_modules/json-schema-traverse/.github/workflows/publish.yml"
+        }
+      ]
+    },
+    {
       "bom-ref": "pkg:github/actions/checkout@v2?package-id=c121ab4edf0c171a",
       "type": "library",
       "name": "actions/checkout",
@@ -22687,6 +22739,98 @@
         {
           "name": "syft:location:0:path",
           "value": "/node_modules/json-schema-traverse/.github/workflows/publish.yml"
+        }
+      ]
+    },
+    {
+      "bom-ref": "pkg:github/actions/setup-node@v1?package-id=de34d3e7d03c2df3",
+      "type": "library",
+      "name": "actions/setup-node",
+      "version": "v1",
+      "cpe": "cpe:2.3:a:actions\\/setup-node:actions\\/setup-node:v1:*:*:*:*:*:*:*",
+      "purl": "pkg:github/actions/setup-node@v1",
+      "properties": [
+        {
+          "name": "syft:package:foundBy",
+          "value": "github-actions-usage-cataloger"
+        },
+        {
+          "name": "syft:package:type",
+          "value": "github-action"
+        },
+        {
+          "name": "syft:package:metadataType",
+          "value": "github-actions-use-statement"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:actions\\/setup-node:actions\\/setup_node:v1:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:actions\\/setup_node:actions\\/setup-node:v1:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:actions\\/setup_node:actions\\/setup_node:v1:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:actions\\/setup:actions\\/setup-node:v1:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:actions\\/setup:actions\\/setup_node:v1:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:location:0:path",
+          "value": "/node_modules/ajv/node_modules/json-schema-traverse/.github/workflows/build.yml"
+        }
+      ]
+    },
+    {
+      "bom-ref": "pkg:github/actions/setup-node@v1?package-id=f923f68843892287",
+      "type": "library",
+      "name": "actions/setup-node",
+      "version": "v1",
+      "cpe": "cpe:2.3:a:actions\\/setup-node:actions\\/setup-node:v1:*:*:*:*:*:*:*",
+      "purl": "pkg:github/actions/setup-node@v1",
+      "properties": [
+        {
+          "name": "syft:package:foundBy",
+          "value": "github-actions-usage-cataloger"
+        },
+        {
+          "name": "syft:package:type",
+          "value": "github-action"
+        },
+        {
+          "name": "syft:package:metadataType",
+          "value": "github-actions-use-statement"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:actions\\/setup-node:actions\\/setup_node:v1:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:actions\\/setup_node:actions\\/setup-node:v1:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:actions\\/setup_node:actions\\/setup_node:v1:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:actions\\/setup:actions\\/setup-node:v1:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:actions\\/setup:actions\\/setup_node:v1:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:location:0:path",
+          "value": "/node_modules/ajv/node_modules/json-schema-traverse/.github/workflows/publish.yml"
         }
       ]
     },
@@ -22783,6 +22927,52 @@
       ]
     },
     {
+      "bom-ref": "pkg:github/coverallsapp/github-action@master?package-id=636986f68b9cbabc",
+      "type": "library",
+      "name": "coverallsapp/github-action",
+      "version": "master",
+      "cpe": "cpe:2.3:a:coverallsapp\\/github-action:coverallsapp\\/github-action:master:*:*:*:*:*:*:*",
+      "purl": "pkg:github/coverallsapp/github-action@master",
+      "properties": [
+        {
+          "name": "syft:package:foundBy",
+          "value": "github-actions-usage-cataloger"
+        },
+        {
+          "name": "syft:package:type",
+          "value": "github-action"
+        },
+        {
+          "name": "syft:package:metadataType",
+          "value": "github-actions-use-statement"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:coverallsapp\\/github-action:coverallsapp\\/github_action:master:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:coverallsapp\\/github_action:coverallsapp\\/github-action:master:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:coverallsapp\\/github_action:coverallsapp\\/github_action:master:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:coverallsapp\\/github:coverallsapp\\/github-action:master:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:coverallsapp\\/github:coverallsapp\\/github_action:master:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:location:0:path",
+          "value": "/node_modules/ajv/node_modules/json-schema-traverse/.github/workflows/build.yml"
+        }
+      ]
+    },
+    {
       "bom-ref": "pkg:github/coverallsapp/github-action@master?package-id=75f4b3cf97ed52e8",
       "type": "library",
       "name": "coverallsapp/github-action",
@@ -22825,6 +23015,36 @@
         {
           "name": "syft:location:0:path",
           "value": "/node_modules/json-schema-traverse/.github/workflows/build.yml"
+        }
+      ]
+    },
+    {
+      "bom-ref": "da328e2589ff4fe4",
+      "type": "file",
+      "name": "/Users/ivan/smm-architect/services/smm-architect/node_modules/ajv/node_modules/json-schema-traverse/.github/workflows/build.yml",
+      "hashes": [
+        {
+          "alg": "SHA-1",
+          "content": "1911fc3862128b3f9af3efef35dab9cb2c91d6e6"
+        },
+        {
+          "alg": "SHA-256",
+          "content": "f0f23bb3b380800e214b19abfd69c1b093131bb030c056fabdd9cddec7e785c5"
+        }
+      ]
+    },
+    {
+      "bom-ref": "8f58c6f70af95f4e",
+      "type": "file",
+      "name": "/Users/ivan/smm-architect/services/smm-architect/node_modules/ajv/node_modules/json-schema-traverse/.github/workflows/publish.yml",
+      "hashes": [
+        {
+          "alg": "SHA-1",
+          "content": "5a7453a7516dc2852a8e00de2e8be308c7169501"
+        },
+        {
+          "alg": "SHA-256",
+          "content": "56cbec53748d486f04b5c37bec8ea5e5588e02fb2882db8ce36c6e9689bfd2fc"
         }
       ]
     },

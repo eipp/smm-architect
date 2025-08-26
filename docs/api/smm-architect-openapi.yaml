@@ -1,0 +1,874 @@
+openapi: 3.0.3
+info:
+  title: SMM Architect API
+  description: |
+    Core API for SMM Architect platform - autonomous social media marketing platform.
+    
+    Provides workspace management, authentication, simulation services, and audit capabilities.
+    Built with Encore.ts for production-grade reliability and security.
+
+    ## Authentication
+    
+    All endpoints except `/health` and `/api/auth/*` require Bearer token authentication.
+    Use the `/api/auth/login` endpoint to obtain a JWT token.
+
+    ## Multi-tenancy
+    
+    All data operations are automatically scoped to the authenticated user's tenant.
+    Row-Level Security (RLS) enforces tenant isolation at the database level.
+
+    ## Rate Limiting
+    
+    Authentication endpoints are rate-limited to prevent brute force attacks:
+    - Login: 5 attempts per 15 minutes per email
+    - Registration: 3 attempts per hour per IP
+    
+  version: v1.0.0
+  contact:
+    name: SMM Architect Team
+    email: dev@smmarchitect.com
+    url: https://smmarchitect.com
+  license:
+    name: Proprietary
+    url: https://smmarchitect.com/license
+
+servers:
+  - url: https://api.smmarchitect.com
+    description: Production server
+  - url: https://api-staging.smmarchitect.com
+    description: Staging server
+  - url: http://localhost:4000
+    description: Development server (Encore.ts)
+
+security:
+  - BearerAuth: []
+
+tags:
+  - name: Authentication
+    description: User authentication and session management
+  - name: Workspaces
+    description: Workspace contract management and lifecycle
+  - name: Simulations
+    description: AI simulation and decision card generation
+  - name: Audit
+    description: Audit trails and compliance reporting
+  - name: Health
+    description: System health and monitoring
+
+paths:
+  /health:
+    get:
+      tags: [Health]
+      summary: Health check endpoint
+      description: Returns system health status
+      operationId: getHealth
+      security: []
+      responses:
+        '200':
+          description: System is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [healthy]
+                  timestamp:
+                    type: string
+                    format: date-time
+              example:
+                status: healthy
+                timestamp: "2024-08-26T17:30:00Z"
+
+  /api/auth/login:
+    post:
+      tags: [Authentication]
+      summary: User authentication
+      description: |
+        Authenticate user with email and password.
+        Returns JWT token for subsequent API calls.
+        
+        Rate limited: 5 attempts per 15 minutes per email.
+      operationId: login
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+                - password
+              properties:
+                email:
+                  type: string
+                  format: email
+                  description: User email address
+                password:
+                  type: string
+                  minLength: 8
+                  description: User password
+                rememberMe:
+                  type: boolean
+                  default: false
+                  description: Generate refresh token for extended session
+            example:
+              email: "user@example.com"
+              password: "securePassword123"
+              rememberMe: true
+      responses:
+        '200':
+          description: Authentication successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /api/auth/refresh:
+    post:
+      tags: [Authentication]
+      summary: Refresh JWT token
+      description: |
+        Refresh an expired JWT token using a refresh token.
+        Extends the user's session without requiring re-authentication.
+      operationId: refreshToken
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - refreshToken
+              properties:
+                refreshToken:
+                  type: string
+                  description: Valid refresh token
+            example:
+              refreshToken: "rt_1234567890abcdef..."
+      responses:
+        '200':
+          description: Token refreshed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RefreshResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/auth/me:
+    get:
+      tags: [Authentication]
+      summary: Get current user profile
+      description: Returns the authenticated user's profile information
+      operationId: getCurrentUser
+      responses:
+        '200':
+          description: User profile retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/auth/logout:
+    post:
+      tags: [Authentication]
+      summary: User logout
+      description: |
+        Invalidate the current session and refresh tokens.
+        Client should discard the JWT token after calling this endpoint.
+      operationId: logout
+      responses:
+        '200':
+          description: Logout successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Logout successful"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /workspaces:
+    post:
+      tags: [Workspaces]
+      summary: Create workspace contract
+      description: |
+        Create a new workspace with specified contract terms.
+        The workspace will be in 'draft' state initially and must be validated before use.
+      operationId: createWorkspace
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateWorkspaceRequest'
+      responses:
+        '201':
+          description: Workspace created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateWorkspaceResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /workspaces/{id}:
+    get:
+      tags: [Workspaces]
+      summary: Get workspace status
+      description: Returns the current status and configuration of a workspace
+      operationId: getWorkspaceStatus
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Workspace ID
+      responses:
+        '200':
+          description: Workspace status retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkspaceStatusResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /workspaces/{id}/approve:
+    post:
+      tags: [Workspaces]
+      summary: Approve workspace operation
+      description: |
+        Approve a specific operation or decision card within a workspace.
+        Requires appropriate permissions based on the approval policy.
+      operationId: approveWorkspace
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Workspace ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApprovalRequest'
+      responses:
+        '200':
+          description: Approval processed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApprovalResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /workspaces/{id}/simulate:
+    post:
+      tags: [Simulations]
+      summary: Run workspace simulation
+      description: |
+        Execute a simulation run for the workspace to generate decision cards
+        and predict outcomes based on current configuration.
+      operationId: runSimulation
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Workspace ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SimulationRequest'
+      responses:
+        '200':
+          description: Simulation completed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimulationResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /workspaces/{id}/audit:
+    get:
+      tags: [Audit]
+      summary: Get audit bundle
+      description: |
+        Retrieve the complete audit bundle for a workspace,
+        including all compliance records and audit trails.
+      operationId: getAuditBundle
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Workspace ID
+      responses:
+        '200':
+          description: Audit bundle retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditBundleResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT token obtained from /api/auth/login
+
+  schemas:
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Unique user identifier
+        email:
+          type: string
+          format: email
+          description: User email address
+        name:
+          type: string
+          description: User display name
+        roles:
+          type: array
+          items:
+            $ref: '#/components/schemas/Role'
+          description: User roles and permissions
+        tenantId:
+          type: string
+          description: Tenant identifier
+        avatar:
+          type: string
+          format: uri
+          description: User avatar URL
+        preferences:
+          $ref: '#/components/schemas/UserPreferences'
+        lastLoginAt:
+          type: string
+          format: date-time
+          description: Last login timestamp
+        createdAt:
+          type: string
+          format: date-time
+          description: Account creation timestamp
+
+    Role:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        permissions:
+          type: array
+          items:
+            type: string
+
+    UserPreferences:
+      type: object
+      properties:
+        theme:
+          type: string
+          enum: [light, dark, auto]
+        language:
+          type: string
+          default: en
+        notifications:
+          type: object
+          properties:
+            email:
+              type: boolean
+            push:
+              type: boolean
+
+    LoginResponse:
+      type: object
+      properties:
+        token:
+          type: string
+          description: JWT access token
+        user:
+          $ref: '#/components/schemas/User'
+        expiresAt:
+          type: integer
+          format: int64
+          description: Token expiration timestamp (Unix time)
+        refreshToken:
+          type: string
+          description: Refresh token (if rememberMe was true)
+
+    RefreshResponse:
+      type: object
+      properties:
+        token:
+          type: string
+          description: New JWT access token
+        expiresAt:
+          type: integer
+          format: int64
+          description: Token expiration timestamp (Unix time)
+
+    WorkspaceContract:
+      type: object
+      required:
+        - workspaceId
+        - tenantId
+        - createdBy
+        - lifecycle
+        - contractVersion
+        - goals
+        - primaryChannels
+        - budget
+        - approvalPolicy
+        - riskProfile
+        - dataRetention
+        - ttlHours
+        - policyBundleRef
+        - policyBundleChecksum
+      properties:
+        workspaceId:
+          type: string
+          description: Unique workspace identifier
+        tenantId:
+          type: string
+          description: Tenant identifier
+        createdBy:
+          type: string
+          description: User who created the workspace
+        createdAt:
+          type: string
+          format: date-time
+        lifecycle:
+          type: string
+          enum: [draft, validated, signed, provisioning, active, paused, decommissioned]
+          description: Current workspace lifecycle state
+        contractVersion:
+          type: string
+          description: Contract schema version
+        signedBy:
+          type: object
+          properties:
+            principal:
+              type: string
+            signedAt:
+              type: string
+              format: date-time
+            signatureId:
+              type: string
+        effectiveFrom:
+          type: string
+          format: date-time
+        effectiveTo:
+          type: string
+          format: date-time
+        goals:
+          type: array
+          items:
+            type: object
+            properties:
+              key:
+                type: string
+              target:
+                type: number
+              unit:
+                type: string
+        primaryChannels:
+          type: array
+          items:
+            type: string
+            enum: [linkedin, x, instagram, facebook, youtube, tiktok]
+        budget:
+          type: object
+          properties:
+            currency:
+              type: string
+            weeklyCap:
+              type: number
+            hardCap:
+              type: number
+            breakdown:
+              type: object
+              properties:
+                paidAds:
+                  type: number
+                llmModelSpend:
+                  type: number
+                rendering:
+                  type: number
+                thirdPartyServices:
+                  type: number
+        approvalPolicy:
+          type: object
+          properties:
+            autoApproveReadinessThreshold:
+              type: number
+            canaryInitialPct:
+              type: number
+            canaryWatchWindowHours:
+              type: number
+            manualApprovalForPaid:
+              type: boolean
+            legalManualApproval:
+              type: boolean
+        riskProfile:
+          type: string
+          enum: [low, medium, high, enterprise]
+        dataRetention:
+          type: object
+          properties:
+            auditRetentionDays:
+              type: integer
+        ttlHours:
+          type: integer
+          description: Time to live in hours
+        policyBundleRef:
+          type: string
+        policyBundleChecksum:
+          type: string
+
+    CreateWorkspaceRequest:
+      type: object
+      required:
+        - contract
+      properties:
+        contract:
+          $ref: '#/components/schemas/WorkspaceContract'
+
+    CreateWorkspaceResponse:
+      type: object
+      properties:
+        workspaceId:
+          type: string
+        status:
+          type: string
+          enum: [created]
+        validationErrors:
+          type: array
+          items:
+            type: string
+
+    WorkspaceStatusResponse:
+      type: object
+      properties:
+        workspaceId:
+          type: string
+        lifecycle:
+          type: string
+        contract:
+          $ref: '#/components/schemas/WorkspaceContract'
+        lastRun:
+          type: object
+          properties:
+            runId:
+              type: string
+            status:
+              type: string
+            startedAt:
+              type: string
+              format: date-time
+            finishedAt:
+              type: string
+              format: date-time
+
+    ApprovalRequest:
+      type: object
+      required:
+        - actionId
+        - decision
+      properties:
+        actionId:
+          type: string
+          description: ID of the action to approve/reject
+        decision:
+          type: string
+          enum: [approve, reject, request_changes]
+        comments:
+          type: string
+          description: Optional approval comments
+        conditions:
+          type: array
+          items:
+            type: string
+          description: Conditions for approval
+
+    ApprovalResponse:
+      type: object
+      properties:
+        approvalId:
+          type: string
+        status:
+          type: string
+          enum: [approved, rejected, pending]
+        processedAt:
+          type: string
+          format: date-time
+        nextSteps:
+          type: array
+          items:
+            type: string
+
+    SimulationRequest:
+      type: object
+      properties:
+        iterations:
+          type: integer
+          minimum: 1
+          maximum: 1000
+          default: 100
+          description: Number of simulation iterations
+        timeoutSeconds:
+          type: integer
+          minimum: 30
+          maximum: 3600
+          default: 300
+          description: Simulation timeout
+        randomSeed:
+          type: integer
+          description: Random seed for reproducible results
+        parameters:
+          type: object
+          description: Additional simulation parameters
+
+    SimulationResponse:
+      type: object
+      properties:
+        runId:
+          type: string
+        status:
+          type: string
+          enum: [completed, failed, timeout]
+        startedAt:
+          type: string
+          format: date-time
+        finishedAt:
+          type: string
+          format: date-time
+        iterations:
+          type: integer
+        decisionCards:
+          type: array
+          items:
+            $ref: '#/components/schemas/DecisionCard'
+        metrics:
+          type: object
+          properties:
+            successRate:
+              type: number
+            averageExecutionTime:
+              type: number
+            totalActions:
+              type: integer
+
+    DecisionCard:
+      type: object
+      properties:
+        actionId:
+          type: string
+        title:
+          type: string
+        one_line:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+        workspaceId:
+          type: string
+        readiness_score:
+          type: number
+          minimum: 0
+          maximum: 1
+        estimatedImpact:
+          type: object
+          properties:
+            reach:
+              type: number
+            impressions:
+              type: number
+            ctr:
+              type: number
+            conversions:
+              type: number
+        costBreakdown:
+          type: object
+          properties:
+            total:
+              type: number
+            currency:
+              type: string
+            breakdown:
+              type: object
+        primary_action:
+          type: object
+          properties:
+            label:
+              type: string
+            action:
+              type: string
+              enum: [approve_promotion, reject_promotion, request_changes, schedule_review, escalate]
+            requiresConfirmation:
+              type: boolean
+
+    AuditBundleResponse:
+      type: object
+      properties:
+        bundleId:
+          type: string
+        workspaceId:
+          type: string
+        generatedAt:
+          type: string
+          format: date-time
+        signature:
+          type: string
+          description: Cryptographic signature of the audit bundle
+        compliance:
+          type: object
+          properties:
+            gdprCompliant:
+              type: boolean
+            ccpaCompliant:
+              type: boolean
+            soc2Compliant:
+              type: boolean
+        auditTrail:
+          type: array
+          items:
+            type: object
+            properties:
+              timestamp:
+                type: string
+                format: date-time
+              event:
+                type: string
+              actor:
+                type: string
+              details:
+                type: object
+
+    APIError:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Error message
+        code:
+          type: string
+          description: Error code
+        details:
+          type: object
+          description: Additional error details
+        timestamp:
+          type: string
+          format: date-time
+
+  responses:
+    BadRequest:
+      description: Bad request - invalid input
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/APIError'
+          example:
+            error: "Invalid request format"
+            code: "BAD_REQUEST"
+            timestamp: "2024-08-26T17:30:00Z"
+
+    Unauthorized:
+      description: Authentication required
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/APIError'
+          example:
+            error: "Authentication required"
+            code: "UNAUTHORIZED"
+            timestamp: "2024-08-26T17:30:00Z"
+
+    Forbidden:
+      description: Insufficient permissions
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/APIError'
+          example:
+            error: "Insufficient permissions"
+            code: "FORBIDDEN"
+            timestamp: "2024-08-26T17:30:00Z"
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/APIError'
+          example:
+            error: "Resource not found"
+            code: "NOT_FOUND"
+            timestamp: "2024-08-26T17:30:00Z"
+
+    RateLimited:
+      description: Rate limit exceeded
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/APIError'
+          example:
+            error: "Rate limit exceeded"
+            code: "RATE_LIMITED"
+            timestamp: "2024-08-26T17:30:00Z"
+      headers:
+        Retry-After:
+          description: Seconds until rate limit resets
+          schema:
+            type: integer

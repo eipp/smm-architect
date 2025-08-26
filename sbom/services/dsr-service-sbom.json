@@ -2,10 +2,10 @@
   "$schema": "http://cyclonedx.org/schema/bom-1.6.schema.json",
   "bomFormat": "CycloneDX",
   "specVersion": "1.6",
-  "serialNumber": "urn:uuid:896daad4-4af9-4ff1-a41e-9143c7d7bd61",
+  "serialNumber": "urn:uuid:637ed6aa-c6c1-4a7b-aa44-64794ec7d692",
   "version": 1,
   "metadata": {
-    "timestamp": "2025-08-24T16:24:40Z",
+    "timestamp": "2025-08-26T14:35:35Z",
     "tools": {
       "components": [
         {
@@ -20,7 +20,7 @@
       "bom-ref": "578aa5ccde41f5fa",
       "type": "file",
       "name": "dsr-service",
-      "version": "0dc0b5079c988312185b9e8f797692fe5fe95cae"
+      "version": "ddf059f7a08aa86ddf23ce05447e87313ea0d9f8"
     },
     "supplier": {
       "name": "SMM Architect",

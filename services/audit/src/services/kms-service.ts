@@ -2,6 +2,8 @@ import crypto from 'crypto';
 import { KMSProvider } from '../types';
 import * as forge from 'node-forge';
 import { VaultKMSAdapter } from '../kms/adapters/vault';
+import { AWSKMSAdapter } from '../kms/adapters/aws';
+import { GCPKMSAdapter } from '../kms/adapters/gcp';
 
 /**
  * KMS Service for cryptographic operations
@@ -11,29 +13,58 @@ export class KMSService implements KMSProvider {
   private provider: 'aws' | 'gcp' | 'vault' | 'local';
   private config: any;
   private vaultAdapter?: VaultKMSAdapter;
+  private awsAdapter?: AWSKMSAdapter;
+  private gcpAdapter?: GCPKMSAdapter;
 
   constructor(provider: 'aws' | 'gcp' | 'vault' | 'local', config: any = {}) {
     this.provider = provider;
     this.config = config;
     
-    // Initialize Vault adapter if using Vault provider
-    if (provider === 'vault') {
-      this.vaultAdapter = new VaultKMSAdapter({
-        vaultUrl: config.vaultUrl || process.env.VAULT_ADDR || 'http://localhost:8200',
-        vaultToken: config.vaultToken || process.env.VAULT_TOKEN,
-        transitMount: config.transitMount || 'transit',
-        keyPrefix: config.keyPrefix || 'smm-audit'
-      });
+    // Initialize appropriate adapter based on provider
+    switch (provider) {
+      case 'vault':
+        this.vaultAdapter = new VaultKMSAdapter({
+          vaultUrl: config.vaultUrl || process.env.VAULT_ADDR || 'http://localhost:8200',
+          vaultToken: config.vaultToken || process.env.VAULT_TOKEN,
+          transitMount: config.transitMount || 'transit',
+          keyPrefix: config.keyPrefix || 'smm-audit'
+        });
+        break;
+      case 'aws':
+        this.awsAdapter = new AWSKMSAdapter({
+          region: config.region || process.env.AWS_REGION,
+          accessKeyId: config.accessKeyId || process.env.AWS_ACCESS_KEY_ID,
+          secretAccessKey: config.secretAccessKey || process.env.AWS_SECRET_ACCESS_KEY,
+          sessionToken: config.sessionToken || process.env.AWS_SESSION_TOKEN,
+          endpoint: config.endpoint
+        });
+        break;
+      case 'gcp':
+        this.gcpAdapter = new GCPKMSAdapter({
+          projectId: config.projectId || process.env.GOOGLE_CLOUD_PROJECT,
+          locationId: config.locationId || process.env.GCP_LOCATION,
+          keyRingId: config.keyRingId || process.env.GCP_KMS_KEYRING,
+          keyFilename: config.keyFilename || process.env.GOOGLE_APPLICATION_CREDENTIALS,
+          credentials: config.credentials
+        });
+        break;
+      case 'local':
+        // Local implementation remains for development/testing
+        break;
+      default:
+        throw new Error(`Unsupported KMS provider: ${provider}`);
     }
   }
 
   /**
-   * Initialize the KMS service (required for Vault)
+   * Initialize the KMS service (required for some providers like Vault)
    */
   async initialize(): Promise<void> {
     if (this.provider === 'vault' && this.vaultAdapter) {
       await this.vaultAdapter.initialize();
     }
+    // AWS and GCP adapters don't require explicit initialization
+    console.log(`✓ KMS Service initialized with ${this.provider} provider`);
   }
 
   /**
@@ -110,54 +141,62 @@ export class KMSService implements KMSProvider {
 
   // AWS KMS Implementation
   private async signWithAWS(data: Buffer, keyId: string): Promise<string> {
-    // Mock implementation - in production, use AWS SDK
-    const hash = crypto.createHash('sha256').update(data).digest();
-    const mockSignature = crypto.createHmac('sha256', keyId).update(hash).digest();
-    return mockSignature.toString('base64');
+    if (!this.awsAdapter) {
+      throw new Error('AWS KMS adapter not initialized');
+    }
+    const result = await this.awsAdapter.sign(data, keyId);
+    return result.signature;
   }
 
   private async verifyWithAWS(data: Buffer, signature: string, keyId: string): Promise<boolean> {
-    try {
-      const expectedSignature = await this.signWithAWS(data, keyId);
-      return signature === expectedSignature;
-    } catch {
-      return false;
+    if (!this.awsAdapter) {
+      throw new Error('AWS KMS adapter not initialized');
     }
+    return await this.awsAdapter.verify(data, signature, keyId);
   }
 
   private async getPublicKeyAWS(keyId: string): Promise<string> {
-    // Mock public key - in production, fetch from AWS KMS
-    return `-----BEGIN PUBLIC KEY-----\nMOCK_AWS_PUBLIC_KEY_${keyId}\n-----END PUBLIC KEY-----`;
+    if (!this.awsAdapter) {
+      throw new Error('AWS KMS adapter not initialized');
+    }
+    return await this.awsAdapter.getPublicKey(keyId);
   }
 
   private async createKeyAWS(alias: string): Promise<string> {
-    // Mock key creation - in production, use AWS KMS CreateKey API
-    return `arn:aws:kms:us-east-1:123456789012:key/${crypto.randomUUID()}`;
+    if (!this.awsAdapter) {
+      throw new Error('AWS KMS adapter not initialized');
+    }
+    return await this.awsAdapter.createKey(alias);
   }
 
   // Google Cloud KMS Implementation
   private async signWithGCP(data: Buffer, keyId: string): Promise<string> {
-    // Mock implementation - in production, use Google Cloud KMS client
-    const hash = crypto.createHash('sha256').update(data).digest();
-    const mockSignature = crypto.createHmac('sha256', keyId).update(hash).digest();
-    return mockSignature.toString('base64');
+    if (!this.gcpAdapter) {
+      throw new Error('GCP KMS adapter not initialized');
+    }
+    const result = await this.gcpAdapter.sign(data, keyId);
+    return result.signature;
   }
 
   private async verifyWithGCP(data: Buffer, signature: string, keyId: string): Promise<boolean> {
-    try {
-      const expectedSignature = await this.signWithGCP(data, keyId);
-      return signature === expectedSignature;
-    } catch {
-      return false;
+    if (!this.gcpAdapter) {
+      throw new Error('GCP KMS adapter not initialized');
     }
+    return await this.gcpAdapter.verify(data, signature, keyId);
   }
 
   private async getPublicKeyGCP(keyId: string): Promise<string> {
-    return `-----BEGIN PUBLIC KEY-----\nMOCK_GCP_PUBLIC_KEY_${keyId}\n-----END PUBLIC KEY-----`;
+    if (!this.gcpAdapter) {
+      throw new Error('GCP KMS adapter not initialized');
+    }
+    return await this.gcpAdapter.getPublicKey(keyId);
   }
 
   private async createKeyGCP(alias: string): Promise<string> {
-    return `projects/test-project/locations/global/keyRings/smm-keys/cryptoKeys/${alias}`;
+    if (!this.gcpAdapter) {
+      throw new Error('GCP KMS adapter not initialized');
+    }
+    return await this.gcpAdapter.createKey(alias);
   }
 
   // Vault Implementation (using real VaultKMSAdapter)

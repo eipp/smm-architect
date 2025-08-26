@@ -1,0 +1,189 @@
+{
+  "auditTimestamp": "2025-08-26T00:00:00Z",
+  "fileIssues": {
+    "services/audit/src/services/kms-service.ts": [
+      {
+        "lineStart": 118,
+        "lineEnd": 152,
+        "severity": "critical",
+        "message": "Mock KMS signature implementation bypasses actual cryptographic signing",
+        "suggestedPatch": "Replace mock implementation with actual AWS KMS SDK integration:\n\n```typescript\nprivate async signWithAWS(data: Buffer, keyId: string): Promise<string> {\n  const command = new SignCommand({\n    KeyId: keyId,\n    Message: data,\n    SigningAlgorithm: 'RSASSA_PKCS1_V1_5_SHA_256',\n    MessageType: 'RAW'\n  });\n  const response = await this.kmsClient.send(command);\n  return Buffer.from(response.Signature!).toString('base64');\n}\n```"
+      },
+      {
+        "lineStart": 154,
+        "lineEnd": 189,
+        "severity": "critical", 
+        "message": "Mock GCP KMS implementation provides no cryptographic security",
+        "suggestedPatch": "Integrate actual Google Cloud KMS client with proper key management."
+      }
+    ],
+    "services/workspace-provisioning/package.json": [
+      {
+        "lineStart": 1,
+        "lineEnd": 50,
+        "severity": "critical",
+        "message": "Missing @pulumi/automation dependency causing 404 errors during install",
+        "suggestedPatch": "Update package.json with correct Pulumi dependency:\n\n```json\n{\n  \"dependencies\": {\n    \"@pulumi/pulumi\": \"^3.90.0\",\n    \"@pulumi/aws\": \"^6.0.0\",\n    \"@pulumi/kubernetes\": \"^4.0.0\"\n  }\n}\n```"
+      }
+    ],
+    "smm-architect/src/agents/my-agent/index.ts": [
+      {
+        "lineStart": 18,
+        "lineEnd": 28,
+        "severity": "critical",
+        "message": "MockVaultClient used in production agent code",
+        "suggestedPatch": "Replace with actual VaultClient:\n\n```typescript\nimport { VaultClient } from '../../../services/shared/vault-client';\n\nconst vaultClient = new VaultClient({\n  address: process.env.VAULT_ADDR!,\n  token: process.env.VAULT_TOKEN!\n});\n```"
+      },
+      {
+        "lineStart": 45,
+        "lineEnd": 52,
+        "severity": "high",
+        "message": "Missing webhook signature verification in agent request handler",
+        "suggestedPatch": "Add HMAC signature verification before processing requests."
+      }
+    ],
+    "services/dsr/src/data-subject-rights-service.ts": [
+      {
+        "lineStart": 85,
+        "lineEnd": 90,
+        "severity": "critical",
+        "message": "Pinecone client injection commented out - vector DB deletion not implemented",
+        "suggestedPatch": "Implement actual Pinecone client integration for vector database deletion."
+      },
+      {
+        "lineStart": 91,
+        "lineEnd": 96,
+        "severity": "critical",
+        "message": "S3 client injection commented out - object storage deletion not implemented", 
+        "suggestedPatch": "Implement actual S3 client integration for object cascade deletion."
+      }
+    ],
+    "package.json": [
+      {
+        "lineStart": 1,
+        "lineEnd": 10,
+        "severity": "high",
+        "message": "ESLint configuration references missing @typescript-eslint/recommended",
+        "suggestedPatch": "Add missing dependency:\n\n```json\n{\n  \"devDependencies\": {\n    \"@typescript-eslint/eslint-plugin\": \"^6.0.0\",\n    \"@typescript-eslint/parser\": \"^6.0.0\"\n  }\n}\n```"
+      }
+    ],
+    "apps/frontend/package.json": [
+      {
+        "lineStart": 1,
+        "lineEnd": 50,
+        "severity": "high",
+        "message": "esbuild@0.18.20 has CORS bypass vulnerability (CVSS 5.3)",
+        "suggestedPatch": "Update to esbuild >= 0.25.0 to fix security vulnerability."
+      }
+    ],
+    "services/smm-architect/package.json": [
+      {
+        "lineStart": 1,
+        "lineEnd": 50,
+        "severity": "high",
+        "message": "cross-spawn@7.0.3 has ReDoS vulnerability (CVSS 7.5)",
+        "suggestedPatch": "Update to cross-spawn >= 7.0.5 to fix ReDoS vulnerability."
+      }
+    ],
+    "services/shared/database/client.ts": [
+      {
+        "lineStart": 1,
+        "lineEnd": 30,
+        "severity": "high",
+        "message": "Missing automatic tenant context setting middleware",
+        "suggestedPatch": "Add tenant context middleware:\n\n```typescript\nexport const withTenantContext = (tenantId: string) => {\n  return async (tx: any) => {\n    await tx.raw(\"SELECT set_config('app.current_tenant_id', ?, true)\", [tenantId]);\n    return tx;\n  };\n};\n```"
+      }
+    ],
+    ".github/workflows/ci.yml": [
+      {
+        "lineStart": 200,
+        "lineEnd": 250,
+        "severity": "medium",
+        "message": "Missing evil tenant integration tests in main CI pipeline",
+        "suggestedPatch": "Add evil tenant test job that runs on every PR."
+      },
+      {
+        "lineStart": 800,
+        "lineEnd": 850,
+        "severity": "medium",
+        "message": "Container image signing with Cosign not implemented",
+        "suggestedPatch": "Add Cosign signing step to container build job."
+      }
+    ],
+    "services/toolhub/openapi.yaml": [
+      {
+        "lineStart": 100,
+        "lineEnd": 150,
+        "severity": "medium",
+        "message": "Response schema mismatch for vector search endpoint",
+        "suggestedPatch": "Update OpenAPI schema to match actual API response format."
+      },
+      {
+        "lineStart": 300,
+        "lineEnd": 320,
+        "severity": "medium", 
+        "message": "Missing authentication scheme documentation for webhook endpoints",
+        "suggestedPatch": "Add webhook HMAC authentication scheme to security definitions."
+      }
+    ],
+    "monitoring/alertmanager/alertmanager.yml": [
+      {
+        "lineStart": 1,
+        "lineEnd": 50,
+        "severity": "medium",
+        "message": "Missing critical security alerts for tenant isolation violations",
+        "suggestedPatch": "Add alert rules for cross-tenant access attempts and policy violations."
+      }
+    ],
+    "services/smm-architect/src/config/database.ts": [
+      {
+        "lineStart": 15,
+        "lineEnd": 25,
+        "severity": "low",
+        "message": "Implicit any type in database configuration",
+        "suggestedPatch": "Add proper TypeScript interface for database configuration."
+      }
+    ],
+    "tests/integration/external-api-integration.test.ts": [
+      {
+        "lineStart": 265,
+        "lineEnd": 268,
+        "severity": "low",
+        "message": "Test depends on external services and may be flaky",
+        "suggestedPatch": "Mock external service dependencies for reliable testing."
+      }
+    ],
+    "services/audit/src/kms/adapters/vault.ts": [
+      {
+        "lineStart": 190,
+        "lineEnd": 233,
+        "severity": "info",
+        "message": "Production Vault KMS adapter properly implemented - keep as reference",
+        "suggestedPatch": "No changes needed - this is a good implementation example."
+      }
+    ],
+    "services/smm-architect/migrations/002_enable_rls.sql": [
+      {
+        "lineStart": 1,
+        "lineEnd": 268,
+        "severity": "info",
+        "message": "RLS policies properly implemented for multi-tenant security",
+        "suggestedPatch": "No changes needed - production ready."
+      }
+    ]
+  },
+  "summary": {
+    "totalFiles": 14,
+    "criticalIssues": 6,
+    "highSeverityIssues": 5, 
+    "mediumSeverityIssues": 6,
+    "lowSeverityIssues": 3,
+    "infoItems": 2,
+    "filesRequiringImmediation": [
+      "services/audit/src/services/kms-service.ts",
+      "services/workspace-provisioning/package.json", 
+      "smm-architect/src/agents/my-agent/index.ts",
+      "services/dsr/src/data-subject-rights-service.ts"
+    ]
+  }
+}

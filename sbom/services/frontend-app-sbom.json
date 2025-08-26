@@ -2,10 +2,10 @@
   "$schema": "http://cyclonedx.org/schema/bom-1.6.schema.json",
   "bomFormat": "CycloneDX",
   "specVersion": "1.6",
-  "serialNumber": "urn:uuid:a3b0f780-ce72-4cdd-919f-b37bddbd9da3",
+  "serialNumber": "urn:uuid:4d1bbec3-9597-49df-90ee-dd1933e61e49",
   "version": 1,
   "metadata": {
-    "timestamp": "2025-08-24T16:24:47Z",
+    "timestamp": "2025-08-26T14:35:42Z",
     "tools": {
       "components": [
         {
@@ -20,7 +20,7 @@
       "bom-ref": "8d7f531b6d0d98ff",
       "type": "file",
       "name": "frontend-app",
-      "version": "0dc0b5079c988312185b9e8f797692fe5fe95cae"
+      "version": "ddf059f7a08aa86ddf23ce05447e87313ea0d9f8"
     },
     "supplier": {
       "name": "SMM Architect",
@@ -5351,14 +5351,14 @@
       ]
     },
     {
-      "bom-ref": "pkg:npm/%40typescript-eslint/typescript-estree@8.40.0?package-id=fdfc994618882fa4",
+      "bom-ref": "pkg:npm/%40typescript-eslint/typescript-estree@8.40.0?package-id=52f2dbf716b0e1bf",
       "type": "library",
       "name": "@typescript-eslint/typescript-estree",
       "version": "8.40.0",
       "licenses": [
         {
           "license": {
-            "id": "MIT"
+            "id": "BSD-2-Clause"
           }
         }
       ],
