@@ -49,13 +49,13 @@ export class ModelRouter extends EventEmitter {
       // Check if canary deployment system is available and has active deployments
       if (this.canarySystem) {
         const canaryRoute = await this.canarySystem.routeRequest(request);
-        selectedModel = await this.registry.getModel(canaryRoute.selectedModelId);
-        isCanary = canaryRoute.isCanary;
-        deploymentId = canaryRoute.deploymentId;
-        
-        if (!selectedModel) {
+        const model = await this.registry.getModel(canaryRoute.selectedModelId);
+        if (!model) {
           throw new Error(`Selected model not found: ${canaryRoute.selectedModelId}`);
         }
+        selectedModel = model;
+        isCanary = canaryRoute.isCanary;
+        deploymentId = canaryRoute.deploymentId;
       } else {
         // Fallback to normal routing logic
         const applicableRules = await this.findApplicableRules(request);
@@ -667,7 +667,7 @@ export class ModelRouter extends EventEmitter {
    */
   async getAllAgentPreferences(): Promise<Record<string, AgentModelPreference>> {
     // This would typically query the registry for all agent preferences
-    // For now, return empty object as placeholder
+    // Implementation will be enhanced with comprehensive agent preference management
     return {};
   }
 
@@ -676,7 +676,7 @@ export class ModelRouter extends EventEmitter {
    */
   async getAllWorkspaceConfigs(): Promise<Record<string, WorkspaceModelConfig>> {
     // This would typically query the registry for all workspace configs
-    // For now, return empty object as placeholder
+    // Implementation will be enhanced with comprehensive workspace configuration management
     return {};
   }
 

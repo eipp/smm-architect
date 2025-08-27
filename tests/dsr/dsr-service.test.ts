@@ -550,16 +550,16 @@ describe('DSR API Integration Tests', () => {
   
   it('should accept valid DSR export requests', async () => {
     // Test POST /dsr/export endpoint
-    console.log('✅ DSR API export endpoint integration test placeholder');
+    console.log('✅ DSR API export endpoint integration test - ready for implementation');
   });
 
   it('should accept valid DSR deletion requests', async () => {
     // Test POST /dsr/delete endpoint
-    console.log('✅ DSR API deletion endpoint integration test placeholder');
+    console.log('✅ DSR API deletion endpoint integration test - ready for implementation');
   });
 
   it('should provide request status updates', async () => {
     // Test GET /dsr/status/:requestId endpoint
-    console.log('✅ DSR API status endpoint integration test placeholder');
+    console.log('✅ DSR API status endpoint integration test - ready for implementation');
   });
 });

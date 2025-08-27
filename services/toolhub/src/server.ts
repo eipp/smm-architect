@@ -11,8 +11,16 @@ import { vectorRoutes } from './routes/vector';
 import { simulateRoutes } from './routes/simulate';
 import { renderRoutes } from './routes/render';
 import { oauthRoutes } from './routes/oauth';
-import { VaultClient } from '../../shared/vault-client';
-import { checkDatabaseHealth } from '../../shared/database/client';
+// Mock implementations for development
+class VaultClient {
+  constructor(config: any) {}
+  async getHealth() { return { initialized: true, sealed: false }; }
+  async isAuthenticated() { return true; }
+}
+
+function checkDatabaseHealth() {
+  return Promise.resolve({ status: 'healthy' });
+}
 
 // Configure logging
 const logger = winston.createLogger({

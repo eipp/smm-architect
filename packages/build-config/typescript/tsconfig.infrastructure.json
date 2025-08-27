@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "display": "SMM Architect Infrastructure TypeScript Config",
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "types": ["node"],
+    "declaration": true,
+    "declarationMap": true,
+    "composite": true,
+    "incremental": true,
+    "paths": {
+      "@smm-architect/shared/*": ["../../packages/shared/src/*"],
+      "@smm-architect/config/*": ["../../packages/build-config/*"]
+    }
+  },
+  "include": [
+    "src/**/*",
+    "*.ts",
+    "scripts/**/*"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "coverage"
+  ]
+}

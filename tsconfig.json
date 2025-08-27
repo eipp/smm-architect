@@ -1,35 +1,33 @@
 {
+  "extends": "./packages/build-config/typescript/tsconfig.base.json",
   "compilerOptions": {
-    "target": "ES2020",
-    "module": "commonjs",
-    "lib": ["ES2020"],
-    "outDir": "./dist",
-    "rootDir": "./",
-    "strict": true,
-    "esModuleInterop": true,
-    "moduleResolution": "node",
-    "allowSyntheticDefaultImports": true,
-    "skipLibCheck": true,
-    "skipDefaultLibCheck": true,
-    "forceConsistentCasingInFileNames": true,
-    "resolveJsonModule": true,
-    "declaration": true,
-    "declarationMap": true,
-    "sourceMap": true,
-    "typeRoots": ["./node_modules/@types"],
-    "types": ["jest", "node"]
+    "baseUrl": ".",
+    "paths": {
+      "@smm-architect/shared/*": ["./packages/shared/src/*"],
+      "@smm-architect/ui/*": ["./packages/ui/src/*"],
+      "@smm-architect/build-config/*": ["./packages/build-config/*"]
+    },
+    "composite": true
   },
+  "references": [
+    { "path": "./packages/shared" },
+    { "path": "./packages/ui" },
+    { "path": "./apps/frontend" },
+    { "path": "./services/smm-architect" },
+    { "path": "./services/toolhub" },
+    { "path": "./services/simulator" },
+    { "path": "./services/model-router" },
+    { "path": "./services/audit" }
+  ],
   "include": [
-    "tests/**/*",
-    "src/**/*"
+    "tests/**/*"
   ],
   "exclude": [
-    "node_modules/**/*",
-    "**/node_modules/**/*",
     "node_modules",
     "dist",
     "coverage",
-    "**/dist/**/*",
-    "**/coverage/**/*"
+    "**/node_modules/**",
+    "**/dist/**",
+    "**/coverage/**"
   ]
 }

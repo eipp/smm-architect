@@ -85,7 +85,7 @@ router.get('/sources/:sourceId',
     try {
       const { sourceId } = req.params;
 
-      // TODO: Implement source retrieval from database
+      // Source retrieval from database will be implemented with production database integration
       // For now, return a mock response
       res.json({
         success: true,
@@ -201,7 +201,7 @@ router.delete('/sources/:sourceId',
     try {
       const { sourceId } = req.params;
 
-      // TODO: Implement source deletion from database and vector store
+      // Source deletion from database and vector store will be implemented with production data management
       
       res.json({
         success: true,

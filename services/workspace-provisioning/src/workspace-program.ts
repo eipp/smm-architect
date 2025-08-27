@@ -56,7 +56,7 @@ export function createPulumiProgram(config: WorkspaceConfig) {
     
     // Import and execute the workspace template
     // Note: This assumes the workspace-template.ts exports are properly structured
-    const workspaceTemplate = await import('../../../infra/pulumi/templates/workspace-template');
+    const workspaceTemplate = await import('../../../infrastructure/pulumi/templates/workspace-template');
     
     // The template should export all the resources and outputs
     return {

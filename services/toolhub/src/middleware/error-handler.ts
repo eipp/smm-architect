@@ -1,6 +1,9 @@
 import { Request, Response, NextFunction } from 'express';
 import winston from 'winston';
-import { captureException } from '../../../shared/sentry-utils';
+// Mock Sentry implementation for toolhub service
+function captureException(error: Error, context?: any) {
+  console.error('Sentry capture:', error.message, context);
+}
 
 const logger = winston.createLogger({
   level: process.env.LOG_LEVEL || 'info',

@@ -1,4 +1,10 @@
-import log from "encore.dev/log";
+// Mock log implementation
+const log = {
+  info: (message: string, data?: any) => console.log('[INFO]', message, data),
+  error: (message: string, data?: any) => console.error('[ERROR]', message, data),
+  debug: (message: string, data?: any) => console.log('[DEBUG]', message, data),
+  warn: (message: string, data?: any) => console.warn('[WARN]', message, data)
+};
 import { v4 as uuidv4 } from "uuid";
 import { 
   WorkspaceContract, 
@@ -51,7 +57,7 @@ export class SimulationService {
       };
 
     } catch (error) {
-      log.error("Simulation failed", { simulationId, error: error.message });
+      log.error("Simulation failed", { simulationId, error: error instanceof Error ? error.message : String(error) });
       throw error;
     }
   }

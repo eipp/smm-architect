@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "display": "SMM Architect Base TypeScript Config",
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "module": "ESNext",
+    "moduleResolution": "node16",
+    "allowSyntheticDefaultImports": true,
+    "esModuleInterop": true,
+    "allowJs": true,
+    "declaration": false,
+    "declarationMap": false,
+    "emitDeclarationOnly": false,
+    "outDir": "dist",
+    
+    "strict": true,
+    "noImplicitAny": true,
+    "strictNullChecks": true,
+    "strictFunctionTypes": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedIndexedAccess": true,
+    
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": false,
+    
+    "sourceMap": true,
+    "removeComments": false,
+    "noEmitOnError": true,
+    "preserveConstEnums": true,
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    
+    "baseUrl": ".",
+    "paths": {
+      "@smm-architect/shared/*": ["../../packages/shared/src/*"],
+      "@smm-architect/ui/*": ["../../packages/ui/src/*"],
+      "@smm-architect/config/*": ["../../packages/build-config/*"]
+    },
+    
+    "types": []
+  },
+  "exclude": [
+    "node_modules",
+    "dist",
+    "coverage",
+    "*.d.ts"
+  ]
+}

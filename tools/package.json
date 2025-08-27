@@ -1,0 +1,17 @@
+{
+  "name": "@smm-architect/tools",
+  "version": "1.0.0",
+  "description": "Development and automation tools for SMM Architect",
+  "private": true,
+  "scripts": {
+    "test": "echo \"No tests for tools package\"",
+    "lint": "echo \"No linting for tools package\""
+  },
+  "keywords": [
+    "smm-architect",
+    "tools",
+    "automation",
+    "scripts"
+  ],
+  "license": "MIT"
+}

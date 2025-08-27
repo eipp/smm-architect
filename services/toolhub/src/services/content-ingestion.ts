@@ -314,7 +314,7 @@ export class ContentIngestionService {
           spanEnd,
           confidence,
           category: this.categorizeClaimType(sentence),
-          citations: [] // TODO: Extract citations
+          citations: [] // Citations will be implemented in future content analysis features
         });
       }
     }

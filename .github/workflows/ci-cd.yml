@@ -1,0 +1,343 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  release:
+    types: [ published ]
+
+env:
+  NODE_VERSION: '18.x'
+  PNPM_VERSION: '8.15.0'
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  # Build and Test
+  build-and-test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [18.x, 20.x]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js ${{ matrix.node-version }}
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ matrix.node-version }}
+        
+    - name: Setup pnpm
+      uses: pnpm/action-setup@v2
+      with:
+        version: ${{ env.PNPM_VERSION }}
+        run_install: false
+        
+    - name: Get pnpm store directory
+      shell: bash
+      run: |
+        echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+        
+    - name: Setup pnpm cache
+      uses: actions/cache@v3
+      with:
+        path: ${{ env.STORE_PATH }}
+        key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+        restore-keys: |
+          ${{ runner.os }}-pnpm-store-
+          
+    - name: Install dependencies
+      run: pnpm install --frozen-lockfile
+      
+    - name: Lint code
+      run: pnpm run lint
+      
+    - name: Type check
+      run: pnpm run type-check
+      
+    - name: Build packages
+      run: pnpm run build
+      
+    - name: Run tests
+      run: pnpm run test:coverage
+      
+    - name: Upload coverage reports
+      uses: codecov/codecov-action@v3
+      if: matrix.node-version == '18.x'
+      with:
+        files: ./coverage/lcov.info
+        fail_ci_if_error: true
+
+  # Security Scanning
+  security-scan:
+    runs-on: ubuntu-latest
+    needs: build-and-test
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Run Trivy vulnerability scanner
+      uses: aquasecurity/trivy-action@master
+      with:
+        scan-type: 'fs'
+        scan-ref: '.'
+        format: 'sarif'
+        output: 'trivy-results.sarif'
+        
+    - name: Upload Trivy scan results
+      uses: github/codeql-action/upload-sarif@v2
+      with:
+        sarif_file: 'trivy-results.sarif'
+        
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        
+    - name: Setup pnpm
+      uses: pnpm/action-setup@v2
+      with:
+        version: ${{ env.PNPM_VERSION }}
+        run_install: false
+        
+    - name: Install dependencies
+      run: pnpm install --frozen-lockfile
+      
+    - name: Audit dependencies
+      run: pnpm audit --audit-level moderate
+      
+    - name: Generate SBOM
+      run: |
+        chmod +x tools/scripts/generate-sbom.sh
+        ./tools/scripts/generate-sbom.sh
+        
+    - name: Upload SBOM artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: sbom-reports
+        path: sbom/
+        retention-days: 30
+
+  # End-to-End Tests
+  e2e-tests:
+    runs-on: ubuntu-latest
+    needs: build-and-test
+    
+    services:
+      postgres:
+        image: postgres:14
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: smm_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+          
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        
+    - name: Setup pnpm
+      uses: pnpm/action-setup@v2
+      with:
+        version: ${{ env.PNPM_VERSION }}
+        run_install: false
+        
+    - name: Install dependencies
+      run: pnpm install --frozen-lockfile
+      
+    - name: Install Playwright browsers
+      run: pnpm exec playwright install --with-deps
+      
+    - name: Build applications
+      run: pnpm run build
+      
+    - name: Run database migrations
+      run: pnpm --filter=@smm-architect/shared db:migrate
+      env:
+        DATABASE_URL: postgresql://postgres:postgres@localhost:5432/smm_test
+        
+    - name: Start applications
+      run: |
+        pnpm --filter=smm-architect-service start &
+        pnpm --filter=toolhub-service start &
+        pnpm --filter=@smm-architect/frontend start &
+        sleep 30
+      env:
+        DATABASE_URL: postgresql://postgres:postgres@localhost:5432/smm_test
+        REDIS_URL: redis://localhost:6379
+        
+    - name: Run E2E tests
+      run: pnpm --filter=@smm-architect/frontend test:e2e
+      
+    - name: Upload E2E test results
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: e2e-test-results
+        path: apps/frontend/test-results/
+        retention-days: 7
+
+  # Build Docker Images
+  build-images:
+    runs-on: ubuntu-latest
+    needs: [build-and-test, security-scan]
+    if: github.event_name == 'push' || github.event_name == 'release'
+    
+    strategy:
+      matrix:
+        service: [smm-architect, toolhub, frontend]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+      
+    - name: Log in to Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+        
+    - name: Extract metadata
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/${{ matrix.service }}
+        tags: |
+          type=ref,event=branch
+          type=ref,event=pr
+          type=semver,pattern={{version}}
+          type=semver,pattern={{major}}.{{minor}}
+          type=raw,value=latest,enable={{is_default_branch}}
+          
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        file: ./services/${{ matrix.service }}/Dockerfile
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+  # Deploy to Staging
+  deploy-staging:
+    runs-on: ubuntu-latest
+    needs: [build-images, e2e-tests]
+    if: github.ref == 'refs/heads/develop'
+    environment: staging
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup kubectl
+      uses: azure/setup-kubectl@v3
+      with:
+        version: 'v1.28.0'
+        
+    - name: Setup Helm
+      uses: azure/setup-helm@v3
+      with:
+        version: 'v3.12.0'
+        
+    - name: Configure kubectl
+      run: |
+        mkdir -p ~/.kube
+        echo "${{ secrets.KUBE_CONFIG_STAGING }}" | base64 -d > ~/.kube/config
+        
+    - name: Deploy to staging
+      run: |
+        helm upgrade --install smm-architect-staging \
+          ./infrastructure/kubernetes/helm/smm-architect \
+          --namespace smm-architect-staging \
+          --create-namespace \
+          --values ./infrastructure/kubernetes/helm/smm-architect/values-staging.yaml \
+          --set image.tag=${{ github.sha }} \
+          --wait --timeout=600s
+
+  # Deploy to Production
+  deploy-production:
+    runs-on: ubuntu-latest
+    needs: [build-images, e2e-tests]
+    if: github.event_name == 'release'
+    environment: production
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup kubectl
+      uses: azure/setup-kubectl@v3
+      with:
+        version: 'v1.28.0'
+        
+    - name: Setup Helm
+      uses: azure/setup-helm@v3
+      with:
+        version: 'v3.12.0'
+        
+    - name: Configure kubectl
+      run: |
+        mkdir -p ~/.kube
+        echo "${{ secrets.KUBE_CONFIG_PRODUCTION }}" | base64 -d > ~/.kube/config
+        
+    - name: Deploy to production
+      run: |
+        helm upgrade --install smm-architect \
+          ./infrastructure/kubernetes/helm/smm-architect \
+          --namespace smm-architect \
+          --create-namespace \
+          --values ./infrastructure/kubernetes/helm/smm-architect/values-production.yaml \
+          --set image.tag=${{ github.ref_name }} \
+          --wait --timeout=600s
+          
+    - name: Post-deployment health check
+      run: |
+        kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=smm-architect -n smm-architect --timeout=300s
+        kubectl get pods -n smm-architect
+
+  # Notification
+  notify:
+    runs-on: ubuntu-latest
+    needs: [deploy-staging, deploy-production]
+    if: always()
+    
+    steps:
+    - name: Notify deployment status
+      uses: 8398a7/action-slack@v3
+      with:
+        status: ${{ job.status }}
+        channel: '#deployments'
+        webhook_url: ${{ secrets.SLACK_WEBHOOK }}
+      env:
+        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }}

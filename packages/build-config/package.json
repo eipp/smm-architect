@@ -1,0 +1,33 @@
+{
+  "name": "@smm-architect/build-config",
+  "version": "1.0.0",
+  "description": "Shared build configurations for SMM Architect monorepo",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"No tests for build config package\"",
+    "lint": "echo \"No linting for build config package\""
+  },
+  "devDependencies": {
+    "@types/jest": "^29.5.0",
+    "@types/node": "^20.10.0",
+    "@typescript-eslint/eslint-plugin": "^6.13.0",
+    "@typescript-eslint/parser": "^6.13.0",
+    "eslint": "^8.57.0",
+    "eslint-plugin-import": "^2.29.0",
+    "jest": "^29.7.0",
+    "jest-environment-jsdom": "^29.7.0",
+    "jest-transform-stub": "^2.0.0",
+    "jest-watch-typeahead": "^2.2.2",
+    "ts-jest": "^29.1.1",
+    "typescript": "^5.3.0"
+  },
+  "keywords": [
+    "smm-architect",
+    "build",
+    "config",
+    "typescript",
+    "jest",
+    "eslint"
+  ],
+  "license": "MIT"
+}

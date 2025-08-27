@@ -1,0 +1,70 @@
+# SMM Architect Base Node.js Dockerfile
+# Multi-stage build for optimized production containers
+
+# Build stage
+FROM node:18-alpine AS builder
+
+# Install dependencies needed for node-gyp and native modules
+RUN apk add --no-cache python3 make g++
+
+# Set working directory
+WORKDIR /app
+
+# Copy package files for dependency installation
+COPY package*.json pnpm-lock.yaml ./
+COPY pnpm-workspace.yaml ./
+
+# Install pnpm
+RUN npm install -g pnpm@8.15.0
+
+# Copy workspace package files
+COPY packages/shared/package.json ./packages/shared/
+COPY packages/build-config/package.json ./packages/build-config/
+
+# Install dependencies
+RUN pnpm install --frozen-lockfile
+
+# Copy source code
+COPY . .
+
+# Build the application
+RUN pnpm build
+
+# Production stage
+FROM node:18-alpine AS production
+
+# Add security user
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S smmuser -u 1001
+
+# Install dumb-init for proper signal handling
+RUN apk add --no-cache dumb-init
+
+# Set working directory
+WORKDIR /app
+
+# Copy package files
+COPY package*.json pnpm-lock.yaml ./
+
+# Install pnpm and production dependencies only
+RUN npm install -g pnpm@8.15.0 && \
+    pnpm install --prod --frozen-lockfile && \
+    npm cache clean --force
+
+# Copy built application from builder stage
+COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/packages/shared/dist ./packages/shared/dist
+
+# Change ownership to non-root user
+RUN chown -R smmuser:nodejs /app
+USER smmuser
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD node healthcheck.js
+
+# Use dumb-init to handle signals properly
+ENTRYPOINT ["dumb-init", "--"]
+
+# Default command (to be overridden by specific services)
+CMD ["node", "dist/index.js"]

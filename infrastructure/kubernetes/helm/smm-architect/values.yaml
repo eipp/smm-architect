@@ -1,0 +1,164 @@
+# Default values for smm-architect
+# This is a YAML-formatted file
+
+global:
+  imageRegistry: ""
+  imagePullSecrets: []
+  
+image:
+  registry: docker.io
+  repository: smm-architect
+  pullPolicy: IfNotPresent
+  tag: "latest"
+
+replicaCount:
+  coreService: 3
+  toolhub: 2
+  frontend: 2
+
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+podAnnotations: {}
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1001
+  runAsGroup: 1001
+  fsGroup: 1001
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+    - ALL
+
+service:
+  type: ClusterIP
+  ports:
+    coreService: 4000
+    toolhub: 3001
+    frontend: 3000
+
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+  hosts:
+    - host: api.smm-architect.com
+      paths:
+        - path: /
+          pathType: Prefix
+          service: core-service
+    - host: toolhub.smm-architect.com
+      paths:
+        - path: /
+          pathType: Prefix
+          service: toolhub
+    - host: app.smm-architect.com
+      paths:
+        - path: /
+          pathType: Prefix
+          service: frontend
+  tls:
+    - secretName: smm-architect-tls
+      hosts:
+        - api.smm-architect.com
+        - toolhub.smm-architect.com
+        - app.smm-architect.com
+
+resources:
+  coreService:
+    limits:
+      cpu: 500m
+      memory: 1Gi
+    requests:
+      cpu: 250m
+      memory: 512Mi
+  toolhub:
+    limits:
+      cpu: 1000m
+      memory: 2Gi
+    requests:
+      cpu: 500m
+      memory: 1Gi
+  frontend:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 250m
+      memory: 256Mi
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 80
+  targetMemoryUtilizationPercentage: 80
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}
+
+# PostgreSQL configuration
+postgresql:
+  enabled: true
+  auth:
+    postgresPassword: "smm_password"
+    username: "smm_user"
+    password: "smm_password"
+    database: "smm_architect"
+  primary:
+    persistence:
+      enabled: true
+      size: 20Gi
+  metrics:
+    enabled: true
+
+# Redis configuration
+redis:
+  enabled: true
+  auth:
+    enabled: true
+    password: "redis_password"
+  master:
+    persistence:
+      enabled: true
+      size: 5Gi
+  metrics:
+    enabled: true
+
+# Monitoring configuration
+monitoring:
+  prometheus:
+    enabled: true
+  grafana:
+    enabled: true
+    adminPassword: "admin_password"
+
+# External secrets (set these in production)
+secrets:
+  databaseUrl: "postgresql://smm_user:smm_password@smm-architect-postgresql:5432/smm_architect"
+  redisUrl: "redis://smm-architect-redis-master:6379"
+  sentryDsn: ""
+  openaiApiKey: ""
+  jwtSecret: ""
+  encryptionKey: ""
+  vaultToken: ""
+
+# Environment configuration
+environment:
+  nodeEnv: "production"
+  logLevel: "info"
+  sentryEnvironment: "production"

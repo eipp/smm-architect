@@ -1,0 +1,21 @@
+{
+  \"extends\": \"../build-config/typescript/tsconfig.backend.json\",
+  \"compilerOptions\": {
+    \"baseUrl\": \".\",
+    \"rootDir\": \"src\",
+    \"outDir\": \"dist\",
+    \"declaration\": true,
+    \"declarationMap\": true,
+    \"composite\": true
+  },
+  \"include\": [
+    \"src/**/*\"
+  ],
+  \"exclude\": [
+    \"node_modules\",
+    \"dist\",
+    \"coverage\",
+    \"**/*.test.ts\",
+    \"**/*.spec.ts\"
+  ]
+}

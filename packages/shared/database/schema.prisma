@@ -1,0 +1,229 @@
+// SMM Architect Unified Database Schema
+// This schema consolidates all database models with multi-tenant RLS support
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Core workspace entity - tenant isolation root
+model Workspace {
+  workspaceId        String   @id @map("workspace_id") @db.VarChar(255)
+  tenantId           String   @map("tenant_id") @db.VarChar(255)
+  createdBy          String   @map("created_by") @db.VarChar(255)
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @default(now()) @updatedAt @map("updated_at")
+  lifecycle          String   @default("draft") @db.VarChar(50)
+  contractVersion    String   @map("contract_version") @db.VarChar(50)
+  goals              Json
+  primaryChannels    Json     @map("primary_channels")
+  budget             Json
+  approvalPolicy     Json     @map("approval_policy")
+  riskProfile        String   @map("risk_profile") @db.VarChar(50)
+  dataRetention      Json     @map("data_retention")
+  ttlHours           Int      @map("ttl_hours")
+  policyBundleRef    String   @map("policy_bundle_ref") @db.VarChar(255)
+  policyBundleChecksum String @map("policy_bundle_checksum") @db.VarChar(64)
+  contractData       Json     @map("contract_data")
+
+  // Relations
+  workspaceRuns      WorkspaceRun[]
+  auditBundles       AuditBundle[]
+  connectors         Connector[]
+  consentRecords     ConsentRecord[]
+  brandTwins         BrandTwin[]
+  decisionCards      DecisionCard[]
+  simulationResults  SimulationResult[]
+  assetFingerprints  AssetFingerprint[]
+
+  @@index([tenantId], name: "idx_workspace_tenant")
+  @@index([lifecycle], name: "idx_workspace_lifecycle")
+  @@index([createdAt], name: "idx_workspace_created")
+  @@index([createdAt, ttlHours], name: "idx_workspace_ttl")
+  @@index([tenantId], name: "idx_workspaces_tenant_id_optimized")
+  @@map("workspaces")
+}
+
+// Workspace execution tracking
+model WorkspaceRun {
+  runId          String    @id @map("run_id") @db.VarChar(255)
+  workspaceId    String    @map("workspace_id") @db.VarChar(255)
+  status         String    @db.VarChar(50)
+  startedAt      DateTime  @map("started_at")
+  finishedAt     DateTime? @map("finished_at")
+  costUsd        Decimal?  @map("cost_usd") @db.Decimal(10, 2)
+  readinessScore Decimal?  @map("readiness_score") @db.Decimal(3, 2)
+  results        Json?
+  createdAt      DateTime  @default(now()) @map("created_at")
+
+  // Relations
+  workspace Workspace @relation(fields: [workspaceId], references: [workspaceId], onDelete: Cascade)
+
+  @@index([workspaceId], name: "idx_run_workspace")
+  @@index([status], name: "idx_run_status")
+  @@index([startedAt], name: "idx_run_started")
+  @@index([workspaceId], name: "idx_workspace_runs_workspace_fk")
+  @@map("workspace_runs")
+}
+
+// Compliance audit tracking
+model AuditBundle {
+  bundleId       String   @id @map("bundle_id") @db.VarChar(255)
+  workspaceId    String   @map("workspace_id") @db.VarChar(255)
+  bundleData     Json     @map("bundle_data")
+  signatureKeyId String   @map("signature_key_id") @db.VarChar(255)
+  signature      String   @db.VarChar(1024)
+  signedAt       DateTime @map("signed_at")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  // Relations
+  workspace Workspace @relation(fields: [workspaceId], references: [workspaceId], onDelete: Cascade)
+
+  @@index([workspaceId], name: "idx_bundle_workspace")
+  @@index([signedAt], name: "idx_bundle_signed")
+  @@index([workspaceId], name: "idx_audit_bundles_workspace_fk")
+  @@map("audit_bundles")
+}
+
+// Platform integrations
+model Connector {
+  connectorId       String    @id @map("connector_id") @db.VarChar(255)
+  workspaceId       String    @map("workspace_id") @db.VarChar(255)
+  platform          String    @db.VarChar(50)
+  accountId         String    @map("account_id") @db.VarChar(255)
+  displayName       String    @map("display_name") @db.VarChar(255)
+  status            String    @default("unconnected") @db.VarChar(50)
+  scopes            Json?
+  lastConnectedAt   DateTime? @map("last_connected_at")
+  ownerContact      String?   @map("owner_contact") @db.VarChar(255)
+  credentialsRef    String?   @map("credentials_ref") @db.VarChar(255)
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @default(now()) @updatedAt @map("updated_at")
+
+  // Relations
+  workspace Workspace @relation(fields: [workspaceId], references: [workspaceId], onDelete: Cascade)
+
+  @@unique([workspaceId, platform, accountId], name: "idx_workspace_platform")
+  @@index([workspaceId], name: "idx_connector_workspace")
+  @@index([platform], name: "idx_connector_platform")
+  @@index([status], name: "idx_connector_status")
+  @@index([workspaceId], name: "idx_connectors_workspace_fk")
+  @@map("connectors")
+}
+
+// Legal consent tracking
+model ConsentRecord {
+  consentId         String   @id @map("consent_id") @db.VarChar(255)
+  workspaceId       String   @map("workspace_id") @db.VarChar(255)
+  consentType       String   @map("consent_type") @db.VarChar(50)
+  grantedBy         String   @map("granted_by") @db.VarChar(255)
+  grantedAt         DateTime @map("granted_at")
+  expiresAt         DateTime @map("expires_at")
+  documentRef       String?  @map("document_ref") @db.VarChar(500)
+  verifierSignature String?  @map("verifier_signature") @db.VarChar(1024)
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  // Relations
+  workspace Workspace @relation(fields: [workspaceId], references: [workspaceId], onDelete: Cascade)
+
+  @@index([workspaceId], name: "idx_consent_workspace")
+  @@index([consentType], name: "idx_consent_type")
+  @@index([expiresAt], name: "idx_consent_expires")
+  @@index([grantedBy], name: "idx_consent_granted_by")
+  @@index([workspaceId], name: "idx_consent_records_workspace_fk")
+  @@map("consent_records")
+}
+
+// Research agent outputs
+model BrandTwin {
+  brandId      String   @map("brand_id") @db.VarChar(255)
+  workspaceId  String   @map("workspace_id") @db.VarChar(255)
+  snapshotAt   DateTime @map("snapshot_at")
+  brandData    Json     @map("brand_data")
+  qualityScore Decimal? @map("quality_score") @db.Decimal(3, 2)
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  // Relations
+  workspace Workspace @relation(fields: [workspaceId], references: [workspaceId], onDelete: Cascade)
+
+  @@id([brandId, snapshotAt])
+  @@index([workspaceId], name: "idx_brand_workspace")
+  @@index([snapshotAt], name: "idx_brand_snapshot")
+  @@index([qualityScore], name: "idx_brand_quality")
+  @@index([workspaceId], name: "idx_brand_twins_workspace_fk")
+  @@map("brand_twins")
+}
+
+// Approval workflow cards
+model DecisionCard {
+  actionId       String    @id @map("action_id") @db.VarChar(255)
+  workspaceId    String    @map("workspace_id") @db.VarChar(255)
+  title          String    @db.VarChar(500)
+  oneLine        String    @map("one_line") @db.Text
+  readinessScore Decimal   @map("readiness_score") @db.Decimal(3, 2)
+  expiresAt      DateTime  @map("expires_at")
+  status         String    @default("pending") @db.VarChar(50)
+  approvedBy     String?   @map("approved_by") @db.VarChar(255)
+  approvedAt     DateTime? @map("approved_at")
+  cardData       Json      @map("card_data")
+  createdAt      DateTime  @default(now()) @map("created_at")
+
+  // Relations
+  workspace Workspace @relation(fields: [workspaceId], references: [workspaceId], onDelete: Cascade)
+
+  @@index([workspaceId], name: "idx_decision_workspace")
+  @@index([status], name: "idx_decision_status")
+  @@index([expiresAt], name: "idx_decision_expires")
+  @@index([readinessScore], name: "idx_decision_readiness")
+  @@index([workspaceId], name: "idx_decision_cards_workspace_fk")
+  @@map("decision_cards")
+}
+
+// Monte Carlo simulation results
+model SimulationResult {
+  simulationId      String   @id @map("simulation_id") @db.VarChar(255)
+  workspaceId       String   @map("workspace_id") @db.VarChar(255)
+  readinessScore    Decimal  @map("readiness_score") @db.Decimal(3, 2)
+  policyPassPct     Decimal  @map("policy_pass_pct") @db.Decimal(3, 2)
+  citationCoverage  Decimal  @map("citation_coverage") @db.Decimal(3, 2)
+  duplicationRisk   Decimal  @map("duplication_risk") @db.Decimal(3, 2)
+  costEstimateUsd   Decimal  @map("cost_estimate_usd") @db.Decimal(10, 2)
+  traces            Json?
+  simulationData    Json     @map("simulation_data")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  // Relations
+  workspace Workspace @relation(fields: [workspaceId], references: [workspaceId], onDelete: Cascade)
+
+  @@index([workspaceId], name: "idx_simulation_workspace")
+  @@index([readinessScore], name: "idx_simulation_score")
+  @@index([createdAt], name: "idx_simulation_created")
+  @@index([workspaceId], name: "idx_simulation_results_workspace_fk")
+  @@map("simulation_results")
+}
+
+// Content tracking and licensing
+model AssetFingerprint {
+  assetId     String   @id @map("asset_id") @db.VarChar(255)
+  workspaceId String   @map("workspace_id") @db.VarChar(255)
+  assetType   String   @map("asset_type") @db.VarChar(50)
+  fingerprint String   @db.VarChar(64)
+  license     String   @db.VarChar(50)
+  url         String?  @db.VarChar(1000)
+  metadata    Json?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  // Relations
+  workspace Workspace @relation(fields: [workspaceId], references: [workspaceId], onDelete: Cascade)
+
+  @@index([workspaceId], name: "idx_asset_workspace")
+  @@index([assetType], name: "idx_asset_type")
+  @@index([fingerprint], name: "idx_asset_fingerprint")
+  @@index([workspaceId], name: "idx_asset_fingerprints_workspace_fk")
+  @@map("asset_fingerprints")
+}

@@ -45,7 +45,7 @@ const limiter = rateLimit({
 app.use(limiter);
 
 // Validation middleware
-const handleValidationErrors = (req: express.Request, res: express.Response, next: express.NextFunction) => {
+const handleValidationErrors = (req: express.Request, res: express.Response, next: express.NextFunction): void | express.Response => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
     return res.status(400).json({
@@ -57,7 +57,7 @@ const handleValidationErrors = (req: express.Request, res: express.Response, nex
 };
 
 // Health check endpoint
-app.get('/health', (req, res) => {
+app.get('/health', (req: express.Request, res: express.Response) => {
   res.json({
     status: 'healthy',
     timestamp: new Date().toISOString(),
@@ -82,7 +82,7 @@ app.post('/api/models',
     body('status').isIn(['active', 'inactive', 'deprecated', 'canary', 'testing']).withMessage('Invalid status')
   ],
   handleValidationErrors,
-  async (req, res) => {
+  async (req: express.Request, res: express.Response) => {
     try {
       const model = await registry.registerModel(req.body);
       logger.info(`Model registered via API: ${model.name}`, { modelId: model.id });
@@ -100,7 +100,7 @@ app.post('/api/models',
 app.get('/api/models/:modelId',
   [param('modelId').notEmpty().withMessage('Model ID is required')],
   handleValidationErrors,
-  async (req, res) => {
+  async (req: express.Request, res: express.Response) => {
     try {
       const model = await registry.getModel(req.params.modelId);
       if (!model) {
@@ -124,7 +124,7 @@ app.get('/api/models',
     query('status').optional().isIn(['active', 'inactive', 'deprecated', 'canary', 'testing'])
   ],
   handleValidationErrors,
-  async (req, res) => {
+  async (req: express.Request, res: express.Response) => {
     try {
       const criteria = {
         provider: req.query.provider as string,
@@ -151,7 +151,7 @@ app.patch('/api/models/:modelId/status',
     body('status').isIn(['active', 'inactive', 'deprecated', 'canary', 'testing']).withMessage('Invalid status')
   ],
   handleValidationErrors,
-  async (req, res) => {
+  async (req: express.Request, res: express.Response) => {
     try {
       await registry.updateModelStatus(req.params.modelId, req.body.status);
       logger.info(`Model status updated: ${req.params.modelId} -> ${req.body.status}`);
@@ -172,7 +172,7 @@ app.patch('/api/models/:modelId/status',
 app.get('/api/models/:modelId/health',
   [param('modelId').notEmpty().withMessage('Model ID is required')],
   handleValidationErrors,
-  async (req, res) => {
+  async (req: express.Request, res: express.Response) => {
     try {
       const health = await registry.getModelHealth(req.params.modelId);
       if (!health) {
@@ -202,7 +202,7 @@ app.post('/api/route',
     body('metadata').isObject().withMessage('Metadata must be an object')
   ],
   handleValidationErrors,
-  async (req, res) => {
+  async (req: express.Request, res: express.Response) => {
     try {
       const request: ModelRequest = {
         ...req.body,
@@ -227,7 +227,7 @@ app.post('/api/route',
 /**
  * Get routing rules
  */
-app.get('/api/routing/rules', (req, res) => {
+app.get('/api/routing/rules', (req: express.Request, res: express.Response) => {
   try {
     const rules = router.getRoutingRules();
     res.json({ rules, count: rules.length });
@@ -249,7 +249,7 @@ app.post('/api/routing/rules',
     body('priority').isNumeric().withMessage('Priority must be a number')
   ],
   handleValidationErrors,
-  async (req, res) => {
+  async (req: express.Request, res: express.Response) => {
     try {
       const rule = await router.addRoutingRule(req.body);
       logger.info(`Routing rule added: ${rule.name}`, { ruleId: rule.id });
@@ -267,7 +267,7 @@ app.post('/api/routing/rules',
 app.patch('/api/routing/rules/:ruleId',
   [param('ruleId').notEmpty().withMessage('Rule ID is required')],
   handleValidationErrors,
-  async (req, res) => {
+  async (req: express.Request, res: express.Response) => {
     try {
       const rule = await router.updateRoutingRule(req.params.ruleId, req.body);
       logger.info(`Routing rule updated: ${req.params.ruleId}`);
@@ -296,7 +296,7 @@ app.post('/api/agents/:agentType/preferences',
     body('performanceRequirements').isObject().withMessage('Performance requirements must be an object')
   ],
   handleValidationErrors,
-  async (req, res) => {
+  async (req: express.Request, res: express.Response) => {
     try {
       await registry.setAgentPreferences(req.params.agentType, req.body);
       logger.info(`Agent preferences set: ${req.params.agentType}`);
@@ -317,7 +317,7 @@ app.post('/api/agents/:agentType/preferences',
 app.get('/api/agents/:agentType/preferences',
   [param('agentType').notEmpty().withMessage('Agent type is required')],
   handleValidationErrors,
-  async (req, res) => {
+  async (req: express.Request, res: express.Response) => {
     try {
       const preferences = await registry.getAgentPreferences(req.params.agentType);
       if (!preferences) {
@@ -345,7 +345,7 @@ app.post('/api/workspaces/:workspaceId/config',
     body('complianceRequirements').isArray().withMessage('Compliance requirements must be an array')
   ],
   handleValidationErrors,
-  async (req, res) => {
+  async (req: express.Request, res: express.Response) => {
     try {
       await registry.setWorkspaceConfig(req.params.workspaceId, req.body);
       logger.info(`Workspace config set: ${req.params.workspaceId}`);
@@ -366,7 +366,7 @@ app.post('/api/workspaces/:workspaceId/config',
 app.get('/api/metrics/requests',
   [query('limit').optional().isNumeric().withMessage('Limit must be a number')],
   handleValidationErrors,
-  (req, res) => {
+  (req: express.Request, res: express.Response) => {
     try {
       const limit = req.query.limit ? parseInt(req.query.limit as string) : 100;
       const metrics = router.getRequestMetrics(limit);
@@ -392,7 +392,7 @@ app.post('/api/models/:modelId/endpoints',
     body('healthCheckUrl').optional().isURL().withMessage('Health check URL must be valid')
   ],
   handleValidationErrors,
-  async (req, res) => {
+  async (req: express.Request, res: express.Response) => {
     try {
       const endpoint = await registry.registerEndpoint({
         modelId: req.params.modelId,
@@ -416,7 +416,7 @@ app.post('/api/models/:modelId/endpoints',
 app.get('/api/models/:modelId/endpoints',
   [param('modelId').notEmpty().withMessage('Model ID is required')],
   handleValidationErrors,
-  async (req, res) => {
+  async (req: express.Request, res: express.Response) => {
     try {
       const endpoints = await registry.getModelEndpoints(req.params.modelId);
       res.json({ endpoints, count: endpoints.length });
@@ -441,7 +441,7 @@ app.post('/api/models/:modelId/health',
     body('availability').optional().isNumeric().withMessage('Availability must be a number')
   ],
   handleValidationErrors,
-  async (req, res) => {
+  async (req: express.Request, res: express.Response) => {
     try {
       await registry.updateModelHealth(req.params.modelId, req.body);
       logger.info(`Health updated for model: ${req.params.modelId}`, { status: req.body.status });
@@ -464,7 +464,7 @@ app.post('/api/models/:modelId/health',
 app.get('/api/agents/:agentType/models',
   [param('agentType').notEmpty().withMessage('Agent type is required')],
   handleValidationErrors,
-  async (req, res) => {
+  async (req: express.Request, res: express.Response) => {
     try {
       const models = await registry.getActiveModelsForAgent(req.params.agentType);
       res.json({ models, count: models.length });
@@ -483,7 +483,7 @@ app.get('/api/agents/:agentType/models',
 app.delete('/api/routing/rules/:ruleId',
   [param('ruleId').notEmpty().withMessage('Rule ID is required')],
   handleValidationErrors,
-  async (req, res) => {
+  async (req: express.Request, res: express.Response) => {
     try {
       await router.deleteRoutingRule(req.params.ruleId);
       logger.info(`Routing rule deleted: ${req.params.ruleId}`);
@@ -508,7 +508,7 @@ app.post('/api/routing/test',
     body('prompt').notEmpty().withMessage('Prompt is required')
   ],
   handleValidationErrors,
-  async (req, res) => {
+  async (req: express.Request, res: express.Response) => {
     try {
       const testRequest: ModelRequest = {
         id: `test-${Date.now()}`,
@@ -544,7 +544,7 @@ app.get('/api/analytics/models',
     query('modelId').optional().withMessage('Model ID filter')
   ],
   handleValidationErrors,
-  async (req, res) => {
+  async (req: express.Request, res: express.Response) => {
     try {
       const timeRange = req.query.timeRange as string || '24h';
       const modelId = req.query.modelId as string;
@@ -566,7 +566,7 @@ app.get('/api/analytics/workspaces/:workspaceId',
     query('timeRange').optional().isIn(['1h', '24h', '7d', '30d']).withMessage('Invalid time range')
   ],
   handleValidationErrors,
-  async (req, res) => {
+  async (req: express.Request, res: express.Response) => {
     try {
       const timeRange = req.query.timeRange as string || '24h';
       const analytics = await router.getWorkspaceAnalytics(req.params.workspaceId, timeRange);
@@ -584,7 +584,7 @@ app.get('/api/analytics/workspaces/:workspaceId',
 /**
  * Get system health overview
  */
-app.get('/api/health/overview', async (req, res) => {
+app.get('/api/health/overview', async (req: express.Request, res: express.Response) => {
   try {
     const overview = await router.getSystemHealthOverview();
     res.json(overview);
@@ -608,7 +608,7 @@ app.post('/api/evaluation/datasets/:category',
     body('entries.*.expectedOutput').notEmpty().withMessage('Expected output is required')
   ],
   handleValidationErrors,
-  async (req, res) => {
+  async (req: express.Request, res: express.Response) => {
     try {
       await evaluationFramework.loadGoldenDataset(req.params.category, req.body.entries);
       logger.info(`Golden dataset loaded: ${req.params.category} (${req.body.entries.length} entries)`);
@@ -634,7 +634,7 @@ app.post('/api/evaluation/models/:modelId/evaluate',
     body('parallel').optional().isBoolean().withMessage('Parallel must be a boolean')
   ],
   handleValidationErrors,
-  async (req, res) => {
+  async (req: express.Request, res: express.Response) => {
     try {
       const evaluation = await evaluationFramework.evaluateModel(
         req.params.modelId,
@@ -675,7 +675,7 @@ app.post('/api/evaluation/ab-test',
     body('confidenceLevel').optional().isNumeric().withMessage('Confidence level must be a number')
   ],
   handleValidationErrors,
-  async (req, res) => {
+  async (req: express.Request, res: express.Response) => {
     try {
       const abTest = await evaluationFramework.runABTest(
         req.body.modelAId,
@@ -715,7 +715,7 @@ app.post('/api/evaluation/models/:modelId/drift',
     body('threshold').optional().isNumeric().withMessage('Threshold must be a number')
   ],
   handleValidationErrors,
-  async (req, res) => {
+  async (req: express.Request, res: express.Response) => {
     try {
       const driftResult = await evaluationFramework.detectDrift(
         req.params.modelId,
@@ -748,7 +748,7 @@ app.post('/api/evaluation/monitoring/start',
     body('intervalMinutes').optional().isNumeric().withMessage('Interval must be a number')
   ],
   handleValidationErrors,
-  async (req, res) => {
+  async (req: express.Request, res: express.Response) => {
     try {
       await evaluationFramework.startContinuousMonitoring(req.body.intervalMinutes);
       logger.info('Continuous monitoring started', { interval: req.body.intervalMinutes });
@@ -769,7 +769,7 @@ app.post('/api/evaluation/models/:modelId/benchmark',
     body('benchmarkSuite').optional().withMessage('Benchmark suite name')
   ],
   handleValidationErrors,
-  async (req, res) => {
+  async (req: express.Request, res: express.Response) => {
     try {
       const benchmark = await evaluationFramework.benchmarkModel(
         req.params.modelId,
@@ -800,7 +800,7 @@ app.get('/api/evaluation/models/:modelId/report',
     query('timeFrameHours').optional().isNumeric().withMessage('Time frame must be a number')
   ],
   handleValidationErrors,
-  async (req, res) => {
+  async (req: express.Request, res: express.Response) => {
     try {
       const timeFrameHours = req.query.timeFrameHours ? 
         parseInt(req.query.timeFrameHours as string) : 168;
@@ -838,7 +838,7 @@ app.post('/api/canary/deployments',
     body('successCriteria.maxErrorRate').isNumeric().withMessage('Max error rate must be a number')
   ],
   handleValidationErrors,
-  async (req, res) => {
+  async (req: express.Request, res: express.Response) => {
     try {
       const deployment = await canarySystem.createCanaryDeployment({
         ...req.body,
@@ -864,7 +864,7 @@ app.post('/api/canary/deployments',
 app.post('/api/canary/deployments/:deploymentId/start',
   [param('deploymentId').notEmpty().withMessage('Deployment ID is required')],
   handleValidationErrors,
-  async (req, res) => {
+  async (req: express.Request, res: express.Response) => {
     try {
       await canarySystem.startCanaryDeployment(req.params.deploymentId);
       logger.info(`Canary deployment started: ${req.params.deploymentId}`);
@@ -884,7 +884,7 @@ app.post('/api/canary/deployments/:deploymentId/start',
 app.get('/api/canary/deployments/:deploymentId',
   [param('deploymentId').notEmpty().withMessage('Deployment ID is required')],
   handleValidationErrors,
-  async (req, res) => {
+  async (req: express.Request, res: express.Response) => {
     try {
       const status = await canarySystem.getDeploymentStatus(req.params.deploymentId);
       res.json(status);
@@ -907,7 +907,7 @@ app.get('/api/canary/deployments',
     query('canaryModelId').optional()
   ],
   handleValidationErrors,
-  async (req, res) => {
+  async (req: express.Request, res: express.Response) => {
     try {
       const filter = {
         status: req.query.status as any,
@@ -930,7 +930,7 @@ app.get('/api/canary/deployments',
 app.post('/api/canary/deployments/:deploymentId/pause',
   [param('deploymentId').notEmpty().withMessage('Deployment ID is required')],
   handleValidationErrors,
-  async (req, res) => {
+  async (req: express.Request, res: express.Response) => {
     try {
       await canarySystem.pauseDeployment(req.params.deploymentId);
       logger.info(`Canary deployment paused: ${req.params.deploymentId}`);
@@ -950,7 +950,7 @@ app.post('/api/canary/deployments/:deploymentId/pause',
 app.post('/api/canary/deployments/:deploymentId/resume',
   [param('deploymentId').notEmpty().withMessage('Deployment ID is required')],
   handleValidationErrors,
-  async (req, res) => {
+  async (req: express.Request, res: express.Response) => {
     try {
       await canarySystem.resumeDeployment(req.params.deploymentId);
       logger.info(`Canary deployment resumed: ${req.params.deploymentId}`);
@@ -973,7 +973,7 @@ app.post('/api/canary/deployments/:deploymentId/rollback',
     body('reason').optional().withMessage('Rollback reason')
   ],
   handleValidationErrors,
-  async (req, res) => {
+  async (req: express.Request, res: express.Response) => {
     try {
       const reason = req.body.reason || 'Manual rollback requested';
       await canarySystem.rollbackDeployment(req.params.deploymentId, reason);
@@ -994,7 +994,7 @@ app.post('/api/canary/deployments/:deploymentId/rollback',
 app.post('/api/canary/deployments/:deploymentId/complete',
   [param('deploymentId').notEmpty().withMessage('Deployment ID is required')],
   handleValidationErrors,
-  async (req, res) => {
+  async (req: express.Request, res: express.Response) => {
     try {
       await canarySystem.completeDeployment(req.params.deploymentId);
       logger.info(`Canary deployment completed: ${req.params.deploymentId}`);
@@ -1017,7 +1017,7 @@ app.get('/api/canary/deployments/:deploymentId/metrics',
     query('timeRange').optional().isIn(['1h', '6h', '24h', '7d']).withMessage('Invalid time range')
   ],
   handleValidationErrors,
-  async (req, res) => {
+  async (req: express.Request, res: express.Response) => {
     try {
       const metrics = await canarySystem.evaluateCanaryPerformance(req.params.deploymentId);
       res.json(metrics);
@@ -1036,7 +1036,7 @@ app.get('/api/canary/deployments/:deploymentId/metrics',
 app.post('/api/canary/deployments/:deploymentId/decision',
   [param('deploymentId').notEmpty().withMessage('Deployment ID is required')],
   handleValidationErrors,
-  async (req, res) => {
+  async (req: express.Request, res: express.Response) => {
     try {
       const decision = await canarySystem.makeRolloutDecision(req.params.deploymentId);
       logger.info(`Rollout decision made: ${decision.action}`, {
@@ -1063,7 +1063,7 @@ app.post('/api/canary/deployments/:deploymentId/execute',
     body('decision.action').isIn(['continue', 'pause', 'rollback', 'complete']).withMessage('Invalid decision action')
   ],
   handleValidationErrors,
-  async (req, res) => {
+  async (req: express.Request, res: express.Response) => {
     try {
       await canarySystem.executeRolloutDecision(req.body.decision);
       logger.info(`Rollout decision executed: ${req.body.decision.action}`, {
@@ -1092,7 +1092,7 @@ app.patch('/api/models/batch/status',
     body('updates.*.status').isIn(['active', 'inactive', 'deprecated', 'canary', 'testing']).withMessage('Invalid status')
   ],
   handleValidationErrors,
-  async (req, res) => {
+  async (req: express.Request, res: express.Response) => {
     try {
       const results = [];
       for (const update of req.body.updates) {
@@ -1120,7 +1120,7 @@ app.patch('/api/models/batch/status',
 /**
  * Export configuration
  */
-app.get('/api/config/export', async (req, res) => {
+app.get('/api/config/export', async (req: express.Request, res: express.Response) => {
   try {
     const config = {
       models: await registry.getModelsByCriteria({}),
@@ -1145,7 +1145,7 @@ app.get('/api/config/export', async (req, res) => {
 app.post('/api/config/import',
   [body('config').isObject().withMessage('Configuration must be an object')],
   handleValidationErrors,
-  async (req, res) => {
+  async (req: express.Request, res: express.Response) => {
     try {
       const importResult = await router.importConfiguration(req.body.config);
       logger.info('Configuration imported successfully', { summary: importResult });
@@ -1172,7 +1172,7 @@ app.use((error: Error, req: express.Request, res: express.Response, next: expres
 });
 
 // 404 handler
-app.use((req, res) => {
+app.use((req: express.Request, res: express.Response) => {
   res.status(404).json({
     error: 'Not found',
     message: `Route ${req.method} ${req.path} not found`

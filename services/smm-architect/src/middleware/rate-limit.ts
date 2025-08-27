@@ -5,7 +5,13 @@
  * on authentication endpoints and other sensitive operations.
  */
 
-import log from "encore.dev/log";
+// Mock log implementation
+const log = {
+  info: (message: string, data?: any) => console.log('[INFO]', message, data),
+  error: (message: string, data?: any) => console.error('[ERROR]', message, data),
+  debug: (message: string, data?: any) => console.log('[DEBUG]', message, data),
+  warn: (message: string, data?: any) => console.warn('[WARN]', message, data)
+};
 
 // In-memory store for demo - in production use Redis
 interface RateLimitEntry {
@@ -170,7 +176,9 @@ export function getRateLimitStats(): {
   
   for (const [key, entry] of rateLimitStore.entries()) {
     const category = key.split(':')[0];
-    stats.categories[category] = (stats.categories[category] || 0) + 1;
+    if (category) {
+      stats.categories[category] = (stats.categories[category] || 0) + 1;
+    }
     
     if (entry.firstAttempt < oldestTime) {
       oldestTime = entry.firstAttempt;
@@ -191,10 +199,12 @@ function maskIdentifier(identifier: string): string {
   if (identifier.includes('@')) {
     // Email masking
     const [username, domain] = identifier.split('@');
-    const maskedUsername = username.length > 2 
-      ? username.substring(0, 2) + '*'.repeat(username.length - 2)
-      : username;
-    return `${maskedUsername}@${domain}`;
+    if (username && domain) {
+      const maskedUsername = username.length > 2 
+        ? username.substring(0, 2) + '*'.repeat(username.length - 2)
+        : username;
+      return `${maskedUsername}@${domain}`;
+    }
   }
   
   if (identifier.match(/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/)) {

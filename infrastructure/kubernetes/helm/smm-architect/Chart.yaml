@@ -1,0 +1,25 @@
+apiVersion: v2
+name: smm-architect
+description: A Helm chart for SMM Architect platform
+version: 1.0.0
+appVersion: "1.0.0"
+keywords:
+  - social-media
+  - marketing
+  - automation
+  - ai
+home: https://github.com/yourorg/smm-architect
+sources:
+  - https://github.com/yourorg/smm-architect
+maintainers:
+  - name: SMM Architect Team
+    email: team@smm-architect.com
+dependencies:
+  - name: postgresql
+    version: "12.1.5"
+    repository: "https://charts.bitnami.com/bitnami"
+    condition: postgresql.enabled
+  - name: redis
+    version: "17.4.3"
+    repository: "https://charts.bitnami.com/bitnami"
+    condition: redis.enabled

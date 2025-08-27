@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from '@jest/globals';
-import { TenantManager } from '../infrastructure/multi-tenant/tenant-manager';
-import { TenantProvisioner } from '../infrastructure/multi-tenant/tenant-provisioning';
-import { TenantConfig, TenantResources, TenantHealthCheck } from '../infrastructure/multi-tenant/types';
+import { TenantManager } from '../../infrastructure/base/tenant-manager';
+import { TenantProvisioner } from '../../infrastructure/base/tenant-provisioning';
+import { TenantConfig, TenantResources, TenantHealthCheck } from '../../infrastructure/base/types';
 import * as k8s from '@pulumi/kubernetes';
 import * as vault from '@pulumi/vault';
 import { randomUUID } from 'crypto';

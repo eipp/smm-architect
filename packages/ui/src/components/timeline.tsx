@@ -328,8 +328,7 @@ const Timeline = React.forwardRef<HTMLDivElement, TimelineProps>(
     }
   }
 )
-  }
-)
+
 Timeline.displayName = "Timeline"
 
 export { Timeline }

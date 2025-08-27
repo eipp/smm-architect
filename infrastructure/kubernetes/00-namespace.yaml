@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: smm-architect
+  labels:
+    name: smm-architect
+    app.kubernetes.io/name: smm-architect
+    app.kubernetes.io/version: "1.0.0"
+    app.kubernetes.io/component: platform
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: smm-architect-staging
+  labels:
+    name: smm-architect-staging
+    app.kubernetes.io/name: smm-architect
+    app.kubernetes.io/version: "1.0.0"
+    app.kubernetes.io/component: platform
+    environment: staging

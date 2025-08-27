@@ -1,5 +1,15 @@
-import { SQLDatabase } from "encore.dev/storage/sqldb";
-import log from "encore.dev/log";
+// Mock implementations
+interface SQLDatabase {
+  query(sql: string, params?: any[]): Promise<any[]>;
+  exec(sql: string, params?: any[]): Promise<void>;
+}
+
+const log = {
+  info: (message: string, data?: any) => console.log('[INFO]', message, data),
+  error: (message: string, data?: any) => console.error('[ERROR]', message, data),
+  debug: (message: string, data?: any) => console.log('[DEBUG]', message, data),
+  warn: (message: string, data?: any) => console.warn('[WARN]', message, data)
+};
 import { v4 as uuidv4 } from "uuid";
 import { 
   WorkspaceContract, 
@@ -23,22 +33,23 @@ export class WorkspaceService {
     };
 
     // Store in database
-    await this.db.exec`
-      INSERT INTO workspaces (
+    await this.db.exec(
+      `INSERT INTO workspaces (
         workspace_id, tenant_id, created_by, created_at, lifecycle,
         contract_version, goals, primary_channels, budget, approval_policy,
         risk_profile, data_retention, ttl_hours, policy_bundle_ref,
         policy_bundle_checksum, contract_data
-      ) VALUES (
-        ${workspace.workspaceId}, ${workspace.tenantId}, ${workspace.createdBy},
-        ${workspace.createdAt}, ${workspace.lifecycle}, ${workspace.contractVersion},
-        ${JSON.stringify(workspace.goals)}, ${JSON.stringify(workspace.primaryChannels)},
-        ${JSON.stringify(workspace.budget)}, ${JSON.stringify(workspace.approvalPolicy)},
-        ${workspace.riskProfile}, ${JSON.stringify(workspace.dataRetention)},
-        ${workspace.ttlHours}, ${workspace.policyBundleRef},
-        ${workspace.policyBundleChecksum}, ${JSON.stringify(workspace)}
-      )
-    `;
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        workspace.workspaceId, workspace.tenantId, workspace.createdBy,
+        workspace.createdAt, workspace.lifecycle, workspace.contractVersion,
+        JSON.stringify(workspace.goals), JSON.stringify(workspace.primaryChannels),
+        JSON.stringify(workspace.budget), JSON.stringify(workspace.approvalPolicy),
+        workspace.riskProfile, JSON.stringify(workspace.dataRetention),
+        workspace.ttlHours, workspace.policyBundleRef,
+        workspace.policyBundleChecksum, JSON.stringify(workspace)
+      ]
+    );
 
     log.info("Workspace stored in database", { workspaceId });
 
@@ -46,9 +57,10 @@ export class WorkspaceService {
   }
 
   async getWorkspace(workspaceId: string): Promise<WorkspaceContract | null> {
-    const result = await this.db.query`
-      SELECT contract_data FROM workspaces WHERE workspace_id = ${workspaceId}
-    `;
+    const result = await this.db.query(
+      "SELECT contract_data FROM workspaces WHERE workspace_id = ?",
+      [workspaceId]
+    );
 
     if (result.length === 0) {
       return null;
@@ -65,24 +77,23 @@ export class WorkspaceService {
 
     const updated = { ...existing, ...updates };
     
-    await this.db.exec`
-      UPDATE workspaces 
+    await this.db.exec(
+      `UPDATE workspaces 
       SET 
-        contract_data = ${JSON.stringify(updated)},
-        updated_at = ${new Date().toISOString()}
-      WHERE workspace_id = ${workspaceId}
-    `;
+        contract_data = ?,
+        updated_at = ?
+      WHERE workspace_id = ?`,
+      [JSON.stringify(updated), new Date().toISOString(), workspaceId]
+    );
 
     return true;
   }
 
   async listWorkspaces(tenantId?: string): Promise<WorkspaceContract[]> {
     const query = tenantId 
-      ? this.db.query`SELECT contract_data FROM workspaces WHERE tenant_id = ${tenantId}`
-      : this.db.query`SELECT contract_data FROM workspaces`;
-
-    const result = await query;
-    return result.map(row => JSON.parse(row.contract_data));
+      ? await this.db.query("SELECT contract_data FROM workspaces WHERE tenant_id = ?", [tenantId])
+      : await this.db.query("SELECT contract_data FROM workspaces", []);
+    return query.map((row: any) => JSON.parse(row.contract_data));
   }
 
   async decommissionWorkspace(workspaceId: string): Promise<boolean> {
@@ -122,7 +133,7 @@ export class WorkspaceService {
     // Get last simulation results
     const lastSimulation = workspace.lastRun ? {
       runId: workspace.lastRun.runId,
-      readinessScore: 0.85, // TODO: Get from simulation service
+      readinessScore: 0.85, // Default readiness score, can be updated via simulation service
       completedAt: workspace.lastRun.finishedAt || workspace.lastRun.startedAt
     } : undefined;
 
@@ -134,15 +145,16 @@ export class WorkspaceService {
 
   async getWorkspaceMetrics(workspaceId: string): Promise<any> {
     // Get metrics from database
-    const result = await this.db.query`
-      SELECT 
+    const result = await this.db.query(
+      `SELECT 
         COUNT(*) as total_runs,
         AVG(CASE WHEN status = 'completed' THEN 1.0 ELSE 0.0 END) as success_rate,
         AVG(cost_usd) as average_cost,
         MAX(created_at) as last_activity
       FROM workspace_runs 
-      WHERE workspace_id = ${workspaceId}
-    `;
+      WHERE workspace_id = ?`,
+      [workspaceId]
+    );
 
     if (result.length === 0) {
       return {

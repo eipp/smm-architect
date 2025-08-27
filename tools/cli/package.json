@@ -1,0 +1,28 @@
+{
+  "name": "@smm-architect/cli",
+  "version": "1.0.0",
+  "description": "Unified CLI tool for SMM Architect development and operations",
+  "main": "smm-cli.js",
+  "bin": {
+    "smm-cli": "./smm-cli.js",
+    "smm": "./smm-cli.js"
+  },
+  "scripts": {
+    "test": "echo \"No tests for CLI tool\"",
+    "lint": "eslint smm-cli.js"
+  },
+  "dependencies": {
+    "commander": "^11.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "eslint": "^8.57.0"
+  },
+  "keywords": [
+    "smm-architect",
+    "cli",
+    "automation",
+    "development"
+  ],
+  "license": "MIT"
+}

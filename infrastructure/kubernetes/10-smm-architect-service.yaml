@@ -1,0 +1,105 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: smm-architect-service
+  namespace: smm-architect
+  labels:
+    app.kubernetes.io/name: smm-architect
+    app.kubernetes.io/component: core-service
+    app.kubernetes.io/version: "1.0.0"
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: smm-architect-service
+  template:
+    metadata:
+      labels:
+        app: smm-architect-service
+        app.kubernetes.io/name: smm-architect
+        app.kubernetes.io/component: core-service
+    spec:
+      serviceAccountName: smm-architect-sa
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        runAsGroup: 1001
+        fsGroup: 1001
+      containers:
+      - name: smm-architect
+        image: smm-architect/core:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 4000
+          name: http
+          protocol: TCP
+        env:
+        - name: PORT
+          value: "4000"
+        envFrom:
+        - configMapRef:
+            name: smm-architect-config
+        - secretRef:
+            name: smm-architect-secrets
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          successThreshold: 1
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: http
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          successThreshold: 1
+          failureThreshold: 3
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+        - name: logs
+          mountPath: /app/logs
+      volumes:
+      - name: tmp
+        emptyDir: {}
+      - name: logs
+        emptyDir: {}
+      restartPolicy: Always
+      terminationGracePeriodSeconds: 30
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: smm-architect-service
+  namespace: smm-architect
+  labels:
+    app.kubernetes.io/name: smm-architect
+    app.kubernetes.io/component: core-service
+spec:
+  type: ClusterIP
+  ports:
+  - port: 4000
+    targetPort: http
+    protocol: TCP
+    name: http
+  selector:
+    app: smm-architect-service

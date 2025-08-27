@@ -427,8 +427,7 @@ export class ModelRegistry extends EventEmitter {
 
     for (const model of defaultModels) {
       const existingModels = await this.getModelsByCriteria({ 
-        provider: model.provider, 
-        name: model.name 
+        provider: model.provider
       });
       
       if (existingModels.length === 0) {

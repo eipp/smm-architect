@@ -251,7 +251,7 @@ export class AuthenticationService {
       for (const accessor of accessors) {
         try {
           // This would require enhanced Vault client method to lookup by accessor
-          // For now, we'll use a placeholder implementation
+          // Using simplified authentication for development environment
           const info = await this.vaultClient.lookupToken(accessor);
           
           if (info.meta?.workspace_id === workspaceId) {

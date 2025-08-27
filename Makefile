@@ -55,7 +55,7 @@ clean: ## Clean build artifacts and temporary files
 # SBOM and Supply Chain Security Targets
 sbom: ## Generate Software Bill of Materials (SBOM)
 	@echo "$(YELLOW)Generating SBOM for all components...$(NC)"
-	./scripts/generate-sbom.sh
+	./tools/scripts/generate-sbom.sh
 	@echo "$(GREEN)SBOM generation completed. Check ./sbom/ directory$(NC)"
 
 sbom-quick: ## Generate SBOM for backend services only (faster)
@@ -67,7 +67,7 @@ sbom-quick: ## Generate SBOM for backend services only (faster)
 
 security-scan: sbom ## Run comprehensive security scan with vulnerability analysis
 	@echo "$(YELLOW)Running security scan with vulnerability analysis...$(NC)"
-	./scripts/generate-sbom.sh
+	./tools/scripts/generate-sbom.sh
 	@if [ -d "$(SBOM_OUTPUT)/vulnerabilities" ]; then \
 		echo "$(YELLOW)Vulnerability Summary:$(NC)"; \
 		find $(SBOM_OUTPUT)/vulnerabilities -name "*.json" -exec sh -c 'echo "File: $$1"; jq -r ".matches | length" "$$1" 2>/dev/null || echo "0"' _ {} \; | \
@@ -78,7 +78,7 @@ security-scan: sbom ## Run comprehensive security scan with vulnerability analys
 supply-chain: ## Complete supply chain security validation
 	@echo "$(YELLOW)Running complete supply chain security validation...$(NC)"
 	@echo "1. Generating SBOMs..."
-	./scripts/generate-sbom.sh
+	./tools/scripts/generate-sbom.sh
 	@echo "2. Running container image signing validation..."
 	@if [ -f ".github/workflows/supply-chain-security.yml" ]; then \
 		echo "Supply chain security workflow is configured"; \
@@ -119,7 +119,7 @@ docker-sbom: ## Generate SBOM for Docker images
 dev-setup: install ## Complete development environment setup
 	@echo "$(YELLOW)Setting up development environment...$(NC)"
 	npm install
-	chmod +x scripts/*.sh
+	chmod +x tools/scripts/*.sh
 	@echo "$(GREEN)Development environment setup completed$(NC)"
 
 dev-check: test test-security sbom ## Run all development checks (tests, security, SBOM)

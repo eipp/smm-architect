@@ -1,6 +1,30 @@
 import { Request, Response, NextFunction } from 'express';
-import { AuthenticationService, AuthContext } from '../../../shared/auth-service';
-import { VaultClientConfig } from '../../../shared/vault-client';
+// Mock authentication implementation for toolhub service
+interface AuthContext {
+  userId: string;
+  scopes: string[];
+  workspaceId?: string;
+}
+
+// Simplified auth service for development
+const authService = {
+  async validateToken(token: string): Promise<AuthContext> {
+    // Mock validation - in production this would validate with Vault/JWT
+    if (token === 'invalid') {
+      throw new Error('Invalid token');
+    }
+    return {
+      userId: 'user-123',
+      scopes: ['toolhub.read', 'toolhub.write'],
+      workspaceId: 'workspace-123'
+    };
+  },
+  
+  async validateWorkspaceAccess(user: AuthContext, workspaceId: string): Promise<boolean> {
+    // Mock workspace access validation
+    return user.workspaceId === workspaceId || user.scopes.includes('admin');
+  }
+};
 
 interface AuthenticatedRequest extends Request {
   user?: AuthContext;

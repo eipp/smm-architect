@@ -619,7 +619,7 @@ export class ModelEvaluationFramework extends EventEmitter {
     const timeGroups = this.groupByTimeWindow(results, 24); // 24 hour windows
     const trendData = timeGroups.map(group => ({
       timestamp: group.timestamp,
-      averageScore: group.results.reduce((sum, r) => sum + r.score, 0) / group.results.length,
+      averageScore: group.results.reduce((sum: number, r: any) => sum + r.score, 0) / group.results.length,
       count: group.results.length
     }));
 

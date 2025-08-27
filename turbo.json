@@ -1,0 +1,111 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "ui": "tui",
+  "tasks": {
+    "build": {
+      "dependsOn": ["^build"],
+      "inputs": [
+        "src/**/*.{ts,tsx,js,jsx}",
+        "package.json",
+        "tsconfig.json",
+        "!src/**/*.test.{ts,tsx}",
+        "!src/**/*.spec.{ts,tsx}"
+      ],
+      "outputs": [
+        "dist/**",
+        ".next/**",
+        "!.next/cache/**"
+      ],
+      "env": ["NODE_ENV"]
+    },
+    "dev": {
+      "cache": false,
+      "persistent": true,
+      "env": ["NODE_ENV"]
+    },
+    "test": {
+      "dependsOn": ["build"],
+      "inputs": [
+        "src/**/*.{ts,tsx,js,jsx}",
+        "tests/**/*.{ts,tsx,js,jsx}",
+        "package.json",
+        "tsconfig.json",
+        "jest.config.{js,ts}",
+        "jest.setup.{js,ts}"
+      ],
+      "outputs": [
+        "coverage/**"
+      ],
+      "env": ["NODE_ENV"]
+    },
+    "test:watch": {
+      "cache": false,
+      "persistent": true
+    },
+    "test:coverage": {
+      "dependsOn": ["build"],
+      "inputs": [
+        "src/**/*.{ts,tsx,js,jsx}",
+        "tests/**/*.{ts,tsx,js,jsx}",
+        "package.json",
+        "tsconfig.json",
+        "jest.config.{js,ts}"
+      ],
+      "outputs": [
+        "coverage/**"
+      ]
+    },
+    "lint": {
+      "inputs": [
+        "src/**/*.{ts,tsx,js,jsx}",
+        "tests/**/*.{ts,tsx,js,jsx}",
+        "package.json",
+        "tsconfig.json",
+        ".eslintrc.{js,json}",
+        "eslint.config.{js,mjs}"
+      ],
+      "outputs": []
+    },
+    "lint:fix": {
+      "inputs": [
+        "src/**/*.{ts,tsx,js,jsx}",
+        "tests/**/*.{ts,tsx,js,jsx}",
+        "package.json",
+        "tsconfig.json",
+        ".eslintrc.{js,json}",
+        "eslint.config.{js,mjs}"
+      ],
+      "outputs": [],
+      "cache": false
+    },
+    "type-check": {
+      "dependsOn": ["^build"],
+      "inputs": [
+        "src/**/*.{ts,tsx}",
+        "tests/**/*.{ts,tsx}",
+        "package.json",
+        "tsconfig.json"
+      ],
+      "outputs": []
+    },
+    "clean": {
+      "cache": false,
+      "outputs": []
+    }
+  },
+  "globalDependencies": [
+    "package.json",
+    "pnpm-lock.yaml",
+    "pnpm-workspace.yaml",
+    ".env",
+    ".env.local",
+    ".env.*.local"
+  ],
+  "globalEnv": [
+    "NODE_ENV",
+    "CI",
+    "VERCEL",
+    "SENTRY_DSN",
+    "DATABASE_URL"
+  ]
+}
