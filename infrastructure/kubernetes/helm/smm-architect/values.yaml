@@ -15,6 +15,9 @@ replicaCount:
   coreService: 3
   toolhub: 2
   frontend: 2
+  modelRouter: 3
+  publisher: 2
+  agents: 2
 
 nameOverride: ""
 fullnameOverride: ""
@@ -45,6 +48,9 @@ service:
     coreService: 4000
     toolhub: 3001
     frontend: 3000
+    modelRouter: 3002
+    publisher: 3003
+    agents: 3004
 
 ingress:
   enabled: true
@@ -97,6 +103,27 @@ resources:
     requests:
       cpu: 250m
       memory: 256Mi
+  modelRouter:
+    limits:
+      cpu: 1000m
+      memory: 2Gi
+    requests:
+      cpu: 500m
+      memory: 1Gi
+  publisher:
+    limits:
+      cpu: 1500m
+      memory: 3Gi
+    requests:
+      cpu: 500m
+      memory: 1Gi
+  agents:
+    limits:
+      cpu: 2000m
+      memory: 4Gi
+    requests:
+      cpu: 1000m
+      memory: 2Gi
 
 autoscaling:
   enabled: true
@@ -153,9 +180,24 @@ secrets:
   redisUrl: "redis://smm-architect-redis-master:6379"
   sentryDsn: ""
   openaiApiKey: ""
+  anthropicApiKey: ""
   jwtSecret: ""
   encryptionKey: ""
   vaultToken: ""
+  linkedinClientId: ""
+  linkedinClientSecret: ""
+  twitterApiKey: ""
+  twitterApiSecret: ""
+  twitterBearerToken: ""
+  facebookAppId: ""
+  facebookAppSecret: ""
+  instagramAppId: ""
+  instagramAppSecret: ""
+  tiktokClientKey: ""
+  tiktokClientSecret: ""
+  awsAccessKeyId: ""
+  awsSecretAccessKey: ""
+  awsS3Bucket: ""
 
 # Environment configuration
 environment:

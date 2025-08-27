@@ -1,0 +1,103 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: smm-architect-metrics
+  namespace: smm-architect
+  labels:
+    app.kubernetes.io/name: smm-architect
+    app.kubernetes.io/component: monitoring
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: smm-architect
+  endpoints:
+  - port: http
+    path: /metrics
+    interval: 30s
+    scrapeTimeout: 10s
+  - port: http
+    path: /health
+    interval: 10s
+    scrapeTimeout: 5s
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: smm-architect-metrics
+  namespace: smm-architect
+  labels:
+    app.kubernetes.io/name: smm-architect
+    app.kubernetes.io/component: monitoring
+spec:
+  type: ClusterIP
+  ports:
+  - port: 9090
+    targetPort: 9090
+    protocol: TCP
+    name: metrics
+  selector:
+    app.kubernetes.io/name: smm-architect
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: smm-architect-jaeger
+  namespace: smm-architect
+  labels:
+    app.kubernetes.io/name: smm-architect
+    app.kubernetes.io/component: tracing
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: jaeger
+  template:
+    metadata:
+      labels:
+        app: jaeger
+        app.kubernetes.io/name: smm-architect
+        app.kubernetes.io/component: tracing
+    spec:
+      containers:
+      - name: jaeger
+        image: jaegertracing/all-in-one:1.50
+        ports:
+        - containerPort: 16686
+          name: ui
+        - containerPort: 14268
+          name: collector
+        env:
+        - name: COLLECTOR_OTLP_ENABLED
+          value: "true"
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: smm-architect-jaeger
+  namespace: smm-architect
+  labels:
+    app.kubernetes.io/name: smm-architect
+    app.kubernetes.io/component: tracing
+spec:
+  type: ClusterIP
+  ports:
+  - port: 16686
+    targetPort: ui
+    protocol: TCP
+    name: ui
+  - port: 14268
+    targetPort: collector
+    protocol: TCP
+    name: collector
+  selector:
+    app: jaeger

@@ -11,6 +11,7 @@ import { vectorRoutes } from './routes/vector';
 import { simulateRoutes } from './routes/simulate';
 import { renderRoutes } from './routes/render';
 import { oauthRoutes } from './routes/oauth';
+import { socialPostingRoutes } from './routes/social-posting';
 // Mock implementations for development
 class VaultClient {
   constructor(config: any) {}
@@ -133,6 +134,7 @@ app.use('/api/vector', vectorRoutes);
 app.use('/api/simulate', simulateRoutes);
 app.use('/api/render', renderRoutes);
 app.use('/api/oauth', oauthRoutes);
+app.use('/api/social', socialPostingRoutes);
 
 // 404 handler
 app.use('*', (req, res) => {

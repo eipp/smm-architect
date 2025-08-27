@@ -79,7 +79,7 @@ check_prerequisites() {
     run_check "npm availability" "command -v npm >/dev/null 2>&1"
     
     # Check Node.js version
-    run_check "Node.js version >= 18" "node -v | grep -E 'v(18|19|20|21)' >/dev/null"
+    run_check "Node.js version >= 18" "node -v | grep -E 'v(1[8-9]|[2-9][0-9])' >/dev/null"
     
     # Check if kubectl can connect to cluster
     run_check "Kubernetes cluster connectivity" "kubectl cluster-info >/dev/null 2>&1"

@@ -478,4 +478,3 @@ describe('DSR Cascade Deletion Integration Tests', () => {
     mockPineconeClient.initialize.mockResolvedValue(undefined);
   }
 });
-"

@@ -12,6 +12,9 @@ import { ModelEvaluationFramework } from './services/ModelEvaluationFramework';
 import { CanaryDeploymentSystem } from './services/CanaryDeploymentSystem';
 import { Logger } from './utils/logger';
 import { ModelRequest, ModelMetadata, RoutingRule } from './types';
+import { authMiddleware } from './middleware/auth';
+import { errorHandler } from './middleware/error-handler';
+import { contentRoutes } from './routes/content';
 
 // Load environment variables
 dotenv.config();
@@ -1157,7 +1160,14 @@ app.post('/api/config/import',
   }
 );
 
+// Authentication middleware for protected routes
+app.use('/api/content', authMiddleware);
+
+// Content generation routes
+app.use('/api/content', contentRoutes);
+
 // Error handling middleware
+app.use(errorHandler);
 app.use((error: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
   logger.error('Unhandled error', error, { 
     method: req.method,

@@ -78,6 +78,9 @@ router.get('/:platform/authorize',
       // Store state and nonce temporarily (in production, use Redis or database)
       // For now, we'll include them in the authorization URL
 
+      if (!platform) {
+        throw new ApiError(400, 'PLATFORM_REQUIRED', 'Platform parameter is required');
+      }
       const clientId = process.env[`${platform.toUpperCase()}_CLIENT_ID`];
       if (!clientId) {
         throw new ApiError(500, 'OAUTH_CONFIG_ERROR', `OAuth not configured for ${platform}`);
@@ -135,6 +138,10 @@ router.post('/:platform/callback',
       const { platform } = req.params;
       const { code, state, redirectUri } = req.body;
 
+      if (!platform) {
+        throw new ApiError(400, 'PLATFORM_REQUIRED', 'Platform parameter is required');
+      }
+
       const config = OAUTH_CONFIGS[platform as keyof typeof OAUTH_CONFIGS];
       if (!config) {
         throw new ApiError(400, 'UNSUPPORTED_PLATFORM', `Platform ${platform} is not supported`);
@@ -178,7 +185,7 @@ router.post('/:platform/callback',
       const tokens = tokenResponse.data;
 
       // Get user profile information
-      const profile = await getUserProfile(platform, tokens.access_token);
+      const profile = await getUserProfile(platform as string, tokens.access_token);
 
       // Store tokens securely (in production, encrypt and store in database)
       const connectionData = {

@@ -68,7 +68,8 @@ export async function authMiddleware(
       return;
     } catch (error) {
       // Check if this is a temporary error (e.g., Vault connectivity)
-      if (error.message.includes('ECONNREFUSED') || error.message.includes('timeout')) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      if (errorMessage.includes('ECONNREFUSED') || errorMessage.includes('timeout')) {
         res.status(503).json({
           code: 'AUTH_SERVICE_UNAVAILABLE',
           message: 'Authentication service temporarily unavailable'

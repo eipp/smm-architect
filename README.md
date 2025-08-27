@@ -30,6 +30,44 @@ SMM Architect is an **enterprise-ready platform** that enables organizations to 
 
 ## 🏢 Architecture
 
+### Monorepo Structure
+
+```
+smm-architect/
+├── apps/                          # Frontend applications
+│   └── frontend/                   # Next.js main application
+├── packages/                       # Shared packages
+│   ├── shared/                     # Common utilities and types
+│   ├── ui/                         # Shared UI components
+│   ├── build-config/               # Build configurations
+│   │   ├── typescript/             # Base TypeScript configs
+│   │   ├── jest/                   # Jest configurations
+│   │   └── eslint/                 # ESLint configurations
+│   └── workflows/                  # n8n and agent workflows
+├── services/                       # Backend microservices
+│   ├── smm-architect/              # Core Encore.ts service
+│   ├── toolhub/                    # MCP server and tools
+│   ├── agents/                     # Agent orchestration
+│   ├── model-router/               # AI model routing
+│   ├── simulator/                  # Monte Carlo simulation
+│   ├── audit/                      # Audit and compliance
+│   ├── monitoring/                 # Observability stack
+│   ├── workspace-provisioning/     # Infrastructure automation
+│   └── policy/                     # OPA policy engine
+├── infrastructure/                 # Infrastructure as Code
+│   ├── pulumi/                     # Pulumi templates
+│   ├── kubernetes/                 # K8s manifests
+│   └── vault/                      # Vault configurations
+├── tools/                          # Development tools
+│   ├── cli/                        # Unified CLI tool
+│   └── scripts/                    # Build and deployment scripts
+├── turbo.json                      # Turborepo configuration
+├── pnpm-workspace.yaml            # pnpm workspace configuration
+└── package.json                    # Root package configuration
+```
+
+### System Architecture
+
 ```mermaid
 graph TB
     subgraph "Client Layer"
@@ -114,25 +152,37 @@ graph TB
 
 ### Prerequisites
 
-- Node.js 18+ and npm/yarn
+- Node.js 18+ and pnpm
 - Docker and Docker Compose
 - Encore CLI (`npm install -g @encore/cli`)
 - OPA CLI (for policy testing)
 - PostgreSQL 14+
 
-### Local Development Setup
+### Monorepo Development Setup
 
 1. **Clone and Install Dependencies**
    ```bash
    git clone https://github.com/yourorg/smm-architect.git
    cd smm-architect
    
-   # Install service dependencies
-   cd services/smm-architect && npm install
-   cd ../toolhub && npm install
+   # Install pnpm globally
+   npm install -g pnpm@8.15.0
+   
+   # Install all workspace dependencies
+   pnpm install
    ```
 
-2. **Start Core Services**
+2. **Build All Services**
+   ```bash
+   # Build entire monorepo using Turborepo
+   pnpm build
+   
+   # Build specific service
+   pnpm build --filter=smm-architect-service
+   pnpm build --filter=toolhub-service
+   ```
+
+3. **Start Core Services**
    ```bash
    # Start SMM Architect service (Encore.ts)
    cd services/smm-architect
@@ -140,25 +190,44 @@ graph TB
    
    # Start ToolHub service (separate terminal)
    cd services/toolhub
-   npm run dev
+   pnpm dev
+   
+   # Start frontend (separate terminal)
+   cd apps/frontend
+   pnpm dev
    ```
 
-3. **Test Policy Engine**
+4. **Run Tests**
+   ```bash
+   # Run all tests with Jest
+   pnpm test
+   
+   # Run tests for specific service
+   pnpm test --filter=toolhub-service
+   
+   # Run integration tests
+   pnpm test:integration
+   ```
+
+5. **Test Policy Engine**
    ```bash
    cd services/policy
    opa test rules.rego rules_test.rego
    ```
 
-4. **Validate Schemas**
+6. **Development Tools**
    ```bash
-   # Test workspace contract validation
-   node -e "
-   const Ajv = require('ajv');
-   const ajv = new Ajv();
-   const schema = require('./schemas/workspace-contract.json');
-   const example = require('./examples/workspace-contract.icblabs.json');
-   console.log('Valid:', ajv.validate(schema, example));
-   "
+   # Lint all packages
+   pnpm lint
+   
+   # Format all code
+   pnpm format
+   
+   # Type check all TypeScript
+   pnpm type-check
+   
+   # Clean all build outputs
+   pnpm clean
    ```
 
 ### API Examples
@@ -236,14 +305,33 @@ curl -X POST http://localhost:4000/workspaces/ws-example-001/simulate \
 
 ## 🧪 Testing
 
-### Unit Tests
+### Unified Testing with Turborepo
+
 ```bash
-# Test all services
-npm run test:all
+# Test all packages in dependency order
+pnpm test
 
 # Test specific service
-cd services/smm-architect && npm test
-cd services/toolhub && npm test
+pnpm test --filter=toolhub-service
+pnpm test --filter=smm-architect-service
+
+# Run tests in watch mode
+pnpm test:watch --filter=shared
+
+# Generate coverage reports
+pnpm test:coverage
+```
+
+### Service-Specific Tests
+
+```bash
+# Unit tests for specific services
+cd services/smm-architect && pnpm test
+cd services/toolhub && pnpm test
+cd packages/shared && pnpm test
+
+# Frontend tests
+cd apps/frontend && pnpm test
 ```
 
 ### Policy Tests
@@ -258,14 +346,39 @@ opa test rules.rego rules_test.rego --verbose
 docker-compose -f docker-compose.test.yml up -d
 
 # Run integration tests
-npm run test:integration
+pnpm test:integration
+
+# Test specific integration scenarios
+pnpm test --filter=integration-tests
+```
+
+### End-to-End Tests
+```bash
+# Run E2E tests with Playwright
+cd apps/frontend
+pnpm test:e2e
+
+# Run E2E tests in headless mode
+pnpm test:e2e:ci
 ```
 
 ### Simulation Tests
 ```bash
 # Test deterministic simulation
 cd services/simulator
-npm test -- --testNamePattern="deterministic"
+pnpm test -- --testNamePattern="deterministic"
+
+# Monte Carlo validation tests
+pnpm test -- --testNamePattern="monte-carlo"
+```
+
+### Performance Tests
+```bash
+# Load testing with Artillery
+pnpm test:performance
+
+# Benchmark specific services
+cd services/toolhub && pnpm test:benchmark
 ```
 
 ## 🛡️ Security & Compliance

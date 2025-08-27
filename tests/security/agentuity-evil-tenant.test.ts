@@ -131,7 +131,7 @@ describe('🔴 CRITICAL: Agentuity Agent Evil Tenant Security Tests', () => {
         {
           tenantId: EVIL_TENANT,
           workspaceId: WORKSPACE_A,
-          content: 'SELECT * FROM workspaces WHERE tenant_id != \\'evil-tenant\\'; --',
+          content: 'SELECT * FROM workspaces WHERE tenant_id != "evil-tenant"; --',
           action: 'sql_injection_attempt'
         }
       ];
@@ -371,4 +371,3 @@ describe('🔴 CRITICAL: Agentuity Agent Evil Tenant Security Tests', () => {
     }
   }
 });
-"

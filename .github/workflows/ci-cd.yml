@@ -1,335 +1,224 @@
-name: CI/CD Pipeline
+name: SMM Architect CI/CD
 
 on:
   push:
     branches: [ main, develop ]
   pull_request:
-    branches: [ main, develop ]
-  release:
-    types: [ published ]
+    branches: [ main ]
 
 env:
-  NODE_VERSION: '18.x'
-  PNPM_VERSION: '8.15.0'
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
-  # Build and Test
-  build-and-test:
+  # Pipeline stages: build test deploy
+  # BUILD STAGE: Test and Build
+  test:
     runs-on: ubuntu-latest
     strategy:
       matrix:
         node-version: [18.x, 20.x]
     
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      
-    - name: Setup Node.js ${{ matrix.node-version }}
+    - uses: actions/checkout@v4
+    
+    - name: Use Node.js ${{ matrix.node-version }}
       uses: actions/setup-node@v4
       with:
         node-version: ${{ matrix.node-version }}
-        
-    - name: Setup pnpm
-      uses: pnpm/action-setup@v2
-      with:
-        version: ${{ env.PNPM_VERSION }}
-        run_install: false
-        
-    - name: Get pnpm store directory
-      shell: bash
-      run: |
-        echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
-        
-    - name: Setup pnpm cache
-      uses: actions/cache@v3
-      with:
-        path: ${{ env.STORE_PATH }}
-        key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
-        restore-keys: |
-          ${{ runner.os }}-pnpm-store-
-          
+        cache: 'npm'
+    
     - name: Install dependencies
-      run: pnpm install --frozen-lockfile
-      
-    - name: Lint code
-      run: pnpm run lint
-      
-    - name: Type check
-      run: pnpm run type-check
-      
-    - name: Build packages
-      run: pnpm run build
-      
+      run: npm ci
+    
+    - name: Run linting
+      run: npm run lint
+    
     - name: Run tests
-      run: pnpm run test:coverage
-      
-    - name: Upload coverage reports
-      uses: codecov/codecov-action@v3
-      if: matrix.node-version == '18.x'
-      with:
-        files: ./coverage/lcov.info
-        fail_ci_if_error: true
-
-  # Security Scanning
-  security-scan:
-    runs-on: ubuntu-latest
-    needs: build-and-test
-    
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      
-    - name: Run Trivy vulnerability scanner
-      uses: aquasecurity/trivy-action@master
-      with:
-        scan-type: 'fs'
-        scan-ref: '.'
-        format: 'sarif'
-        output: 'trivy-results.sarif'
-        
-    - name: Upload Trivy scan results
-      uses: github/codeql-action/upload-sarif@v2
-      with:
-        sarif_file: 'trivy-results.sarif'
-        
-    - name: Setup Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: ${{ env.NODE_VERSION }}
-        
-    - name: Setup pnpm
-      uses: pnpm/action-setup@v2
-      with:
-        version: ${{ env.PNPM_VERSION }}
-        run_install: false
-        
-    - name: Install dependencies
-      run: pnpm install --frozen-lockfile
-      
-    - name: Audit dependencies
-      run: pnpm audit --audit-level moderate
-      
-    - name: Generate SBOM
-      run: |
-        chmod +x tools/scripts/generate-sbom.sh
-        ./tools/scripts/generate-sbom.sh
-        
-    - name: Upload SBOM artifacts
-      uses: actions/upload-artifact@v3
-      with:
-        name: sbom-reports
-        path: sbom/
-        retention-days: 30
-
-  # End-to-End Tests
-  e2e-tests:
-    runs-on: ubuntu-latest
-    needs: build-and-test
-    
-    services:
-      postgres:
-        image: postgres:14
-        env:
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: smm_test
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-        ports:
-          - 5432:5432
-          
-      redis:
-        image: redis:7-alpine
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-        ports:
-          - 6379:6379
-    
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      
-    - name: Setup Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: ${{ env.NODE_VERSION }}
-        
-    - name: Setup pnpm
-      uses: pnpm/action-setup@v2
-      with:
-        version: ${{ env.PNPM_VERSION }}
-        run_install: false
-        
-    - name: Install dependencies
-      run: pnpm install --frozen-lockfile
-      
-    - name: Install Playwright browsers
-      run: pnpm exec playwright install --with-deps
-      
-    - name: Build applications
-      run: pnpm run build
-      
-    - name: Run database migrations
-      run: pnpm --filter=@smm-architect/shared db:migrate
+      run: npm run test
       env:
-        DATABASE_URL: postgresql://postgres:postgres@localhost:5432/smm_test
-        
-    - name: Start applications
-      run: |
-        pnpm --filter=smm-architect-service start &
-        pnpm --filter=toolhub-service start &
-        pnpm --filter=@smm-architect/frontend start &
-        sleep 30
-      env:
-        DATABASE_URL: postgresql://postgres:postgres@localhost:5432/smm_test
-        REDIS_URL: redis://localhost:6379
-        
-    - name: Run E2E tests
-      run: pnpm --filter=@smm-architect/frontend test:e2e
-      
-    - name: Upload E2E test results
-      uses: actions/upload-artifact@v3
-      if: always()
-      with:
-        name: e2e-test-results
-        path: apps/frontend/test-results/
-        retention-days: 7
+        NODE_ENV: test
+    
+    - name: Run security audit
+      run: npm audit --audit-level=moderate
 
-  # Build Docker Images
-  build-images:
+  # BUILD STAGE: Container Build
+  build:
+    needs: test
     runs-on: ubuntu-latest
-    needs: [build-and-test, security-scan]
-    if: github.event_name == 'push' || github.event_name == 'release'
+    if: github.event_name == 'push'
     
     strategy:
       matrix:
-        service: [smm-architect, toolhub, frontend]
+        service:
+          - name: smm-architect
+            path: services/smm-architect
+          - name: model-router
+            path: services/model-router
+          - name: publisher
+            path: services/publisher
+          - name: toolhub
+            path: services/toolhub
+          - name: frontend
+            path: apps/frontend
     
     steps:
-    - name: Checkout code
+    - name: Checkout repository
       uses: actions/checkout@v4
-      
+    
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
-      
+    
     - name: Log in to Container Registry
       uses: docker/login-action@v3
       with:
         registry: ${{ env.REGISTRY }}
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
-        
+    
     - name: Extract metadata
       id: meta
       uses: docker/metadata-action@v5
       with:
-        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/${{ matrix.service }}
+        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/${{ matrix.service.name }}
         tags: |
           type=ref,event=branch
           type=ref,event=pr
-          type=semver,pattern={{version}}
-          type=semver,pattern={{major}}.{{minor}}
+          type=sha,prefix=commit-
           type=raw,value=latest,enable={{is_default_branch}}
-          
+    
     - name: Build and push Docker image
       uses: docker/build-push-action@v5
       with:
-        context: .
-        file: ./services/${{ matrix.service }}/Dockerfile
+        context: ${{ matrix.service.path }}
+        platforms: linux/amd64,linux/arm64
         push: true
         tags: ${{ steps.meta.outputs.tags }}
         labels: ${{ steps.meta.outputs.labels }}
         cache-from: type=gha
         cache-to: type=gha,mode=max
+        build-args: |
+          BUILDKIT_INLINE_CACHE=1
 
-  # Deploy to Staging
-  deploy-staging:
+  # TEST STAGE: Security Scanning
+  security-scan:
+    needs: build
     runs-on: ubuntu-latest
-    needs: [build-images, e2e-tests]
+    if: github.event_name == 'push'
+    
+    strategy:
+      matrix:
+        service: [smm-architect, model-router, publisher, toolhub, frontend]
+    
+    steps:
+    - name: Run Trivy vulnerability scanner
+      uses: aquasecurity/trivy-action@master
+      with:
+        image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/${{ matrix.service }}:${{ github.sha }}
+        format: 'sarif'
+        output: 'trivy-results.sarif'
+    
+    - name: Upload Trivy scan results to GitHub Security tab
+      uses: github/codeql-action/upload-sarif@v3
+      if: always()
+      with:
+        sarif_file: 'trivy-results.sarif'
+
+  # DEPLOY STAGE: Staging Deployment
+  deploy-staging:
+    needs: [build, security-scan]
+    runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/develop'
     environment: staging
     
     steps:
-    - name: Checkout code
+    - name: Checkout repository
       uses: actions/checkout@v4
-      
-    - name: Setup kubectl
-      uses: azure/setup-kubectl@v3
+    
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
       with:
-        version: 'v1.28.0'
-        
-    - name: Setup Helm
-      uses: azure/setup-helm@v3
-      with:
-        version: 'v3.12.0'
-        
-    - name: Configure kubectl
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ secrets.AWS_REGION }}
+    
+    - name: Deploy to EKS Staging
       run: |
-        mkdir -p ~/.kube
-        echo "${{ secrets.KUBE_CONFIG_STAGING }}" | base64 -d > ~/.kube/config
-        
-    - name: Deploy to staging
-      run: |
-        helm upgrade --install smm-architect-staging \
-          ./infrastructure/kubernetes/helm/smm-architect \
-          --namespace smm-architect-staging \
-          --create-namespace \
-          --values ./infrastructure/kubernetes/helm/smm-architect/values-staging.yaml \
-          --set image.tag=${{ github.sha }} \
-          --wait --timeout=600s
+        aws eks update-kubeconfig --region ${{ secrets.AWS_REGION }} --name smm-architect-staging
+        kubectl set env deployment/smm-architect-service IMAGE_TAG=${{ github.sha }}
+        kubectl set env deployment/model-router-service IMAGE_TAG=${{ github.sha }}
+        kubectl set env deployment/publisher-service IMAGE_TAG=${{ github.sha }}
+        kubectl set env deployment/toolhub-service IMAGE_TAG=${{ github.sha }}
+        kubectl set env deployment/frontend-service IMAGE_TAG=${{ github.sha }}
+        kubectl rollout restart deployment/smm-architect-service
+        kubectl rollout restart deployment/model-router-service
+        kubectl rollout restart deployment/publisher-service
+        kubectl rollout restart deployment/toolhub-service
+        kubectl rollout restart deployment/frontend-service
 
-  # Deploy to Production
+  # DEPLOY STAGE: Production Deployment
   deploy-production:
+    needs: [build, security-scan]
     runs-on: ubuntu-latest
-    needs: [build-images, e2e-tests]
-    if: github.event_name == 'release'
+    if: github.ref == 'refs/heads/main'
     environment: production
     
     steps:
-    - name: Checkout code
+    - name: Checkout repository
       uses: actions/checkout@v4
-      
-    - name: Setup kubectl
-      uses: azure/setup-kubectl@v3
+    
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
       with:
-        version: 'v1.28.0'
-        
-    - name: Setup Helm
-      uses: azure/setup-helm@v3
-      with:
-        version: 'v3.12.0'
-        
-    - name: Configure kubectl
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ secrets.AWS_REGION }}
+    
+    - name: Deploy to EKS Production
       run: |
-        mkdir -p ~/.kube
-        echo "${{ secrets.KUBE_CONFIG_PRODUCTION }}" | base64 -d > ~/.kube/config
+        aws eks update-kubeconfig --region ${{ secrets.AWS_REGION }} --name smm-architect-production
+        kubectl set env deployment/smm-architect-service IMAGE_TAG=${{ github.sha }}
+        kubectl set env deployment/model-router-service IMAGE_TAG=${{ github.sha }}
+        kubectl set env deployment/publisher-service IMAGE_TAG=${{ github.sha }}
+        kubectl set env deployment/toolhub-service IMAGE_TAG=${{ github.sha }}
+        kubectl set env deployment/frontend-service IMAGE_TAG=${{ github.sha }}
+        kubectl rollout restart deployment/smm-architect-service
+        kubectl rollout restart deployment/model-router-service
+        kubectl rollout restart deployment/publisher-service
+        kubectl rollout restart deployment/toolhub-service
+        kubectl rollout restart deployment/frontend-service
         
-    - name: Deploy to production
-      run: |
-        helm upgrade --install smm-architect \
-          ./infrastructure/kubernetes/helm/smm-architect \
-          --namespace smm-architect \
-          --create-namespace \
-          --values ./infrastructure/kubernetes/helm/smm-architect/values-production.yaml \
-          --set image.tag=${{ github.ref_name }} \
-          --wait --timeout=600s
-          
-    - name: Post-deployment health check
-      run: |
-        kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=smm-architect -n smm-architect --timeout=300s
-        kubectl get pods -n smm-architect
+        # Wait for rollout to complete
+        kubectl rollout status deployment/smm-architect-service --timeout=300s
+        kubectl rollout status deployment/model-router-service --timeout=300s
+        kubectl rollout status deployment/publisher-service --timeout=300s
+        kubectl rollout status deployment/toolhub-service --timeout=300s
+        kubectl rollout status deployment/frontend-service --timeout=300s
 
-  # Notification
-  notify:
-    runs-on: ubuntu-latest
+  post-deployment-tests:
     needs: [deploy-staging, deploy-production]
+    runs-on: ubuntu-latest
+    if: always() && (needs.deploy-staging.result == 'success' || needs.deploy-production.result == 'success')
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+    
+    - name: Run E2E tests
+      run: |
+        npm ci
+        npm run test:e2e
+      env:
+        TEST_URL: ${{ github.ref == 'refs/heads/main' && secrets.PRODUCTION_URL || secrets.STAGING_URL }}
+        
+    - name: Run health checks
+      run: |
+        curl -f ${{ github.ref == 'refs/heads/main' && secrets.PRODUCTION_URL || secrets.STAGING_URL }}/health
+        curl -f ${{ github.ref == 'refs/heads/main' && secrets.PRODUCTION_URL || secrets.STAGING_URL }}/api/health
+
+  notification:
+    needs: [deploy-staging, deploy-production, post-deployment-tests]
+    runs-on: ubuntu-latest
     if: always()
     
     steps:
@@ -339,5 +228,4 @@ jobs:
         status: ${{ job.status }}
         channel: '#deployments'
         webhook_url: ${{ secrets.SLACK_WEBHOOK }}
-      env:
-        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }}
+        fields: repo,message,commit,author,action,eventName,ref,workflow

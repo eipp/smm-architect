@@ -127,6 +127,10 @@ router.get('/stats/:workspaceId',
   async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { workspaceId } = req.params;
+      
+      if (!workspaceId) {
+        throw new ApiError(400, 'WORKSPACE_ID_REQUIRED', 'Workspace ID is required');
+      }
 
       // Verify user has access to workspace
       if (req.user?.workspaceId !== workspaceId && !req.user?.scopes.includes('admin')) {

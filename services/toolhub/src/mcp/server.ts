@@ -60,23 +60,33 @@ export class SMMArchitectMCPServer {
           op: 'mcp.request',
           name: `MCP ${schema.method || 'unknown'}`,
         }, async (span) => {
-          span.setAttribute('mcp.method', schema.method || 'unknown');
-          span.setAttribute('mcp.server', 'smm-architect-toolhub');
-          span.setAttribute('service.name', 'toolhub');
-          span.setAttribute('service.component', 'mcp-server');
+          if (span) {
+            span.setAttribute('mcp.method', schema.method || 'unknown');
+            span.setAttribute('mcp.server', 'smm-architect-toolhub');
+            span.setAttribute('service.name', 'toolhub');
+            span.setAttribute('service.component', 'mcp-server');
+          }
 
           try {
             const startTime = Date.now();
             const result = await handler(request);
             
             const duration = Date.now() - startTime;
-            span.setAttribute('mcp.duration_ms', duration);
-            span.setAttribute('mcp.status', 'success');
+            if (span) {
+              span.setAttribute('mcp.duration_ms', duration);
+            }
+            if (span) {
+              span.setAttribute('mcp.status', 'success');
+            }
             
             return result;
           } catch (error) {
-            span.setAttribute('mcp.status', 'error');
-            span.setAttribute('mcp.error', error instanceof Error ? error.message : String(error));
+            if (span) {
+              span.setAttribute('mcp.status', 'error');
+            }
+            if (span) {
+              span.setAttribute('mcp.error', error instanceof Error ? error.message : String(error));
+            }
             
             Sentry.captureException(error, {
               tags: {
@@ -286,9 +296,15 @@ export class SMMArchitectMCPServer {
       op: 'mcp.tool.content_analyze',
       name: 'Content Analysis',
     }, async (span) => {
-      span.setAttribute('tool.name', 'content_analyze');
-      span.setAttribute('content.platform', args.platform);
-      span.setAttribute('content.length', args.content?.length || 0);
+      if (span) {
+        span.setAttribute('tool.name', 'content_analyze');
+      }
+      if (span) {
+        span.setAttribute('content.platform', args.platform);
+      }
+      if (span) {
+        span.setAttribute('content.length', args.content?.length || 0);
+      }
 
       try {
         // Mock implementation - replace with actual content analysis logic
@@ -303,9 +319,15 @@ export class SMMArchitectMCPServer {
           platform_optimized: args.platform === 'instagram' || args.platform === 'tiktok'
         };
 
-        span.setAttribute('analysis.sentiment', analysis.sentiment);
-        span.setAttribute('analysis.engagement_score', analysis.engagement_score);
-        span.setAttribute('analysis.brand_compliance', analysis.brand_compliance);
+        if (span) {
+          span.setAttribute('analysis.sentiment', analysis.sentiment);
+        }
+        if (span) {
+          span.setAttribute('analysis.engagement_score', analysis.engagement_score);
+        }
+        if (span) {
+          span.setAttribute('analysis.brand_compliance', analysis.brand_compliance);
+        }
 
         return {
           content: [
@@ -316,7 +338,9 @@ export class SMMArchitectMCPServer {
           ]
         };
       } catch (error) {
-        span.setAttribute('tool.error', error instanceof Error ? error.message : String(error));
+        if (span) {
+          span.setAttribute('tool.error', error instanceof Error ? error.message : String(error));
+        }
         throw error;
       }
     });
@@ -330,10 +354,20 @@ export class SMMArchitectMCPServer {
       op: 'mcp.tool.vector_search',
       name: 'Vector Search',
     }, async (span) => {
-      span.setAttribute('tool.name', 'vector_search');
-      span.setAttribute('search.query', args.query);
-      span.setAttribute('search.category', args.category);
-      span.setAttribute('search.limit', args.limit || 10);
+      if (span) {
+        span.setAttribute('tool.name', 'vector_search');
+      }
+      if (span) {
+        span.setAttribute('search.query', args.query);
+      }
+      if (span) {
+        span.setAttribute('search.category', args.category);
+      }
+      if (span) {
+        if (span) {
+        span.setAttribute('search.limit', args.limit || 10);
+      }
+      }
 
       try {
         // Mock implementation - replace with actual vector search logic
@@ -360,8 +394,12 @@ export class SMMArchitectMCPServer {
           }
         ];
 
-        span.setAttribute('search.results_count', results.length);
-        span.setAttribute('search.top_similarity', results[0]?.similarity || 0);
+        if (span) {
+          span.setAttribute('search.results_count', results.length);
+        }
+        if (span) {
+          span.setAttribute('search.top_similarity', results[0]?.similarity || 0);
+        }
 
         return {
           content: [
@@ -372,7 +410,9 @@ export class SMMArchitectMCPServer {
           ]
         };
       } catch (error) {
-        span.setAttribute('tool.error', error instanceof Error ? error.message : String(error));
+        if (span) {
+          span.setAttribute('tool.error', error instanceof Error ? error.message : String(error));
+        }
         throw error;
       }
     });
@@ -386,9 +426,15 @@ export class SMMArchitectMCPServer {
       op: 'mcp.tool.agent_orchestrate',
       name: 'Agent Orchestration',
     }, async (span) => {
-      span.setAttribute('tool.name', 'agent_orchestrate');
-      span.setAttribute('workflow.type', args.workflow);
-      span.setAttribute('workflow.agents_count', args.agents?.length || 0);
+      if (span) {
+        span.setAttribute('tool.name', 'agent_orchestrate');
+      }
+      if (span) {
+        span.setAttribute('workflow.type', args.workflow);
+      }
+      if (span) {
+        span.setAttribute('workflow.agents_count', args.agents?.length || 0);
+      }
 
       try {
         // Mock implementation - replace with actual agent orchestration logic
@@ -405,8 +451,12 @@ export class SMMArchitectMCPServer {
           total_duration_ms: Math.floor(Math.random() * 5000) + 2000
         };
 
-        span.setAttribute('workflow.status', orchestrationResult.status);
-        span.setAttribute('workflow.duration_ms', orchestrationResult.total_duration_ms);
+        if (span) {
+          span.setAttribute('workflow.status', orchestrationResult.status);
+        }
+        if (span) {
+          span.setAttribute('workflow.duration_ms', orchestrationResult.total_duration_ms);
+        }
 
         return {
           content: [
@@ -417,7 +467,9 @@ export class SMMArchitectMCPServer {
           ]
         };
       } catch (error) {
-        span.setAttribute('tool.error', error instanceof Error ? error.message : String(error));
+        if (span) {
+          span.setAttribute('tool.error', error instanceof Error ? error.message : String(error));
+        }
         throw error;
       }
     });
@@ -431,11 +483,21 @@ export class SMMArchitectMCPServer {
       op: 'mcp.tool.workspace_simulate',
       name: 'Workspace Simulation',
     }, async (span) => {
-      span.setAttribute('tool.name', 'workspace_simulate');
-      span.setAttribute('simulation.workspace_id', args.workspaceId);
-      span.setAttribute('simulation.scenario', args.scenario);
-      span.setAttribute('simulation.iterations', args.iterations || 100);
-      span.setAttribute('simulation.dry_run', args.dryRun !== false);
+      if (span) {
+        span.setAttribute('tool.name', 'workspace_simulate');
+      }
+      if (span) {
+        span.setAttribute('simulation.workspace_id', args.workspaceId);
+      }
+      if (span) {
+        span.setAttribute('simulation.scenario', args.scenario);
+      }
+      if (span) {
+        span.setAttribute('simulation.iterations', args.iterations || 100);
+      }
+      if (span) {
+        span.setAttribute('simulation.dry_run', args.dryRun !== false);
+      }
 
       try {
         // Mock implementation - replace with actual workspace simulation logic
@@ -460,8 +522,12 @@ export class SMMArchitectMCPServer {
           ]
         };
 
-        span.setAttribute('simulation.success_rate', simulationResult.results.success_rate);
-        span.setAttribute('simulation.avg_response_time', simulationResult.results.average_response_time);
+        if (span) {
+          span.setAttribute('simulation.success_rate', simulationResult.results.success_rate);
+        }
+        if (span) {
+          span.setAttribute('simulation.avg_response_time', simulationResult.results.average_response_time);
+        }
 
         return {
           content: [
@@ -472,7 +538,9 @@ export class SMMArchitectMCPServer {
           ]
         };
       } catch (error) {
-        span.setAttribute('tool.error', error instanceof Error ? error.message : String(error));
+        if (span) {
+          span.setAttribute('tool.error', error instanceof Error ? error.message : String(error));
+        }
         throw error;
       }
     });
@@ -499,9 +567,12 @@ export class SMMArchitectMCPServer {
       });
 
       // Log server startup to Sentry
-      Sentry.captureMessage('MCP Server started', 'info', {
-        server: 'smm-architect-toolhub',
-        version: process.env.npm_package_version || '1.0.0'
+      Sentry.captureMessage('MCP Server started', {
+        level: 'info',
+        extra: {
+          server: 'smm-architect-toolhub',
+          version: process.env.npm_package_version || '1.0.0'
+        }
       });
 
     } catch (error) {

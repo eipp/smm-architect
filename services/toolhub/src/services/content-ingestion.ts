@@ -297,9 +297,9 @@ export class ContentIngestionService {
     const sentences = text.match(/[^\.!?]+[\.!?]+/g) || [];
     
     for (let i = 0; i < sentences.length; i++) {
-      const sentence = sentences[i].trim();
+      const sentence = sentences[i]?.trim();
       
-      if (sentence.length < 20) continue; // Skip very short sentences
+      if (!sentence || sentence.length < 20) continue; // Skip very short sentences
       
       const confidence = this.calculateClaimConfidence(sentence);
       

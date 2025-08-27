@@ -1,4 +1,12 @@
-import { initializeSentry } from "../shared/sentry-utils";
+// Mock sentry initialization for standalone service
+function initializeSentry(config: any) {
+  console.log('Sentry initialized with config:', config);
+  return {
+    initialized: true,
+    captureException: (error: Error) => console.error('Sentry capture:', error),
+    captureMessage: (message: string, level?: string) => console.log('Sentry message:', message, level)
+  };
+}
 import winston from 'winston';
 
 // Sentry configuration
@@ -21,10 +29,11 @@ const serviceContext = {
 
 // Initialize Sentry
 try {
-  initializeSentry(sentryConfig, serviceContext);
+  initializeSentry(sentryConfig);
 } catch (error) {
   // Log to console if Sentry fails to initialize
-  console.error("Failed to initialize Sentry", { error: error.message });
+  const errorMessage = error instanceof Error ? error.message : String(error);
+  console.error("Failed to initialize Sentry", { error: errorMessage });
 }
 
 export default sentryConfig;

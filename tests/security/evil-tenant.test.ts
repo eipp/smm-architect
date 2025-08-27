@@ -312,7 +312,7 @@ describe('Evil Tenant Security Tests', () => {
     });
 
     it('should prevent SQL injection through tenant ID parameter', async () => {
-      const maliciousTenantId = \"'; DROP TABLE workspaces; --\";
+      const maliciousTenantId = "'; DROP TABLE workspaces; --";
       
       const req = {
         headers: { 'x-tenant-id': maliciousTenantId },
@@ -467,7 +467,7 @@ describe('Evil Tenant Security Tests', () => {
       const jobOperation = async () => {
         // Simulate getting current tenant context in job
         const result = await mockPrismaClient.$queryRaw({
-          sql: \"SELECT current_setting('app.current_tenant_id', true) as current_setting\"
+          sql: "SELECT current_setting('app.current_tenant_id', true) as current_setting"
         });
         capturedTenantContext = result[0]?.current_setting;
         return 'job-result';
@@ -540,4 +540,3 @@ describe('Evil Tenant Security Tests', () => {
     });
   });
 });
-"

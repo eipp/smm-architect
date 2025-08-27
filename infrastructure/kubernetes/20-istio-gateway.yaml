@@ -1,0 +1,149 @@
+apiVersion: networking.istio.io/v1beta1
+kind: Gateway
+metadata:
+  name: smm-architect-gateway
+  namespace: smm-architect
+  labels:
+    app.kubernetes.io/name: smm-architect
+    app.kubernetes.io/component: istio-gateway
+spec:
+  selector:
+    istio: ingressgateway
+  servers:
+  - port:
+      number: 80
+      name: http
+      protocol: HTTP
+    hosts:
+    - api.smm-architect.com
+    - toolhub.smm-architect.com
+    - app.smm-architect.com
+  - port:
+      number: 443
+      name: https
+      protocol: HTTPS
+    tls:
+      mode: SIMPLE
+      credentialName: smm-architect-tls
+    hosts:
+    - api.smm-architect.com
+    - toolhub.smm-architect.com
+    - app.smm-architect.com
+
+---
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: smm-architect-vs
+  namespace: smm-architect
+  labels:
+    app.kubernetes.io/name: smm-architect
+    app.kubernetes.io/component: istio-routing
+spec:
+  hosts:
+  - api.smm-architect.com
+  gateways:
+  - smm-architect-gateway
+  http:
+  - match:
+    - uri:
+        prefix: /api/v1/ai
+    route:
+    - destination:
+        host: smm-model-router-service
+        port:
+          number: 3002
+    fault:
+      delay:
+        percentage:
+          value: 0.1
+        fixedDelay: 5s
+    timeout: 30s
+    retries:
+      attempts: 3
+      perTryTimeout: 10s
+  - match:
+    - uri:
+        prefix: /api/v1/publish
+    route:
+    - destination:
+        host: smm-publisher-service
+        port:
+          number: 3003
+    timeout: 60s
+    retries:
+      attempts: 2
+      perTryTimeout: 30s
+  - match:
+    - uri:
+        prefix: /api/v1/agents
+    route:
+    - destination:
+        host: smm-agents-service
+        port:
+          number: 3004
+    timeout: 120s
+    retries:
+      attempts: 2
+      perTryTimeout: 60s
+  - match:
+    - uri:
+        prefix: /
+    route:
+    - destination:
+        host: smm-architect-service
+        port:
+          number: 4000
+
+---
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: smm-toolhub-vs
+  namespace: smm-architect
+  labels:
+    app.kubernetes.io/name: smm-architect
+    app.kubernetes.io/component: istio-routing
+spec:
+  hosts:
+  - toolhub.smm-architect.com
+  gateways:
+  - smm-architect-gateway
+  http:
+  - match:
+    - uri:
+        prefix: /
+    route:
+    - destination:
+        host: smm-toolhub-service
+        port:
+          number: 3001
+    timeout: 30s
+    retries:
+      attempts: 3
+      perTryTimeout: 10s
+
+---
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: smm-frontend-vs
+  namespace: smm-architect
+  labels:
+    app.kubernetes.io/name: smm-architect
+    app.kubernetes.io/component: istio-routing
+spec:
+  hosts:
+  - app.smm-architect.com
+  gateways:
+  - smm-architect-gateway
+  http:
+  - match:
+    - uri:
+        prefix: /
+    route:
+    - destination:
+        host: smm-frontend-service
+        port:
+          number: 3000
+    timeout: 30s

@@ -1,0 +1,99 @@
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+metadata:
+  name: smm-architect-peer-auth
+  namespace: smm-architect
+  labels:
+    app.kubernetes.io/name: smm-architect
+    app.kubernetes.io/component: istio-security
+spec:
+  mtls:
+    mode: STRICT
+
+---
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: smm-architect-authz
+  namespace: smm-architect
+  labels:
+    app.kubernetes.io/name: smm-architect
+    app.kubernetes.io/component: istio-security
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: smm-architect
+  rules:
+  - from:
+    - source:
+        principals: ["cluster.local/ns/smm-architect/sa/smm-architect-sa"]
+    - source:
+        namespaces: ["istio-system"]
+  - to:
+    - operation:
+        methods: ["GET"]
+        paths: ["/health", "/ready", "/metrics"]
+  - from:
+    - source:
+        namespaces: ["smm-architect"]
+    to:
+    - operation:
+        methods: ["GET", "POST", "PUT", "DELETE"]
+
+---
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: smm-model-router-authz
+  namespace: smm-architect
+  labels:
+    app.kubernetes.io/name: smm-architect
+    app.kubernetes.io/component: istio-security
+spec:
+  selector:
+    matchLabels:
+      app: smm-model-router-service
+  rules:
+  - from:
+    - source:
+        principals: ["cluster.local/ns/smm-architect/sa/smm-architect-sa"]
+  - to:
+    - operation:
+        methods: ["GET"]
+        paths: ["/health", "/ready"]
+  - from:
+    - source:
+        namespaces: ["smm-architect"]
+    to:
+    - operation:
+        methods: ["POST"]
+        paths: ["/api/v1/ai/*"]
+
+---
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: smm-publisher-authz
+  namespace: smm-architect
+  labels:
+    app.kubernetes.io/name: smm-architect
+    app.kubernetes.io/component: istio-security
+spec:
+  selector:
+    matchLabels:
+      app: smm-publisher-service
+  rules:
+  - from:
+    - source:
+        principals: ["cluster.local/ns/smm-architect/sa/smm-architect-sa"]
+  - to:
+    - operation:
+        methods: ["GET"]
+        paths: ["/health", "/ready"]
+  - from:
+    - source:
+        namespaces: ["smm-architect"]
+    to:
+    - operation:
+        methods: ["POST", "GET", "PUT"]
+        paths: ["/api/v1/publish/*"]
