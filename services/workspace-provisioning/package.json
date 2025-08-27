@@ -22,7 +22,8 @@
     "cors": "^2.8.5",
     "express-rate-limit": "^7.1.5",
     "winston": "^3.11.0",
-    "joi": "^17.11.0"
+    "joi": "^17.11.0",
+    "axios": "^1.6.0"
   },
   "devDependencies": {
     "@types/node": "^20.10.0",

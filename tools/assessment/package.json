@@ -1,0 +1,42 @@
+{
+  "name": "@smm-architect/production-assessment",
+  "version": "1.0.0",
+  "description": "SMM Architect Production Readiness Assessment System",
+  "type": "module",
+  "main": "cli.js",
+  "bin": {
+    "smm-assessment": "./cli.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node cli.js",
+    "assess": "node cli.js run",
+    "assess:production": "node cli.js run --environment production --level comprehensive",
+    "assess:staging": "node cli.js run --environment staging --level comprehensive",
+    "assess:quick": "node cli.js run --level basic --skip-non-critical",
+    "validate-env": "node cli.js validate-env",
+    "show-config": "node cli.js config",
+    "deprecate-info": "node cli.js deprecate-scripts"
+  },
+  "dependencies": {
+    "commander": "^11.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": [
+    "smm-architect",
+    "production-readiness",
+    "assessment",
+    "validation",
+    "ai-agents",
+    "multi-tenant",
+    "compliance"
+  ],
+  "author": "SMM Architect Team",
+  "license": "Proprietary"
+}

@@ -182,11 +182,16 @@ export class AIModelProvider extends EventEmitter {
       // Generate suggestions
       const suggestions = await this.generateSuggestions(processedContent, request);
 
+      // Process alternatives
+      const processedAlternatives = await Promise.all(
+        alternatives.map(alt => this.postProcessContent(alt, request))
+      );
+
       const response: ContentGenerationResponse = {
         id: `content_${Date.now()}`,
         requestId,
         content: processedContent,
-        alternatives: alternatives.map(alt => this.postProcessContent(alt, request)).slice(0, 3),
+        alternatives: processedAlternatives.slice(0, 3),
         metadata: {
           model: selectedModel,
           tokensUsed,
@@ -225,10 +230,10 @@ export class AIModelProvider extends EventEmitter {
         response_format: "url",
       });
 
-      const images = response.data.map(img => ({
+      const images = response.data?.map(img => ({
         url: img.url!,
         revisedPrompt: img.revised_prompt,
-      }));
+      })) || [];
 
       const result: ImageGenerationResponse = {
         id: `img_${Date.now()}`,

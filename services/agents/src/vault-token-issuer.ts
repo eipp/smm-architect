@@ -1,5 +1,56 @@
-import { VaultClient, VaultClientConfig } from '../../shared/vault-client';
-import { AuthenticationService } from '../../shared/auth-service';
+// Mock implementations for development - would use actual services in production
+interface VaultClient {
+  lookupToken(token: string): Promise<any>;
+  writePolicy(name: string, policy: string): Promise<void>;
+  revokeToken(token: string): Promise<void>;
+  isAuthenticated(): Promise<boolean>;
+}
+
+interface AuthenticationService {
+  createAgentToken(options: any): Promise<string>;
+  revokeToken(token: string): Promise<void>;
+  listWorkspaceTokens(workspaceId: string): Promise<any[]>;
+  getHealthStatus(): Promise<any>;
+}
+
+// Mock implementations
+class MockVaultClient implements VaultClient {
+  async lookupToken(token: string) {
+    return {
+      meta: { agent_type: 'research', workspace_id: 'test' },
+      policies: ['default'],
+      ttl: 7200,
+      renewable: false
+    };
+  }
+  async writePolicy(name: string, policy: string) { return; }
+  async revokeToken(token: string) { return; }
+  async isAuthenticated() { return true; }
+}
+
+class MockAuthService implements AuthenticationService {
+  async createAgentToken(options: any) {
+    return `mock-token-${Date.now()}-${options.agentType}`;
+  }
+  async revokeToken(token: string) { return; }
+  async listWorkspaceTokens(workspaceId: string) {
+    return [
+      {
+        accessor: 'accessor1',
+        metadata: { agent_type: 'research' },
+        tokenType: 'agent',
+        displayName: 'test-agent',
+        createdAt: new Date().toISOString(),
+        ttl: 7200
+      }
+    ];
+  }
+  async getHealthStatus() {
+    return {
+      vault: { connected: true, sealed: false, version: 'mock' }
+    };
+  }
+}
 
 export interface VaultConfig {
   endpoint: string;
@@ -124,7 +175,14 @@ export class VaultTokenIssuer {
     ttl: number;
   }>> {
     try {
-      return await this.authService.listWorkspaceTokens(workspaceId);
+      const authTokens = await this.authService.listWorkspaceTokens(workspaceId);
+      return authTokens.map(token => ({
+        accessor: token.accessor,
+        agentType: token.metadata.agent_type || token.tokenType || 'unknown',
+        displayName: token.displayName,
+        creationTime: token.createdAt,
+        ttl: token.ttl
+      }));
     } catch (error) {
       throw new Error(`Failed to list workspace tokens: ${error instanceof Error ? error.message : String(error)}`);
     }

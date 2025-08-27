@@ -228,8 +228,8 @@ export class LegalAgent extends EventEmitter {
       const response = await this.aiProvider.generateContent({
         workspaceId: request.workspaceId,
         agentType: 'legal',
-        contentType: request.contentType,
-        platform: request.platform,
+        contentType: request.contentType === 'ad' ? 'caption' : request.contentType === 'campaign' ? 'post' : request.contentType as any,
+        platform: request.platform === 'x' ? 'twitter' : request.platform as any,
         prompt,
         preferences: { model: 'gpt-4', temperature: 0.3 }
       });

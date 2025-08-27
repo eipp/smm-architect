@@ -26,7 +26,8 @@
     "noImplicitOverride": true,
     "noPropertyAccessFromIndexSignature": false,
     "noUncheckedIndexedAccess": false,
-    "types": []
+    "types": [],
+    "composite": true
   },
   "include": [
     "src/**/*"

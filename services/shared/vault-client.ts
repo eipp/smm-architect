@@ -91,7 +91,10 @@ export class VaultClient {
     });
 
     // Add request interceptor for authentication
-    this.client.interceptors.request.use(this.requestInterceptor.bind(this));
+    this.client.interceptors.request.use(
+      (config) => this.requestInterceptor(config),
+      (error) => Promise.reject(error)
+    );
 
     // Add response interceptor for error handling and retries
     this.client.interceptors.response.use(
@@ -452,7 +455,7 @@ export class VaultClient {
 
   // Private helper methods
 
-  private async requestInterceptor(config: AxiosRequestConfig): Promise<AxiosRequestConfig> {
+  private async requestInterceptor(config: any): Promise<any> {
     // Add namespace header if configured
     if (this.config.namespace) {
       config.headers = {

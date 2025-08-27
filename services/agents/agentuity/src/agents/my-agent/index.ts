@@ -208,14 +208,19 @@ export default async function Agent(
   
   try {
     // Parse request data with proper typing
-    const requestData = await req.data.json() as AgentRequestData;
+    const requestDataRaw = await req.data.json();
     
-    if (!requestData || typeof requestData !== 'object') {
+    // Type guard for AgentRequestData
+    if (!requestDataRaw || typeof requestDataRaw !== 'object' || 
+        typeof (requestDataRaw as any).tenantId !== 'string' || 
+        typeof (requestDataRaw as any).workspaceId !== 'string') {
       return resp.json({ 
         status: 'error', 
-        error: 'Invalid request format' 
+        error: 'Invalid request format - missing required fields' 
       });
     }
+    
+    const requestData = requestDataRaw as unknown as AgentRequestData;
     
     tenantId = requestData.tenantId;
     workspaceId = requestData.workspaceId;

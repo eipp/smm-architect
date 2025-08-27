@@ -40,7 +40,7 @@ if (!process.env.AGENTUITY_TRANSPORT_URL) {
   }
 }
 
-runner(true, import.meta.dirname).catch((err) => {
+runner(true, __dirname).catch((err) => {
   if (err instanceof Error) {
     console.error(err.message);
     console.error(err.stack);

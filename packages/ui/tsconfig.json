@@ -14,6 +14,7 @@
     "isolatedModules": true,
     "jsx": "preserve",
     "declaration": true,
+    "composite": true,
     "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"]

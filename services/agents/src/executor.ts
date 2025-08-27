@@ -182,7 +182,7 @@ export class AgentExecutor {
       await this.updateJobStatus(jobId, 'failed', {
         completedAt: new Date().toISOString(),
         duration_ms: duration,
-        error_message: error.message
+        error_message: error instanceof Error ? error.message : String(error)
       });
 
       this.activeJobs.delete(jobId);
@@ -190,7 +190,7 @@ export class AgentExecutor {
       return {
         jobId,
         status: 'failed',
-        errorMessage: error.message,
+        errorMessage: error instanceof Error ? error.message : String(error),
         duration,
         startedAt: new Date(startTime).toISOString(),
         completedAt: new Date().toISOString()

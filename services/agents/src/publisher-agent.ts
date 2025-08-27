@@ -153,9 +153,9 @@ export class PublisherAgent extends EventEmitter {
   }
 
   private async publishToPlatform(platform: string, request: PublishingRequest, result: PublishingResult): Promise<void> {
-    const platformResult = {
+    const platformResult: any = {
       platform,
-      status: 'pending' as const,
+      status: 'pending',
       publishedAt: new Date()
     };
 

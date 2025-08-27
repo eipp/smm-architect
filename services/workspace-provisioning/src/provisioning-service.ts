@@ -1,5 +1,7 @@
 import { LocalWorkspace, ConcurrentUpdateError, Stack, ConfigValue } from '@pulumi/pulumi/automation';
 import { createPulumiProgram, WorkspaceConfig } from './workspace-program';
+import AgentLifecycleManager, { AgentWorkspace } from './agent-lifecycle-manager';
+import { AgentuityClient } from './agentuity-client';
 import winston from 'winston';
 import path from 'path';
 import { promises as fs } from 'fs';
@@ -44,6 +46,17 @@ export interface ProvisioningRequest {
     backupRetentionDays?: number;
     enablePointInTimeRecovery?: boolean;
   };
+  agents?: {
+    enableAgents?: boolean;
+    enabledAgentTypes?: string[];
+    autoHealing?: boolean;
+    resourceAllocation?: 'minimal' | 'standard' | 'performance';
+    executionLimits?: {
+      maxConcurrentExecutions?: number;
+      maxExecutionTime?: number;
+      maxDailyExecutions?: number;
+    };
+  };
   tags?: Record<string, string>;
 }
 
@@ -58,6 +71,11 @@ export interface ProvisioningResult {
     hourly: number;
     daily: number;
     monthly: number;
+  };
+  agents?: {
+    status: 'initializing' | 'active' | 'partial' | 'failed' | 'disabled';
+    deployedAgents: string[];
+    agentEndpoints?: Record<string, string>;
   };
   error?: string;
   createdAt: Date;
@@ -77,18 +95,31 @@ export interface WorkspaceStatus {
   }>;
   outputs: Record<string, any>;
   tags: Record<string, string>;
+  agents?: {
+    status: 'active' | 'partial' | 'failed' | 'disabled';
+    deployedAgents: Record<string, {
+      id: string;
+      status: 'active' | 'inactive' | 'failed';
+      health: 'healthy' | 'unhealthy' | 'unknown';
+      lastActivity?: Date;
+    }>;
+    lastHealthCheck?: Date;
+  };
 }
 
 export class WorkspaceProvisioningService {
   private workspaceDir: string;
   private templatePath: string;
+  private agentLifecycleManager: AgentLifecycleManager;
 
   constructor(
     workspaceDir: string = process.env.PULUMI_WORKSPACE_DIR || '/tmp/pulumi-workspaces',
-    templatePath: string = path.join(__dirname, '../../../infra/pulumi/templates')
+    templatePath: string = path.join(__dirname, '../../../infra/pulumi/templates'),
+    agentuityClient?: AgentuityClient
   ) {
     this.workspaceDir = workspaceDir;
     this.templatePath = templatePath;
+    this.agentLifecycleManager = new AgentLifecycleManager(agentuityClient);
   }
 
   /**
@@ -132,6 +163,64 @@ export class WorkspaceProvisioningService {
       // Estimate costs
       const costEstimate = this.estimateCosts(request.resourceTier, request.region);
       
+      // Initialize agents if requested
+      let agentStatus: ProvisioningResult['agents'] = { status: 'disabled', deployedAgents: [] };
+      
+      if (request.agents?.enableAgents !== false) {
+        logger.info('Starting agent deployment', { workspaceId: request.workspaceId });
+        
+        try {
+          const agentConfig = {
+            enabledAgents: request.agents?.enabledAgentTypes || ['research', 'creative', 'legal', 'automation', 'publisher'],
+            resourceTier: this.mapResourceTier(request.agents?.resourceAllocation || 'standard'),
+            autoHealing: request.agents?.autoHealing !== false,
+            monitoringEnabled: true,
+            executionLimits: {
+              maxConcurrentExecutions: request.agents?.executionLimits?.maxConcurrentExecutions || 
+                (request.environment === 'production' ? 10 : 5),
+              maxExecutionTime: request.agents?.executionLimits?.maxExecutionTime || 300000,
+              maxDailyExecutions: request.agents?.executionLimits?.maxDailyExecutions || 
+                (request.environment === 'production' ? 1000 : 100)
+            }
+          };
+
+          const agentWorkspace = await this.agentLifecycleManager.initializeWorkspaceAgents(
+            request.workspaceId,
+            request.tenantId,
+            request.environment,
+            agentConfig
+          );
+
+          agentStatus = {
+            status: agentWorkspace.status,
+            deployedAgents: Object.keys(agentWorkspace.agents),
+            agentEndpoints: Object.fromEntries(
+              Object.entries(agentWorkspace.agents).map(([type, deployment]) => [
+                type,
+                deployment.endpoint || `agent-${type}-${request.workspaceId}`
+              ])
+            )
+          };
+
+          logger.info('Agent deployment completed', {
+            workspaceId: request.workspaceId,
+            agentCount: Object.keys(agentWorkspace.agents).length,
+            status: agentWorkspace.status
+          });
+
+        } catch (agentError) {
+          logger.error('Agent deployment failed', {
+            workspaceId: request.workspaceId,
+            error: agentError instanceof Error ? agentError.message : agentError
+          });
+          
+          agentStatus = {
+            status: 'failed',
+            deployedAgents: []
+          };
+        }
+      }
+      
       logger.info('Workspace provisioning completed', {
         workspaceId: request.workspaceId,
         stackName,
@@ -147,6 +236,7 @@ export class WorkspaceProvisioningService {
         resourceCount: resources.length,
         duration,
         cost: costEstimate,
+        agents: agentStatus,
         createdAt: new Date(startTime),
         completedAt: new Date()
       };
@@ -187,6 +277,40 @@ export class WorkspaceProvisioningService {
       const outputs = await stack.outputs();
       const resources = await stack.listStackResources();
       
+      // Get agent status
+      let agentStatus: WorkspaceStatus['agents'];
+      try {
+        const agentWorkspace = await this.agentLifecycleManager.getWorkspaceStatus(workspaceId);
+        if (agentWorkspace) {
+          agentStatus = {
+            status: agentWorkspace.status,
+            deployedAgents: Object.fromEntries(
+              Object.entries(agentWorkspace.agents).map(([type, deployment]) => [
+                type,
+                {
+                  id: deployment.id,
+                  status: deployment.status,
+                  health: deployment.health_status,
+                  lastActivity: deployment.last_activity
+                }
+              ])
+            ),
+            lastHealthCheck: agentWorkspace.lastHealthCheck
+          };
+        } else {
+          agentStatus = {
+            status: 'disabled',
+            deployedAgents: {}
+          };
+        }
+      } catch (agentError) {
+        logger.warn('Failed to get agent status', { workspaceId, error: agentError });
+        agentStatus = {
+          status: 'failed',
+          deployedAgents: {}
+        };
+      }
+      
       return {
         workspaceId,
         stackName,
@@ -199,7 +323,8 @@ export class WorkspaceProvisioningService {
           urn: r.urn
         })),
         outputs: this.convertOutputs(outputs),
-        tags: info?.config || {}
+        tags: info?.config || {},
+        agents: agentStatus
       };
       
     } catch (error) {
@@ -285,6 +410,15 @@ export class WorkspaceProvisioningService {
     });
 
     try {
+      // Terminate agents first
+      try {
+        await this.agentLifecycleManager.terminateWorkspaceAgents(workspaceId);
+        logger.info('Workspace agents terminated', { workspaceId });
+      } catch (agentError) {
+        logger.warn('Failed to terminate agents', { workspaceId, error: agentError });
+        // Continue with infrastructure destruction even if agent termination fails
+      }
+      
       const workspace = await this.getExistingWorkspace(stackName);
       const stack = await workspace.selectStack(stackName);
       
@@ -609,5 +743,72 @@ export class WorkspaceProvisioningService {
     } catch {
       return false;
     }
+  }
+
+  private mapResourceTier(allocation: 'minimal' | 'standard' | 'performance'): 'small' | 'medium' | 'large' {
+    const mapping = {
+      minimal: 'small',
+      standard: 'medium',
+      performance: 'large'
+    };
+    return mapping[allocation] as 'small' | 'medium' | 'large';
+  }
+
+  // Agent-specific methods
+
+  /**
+   * Execute autonomous workflow across agents in a workspace
+   */
+  async executeWorkflow(
+    workspaceId: string,
+    workflow: 'research-only' | 'content-creation' | 'full-campaign' | 'compliance-check',
+    input: Record<string, any>,
+    priority: 'low' | 'normal' | 'high' = 'normal'
+  ) {
+    try {
+      return await this.agentLifecycleManager.executeWorkflow(workspaceId, workflow, input, priority);
+    } catch (error) {
+      logger.error('Workflow execution failed', { workspaceId, workflow, error });
+      throw error;
+    }
+  }
+
+  /**
+   * Get execution status for a workflow
+   */
+  getExecutionStatus(requestId: string) {
+    return this.agentLifecycleManager.getExecutionStatus(requestId);
+  }
+
+  /**
+   * Heal unhealthy agents in a workspace
+   */
+  async healWorkspaceAgents(workspaceId: string): Promise<void> {
+    try {
+      await this.agentLifecycleManager.healWorkspace(workspaceId);
+      logger.info('Workspace agents healed', { workspaceId });
+    } catch (error) {
+      logger.error('Agent healing failed', { workspaceId, error });
+      throw error;
+    }
+  }
+
+  /**
+   * Get detailed agent status for a workspace
+   */
+  async getAgentStatus(workspaceId: string): Promise<AgentWorkspace | null> {
+    try {
+      return await this.agentLifecycleManager.getWorkspaceStatus(workspaceId);
+    } catch (error) {
+      logger.error('Failed to get agent status', { workspaceId, error });
+      return null;
+    }
+  }
+
+  /**
+   * Cleanup resources when service is destroyed
+   */
+  destroy(): void {
+    this.agentLifecycleManager.destroy();
   }
 }

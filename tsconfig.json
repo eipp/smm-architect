@@ -2,6 +2,7 @@
   "extends": "./packages/build-config/typescript/tsconfig.base.json",
   "compilerOptions": {
     "baseUrl": ".",
+    "outDir": "./dist",
     "paths": {
       "@smm-architect/shared/*": ["./packages/shared/src/*"],
       "@smm-architect/ui/*": ["./packages/ui/src/*"],
@@ -15,9 +16,9 @@
     { "path": "./apps/frontend" },
     { "path": "./services/smm-architect" },
     { "path": "./services/toolhub" },
-    { "path": "./services/simulator" },
     { "path": "./services/model-router" },
-    { "path": "./services/audit" }
+    { "path": "./services/audit" },
+    { "path": "./services/agents" }
   ],
   "include": [
     "tests/**/*"

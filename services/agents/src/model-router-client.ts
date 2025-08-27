@@ -125,8 +125,8 @@ export class ModelRouterClient {
       return enhancedResponse;
       
     } catch (error) {
-      console.error('Model router completion failed:', error.message);
-      throw new Error(`Model completion failed: ${error.message}`);
+      console.error('Model router completion failed:', error instanceof Error ? error.message : String(error));
+      throw new Error(`Model completion failed: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
@@ -138,7 +138,7 @@ export class ModelRouterClient {
       const response = await this.makeRequest('GET', '/v1/models', undefined, token);
       return response.models || [];
     } catch (error) {
-      throw new Error(`Failed to get available models: ${error.message}`);
+      throw new Error(`Failed to get available models: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
@@ -150,7 +150,7 @@ export class ModelRouterClient {
       const response = await this.makeRequest('GET', `/v1/models/${modelId}`, undefined, token);
       return response;
     } catch (error) {
-      throw new Error(`Failed to get model info: ${error.message}`);
+      throw new Error(`Failed to get model info: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
@@ -228,7 +228,7 @@ export class ModelRouterClient {
       return {
         healthy: false,
         availableModels: 0,
-        error: error.message
+        error: error instanceof Error ? error.message : String(error)
       };
     }
   }
@@ -266,17 +266,17 @@ export class ModelRouterClient {
     data: any,
     token: string
   ): Promise<any> {
-    let lastError: Error;
+    let lastError: Error = new Error('No attempts made');
     
     for (let attempt = 1; attempt <= this.retryAttempts; attempt++) {
       try {
         return await this.makeRequest(method, path, data, token);
       } catch (error) {
-        lastError = error;
+        lastError = error instanceof Error ? error : new Error(String(error));
         
         // Don't retry on authentication or validation errors
-        if (error.response?.status === 401 || error.response?.status === 400) {
-          throw error;
+        if ((error as any)?.response?.status === 401 || (error as any)?.response?.status === 400) {
+          throw lastError;
         }
         
         if (attempt < this.retryAttempts) {
@@ -351,7 +351,7 @@ export class ModelRouterClient {
       'claude-3-sonnet': { inputCostPer1k: 0.003, outputCostPer1k: 0.015 }
     };
     
-    return pricing[model] || pricing['gpt-4']; // Default to GPT-4 pricing
+    return pricing[model] || { inputCostPer1k: 0.03, outputCostPer1k: 0.06 }; // Default to GPT-4 pricing
   }
 
   private estimateTokens(text: string): number {

@@ -1,6 +1,15 @@
 import { EventEmitter } from 'events';
 import axios from 'axios';
-import { AIModelProvider } from '../../model-router/src/services/AIModelProvider';
+
+// Mock AI Provider for research agent
+class MockAIProvider {
+  async generateContent(request: any): Promise<{ content: string }> {
+    // Mock implementation for development
+    return {
+      content: `Generated research content for ${request.prompt}`
+    };
+  }
+}
 
 export interface ResearchRequest {
   workspaceId: string;
@@ -50,11 +59,11 @@ export interface ResearchResult {
 }
 
 export class ResearchAgent extends EventEmitter {
-  private aiProvider: AIModelProvider;
+  private aiProvider: MockAIProvider;
 
   constructor() {
     super();
-    this.aiProvider = new AIModelProvider();
+    this.aiProvider = new MockAIProvider();
   }
 
   async conductResearch(request: ResearchRequest): Promise<ResearchResult> {

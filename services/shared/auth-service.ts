@@ -106,7 +106,7 @@ export class AuthenticationService {
   async createServiceToken(options: CreateServiceTokenOptions): Promise<string> {
     try {
       const displayName = `service-${options.serviceId}`;
-      const metadata = {
+      const metadata: Record<string, any> = {
         service_id: options.serviceId,
         token_type: 'service',
         created_at: new Date().toISOString(),
@@ -128,7 +128,7 @@ export class AuthenticationService {
       console.log(`✓ Created service token for ${options.serviceId}`);
       return auth.client_token;
     } catch (error) {
-      throw new Error(`Failed to create service token: ${error.message}`);
+      throw new Error(`Failed to create service token: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
@@ -139,7 +139,7 @@ export class AuthenticationService {
     try {
       const policies = this.generateAgentPolicies(options.agentType, options.workspaceId);
       const displayName = `agent-${options.agentType}-${options.workspaceId.substring(0, 8)}`;
-      const metadata = {
+      const metadata: Record<string, any> = {
         agent_type: options.agentType,
         workspace_id: options.workspaceId,
         token_type: 'agent',
@@ -166,7 +166,7 @@ export class AuthenticationService {
       console.log(`✓ Created agent token for ${options.agentType} in workspace ${options.workspaceId}`);
       return auth.client_token;
     } catch (error) {
-      throw new Error(`Failed to create agent token: ${error.message}`);
+      throw new Error(`Failed to create agent token: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
@@ -183,7 +183,7 @@ export class AuthenticationService {
         await this.blacklistJWTToken(token);
       }
     } catch (error) {
-      throw new Error(`Failed to revoke token: ${error.message}`);
+      throw new Error(`Failed to revoke token: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
@@ -212,7 +212,7 @@ export class AuthenticationService {
           this.vaultClient['currentToken'] = currentToken;
         }
       } catch (error) {
-        throw new Error(`Failed to refresh Vault token: ${error.message}`);
+        throw new Error(`Failed to refresh Vault token: ${error instanceof Error ? error.message : String(error)}`);
       }
     } else {
       // JWT token - decode and create new one
@@ -228,7 +228,7 @@ export class AuthenticationService {
 
         return jwt.sign(newPayload, this.jwtSecret, { algorithm: 'HS256' });
       } catch (error) {
-        throw new Error(`Failed to refresh JWT token: ${error.message}`);
+        throw new Error(`Failed to refresh JWT token: ${error instanceof Error ? error.message : String(error)}`);
       }
     }
   }
@@ -272,7 +272,7 @@ export class AuthenticationService {
 
       return tokens;
     } catch (error) {
-      throw new Error(`Failed to list workspace tokens: ${error.message}`);
+      throw new Error(`Failed to list workspace tokens: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
@@ -360,7 +360,7 @@ export class AuthenticationService {
         expiresAt: tokenInfo.ttl > 0 ? new Date(Date.now() + tokenInfo.ttl * 1000) : undefined
       };
     } catch (error) {
-      throw new Error(`Vault token validation failed: ${error.message}`);
+      throw new Error(`Vault token validation failed: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
@@ -381,7 +381,7 @@ export class AuthenticationService {
         expiresAt: new Date(decoded.exp * 1000)
       };
     } catch (error) {
-      throw new Error(`JWT token validation failed: ${error.message}`);
+      throw new Error(`JWT token validation failed: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
@@ -398,7 +398,7 @@ export class AuthenticationService {
         });
       }
     } catch (error) {
-      console.error('Failed to blacklist JWT token:', error.message);
+      console.error('Failed to blacklist JWT token:', error instanceof Error ? error.message : String(error));
     }
   }
 
@@ -444,7 +444,7 @@ export class AuthenticationService {
 
   private parseTTL(ttl: string): number {
     const match = ttl.match(/^(\d+)([smhd])$/);
-    if (!match) throw new Error(`Invalid TTL format: ${ttl}`);
+    if (!match || !match[1]) throw new Error(`Invalid TTL format: ${ttl}`);
     
     const value = parseInt(match[1]);
     const unit = match[2];
@@ -516,7 +516,7 @@ path "transit/decrypt/research-*" {
           console.log(`✓ Created policy: ${name}`);
         }
       } catch (error) {
-        console.error(`Failed to create policy ${name}:`, error.message);
+        console.error(`Failed to create policy ${name}:`, error instanceof Error ? error.message : String(error));
       }
     }
   }
