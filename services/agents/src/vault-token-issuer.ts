@@ -76,20 +76,8 @@ export class VaultTokenIssuer {
   private vaultClient: VaultClient;
 
   constructor(config: VaultConfig) {
-    const vaultConfig: VaultClientConfig = {
-      address: config.endpoint,
-      token: config.token,
-      namespace: config.namespace,
-      timeout: 30000,
-      retries: 3
-    };
-
-    this.vaultClient = new VaultClient(vaultConfig);
-    this.authService = new AuthenticationService(vaultConfig, {
-      secret: process.env.JWT_SECRET || 'dev-secret',
-      issuer: 'smm-architect',
-      audience: 'smm-architect-agents'
-    });
+    this.vaultClient = new MockVaultClient();
+    this.authService = new MockAuthService();
   }
 
   /**

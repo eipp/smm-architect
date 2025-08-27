@@ -24,15 +24,16 @@ export interface JWTPayload {
 /**
  * Authentication middleware that validates JWT tokens
  */
-export function authMiddleware(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+export function authMiddleware(req: AuthenticatedRequest, res: Response, next: NextFunction): void {
   try {
     const authHeader = req.headers.authorization;
     
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return res.status(401).json({
+      res.status(401).json({
         code: 'UNAUTHORIZED',
         message: 'Missing or invalid authorization header'
       });
+      return;
     }
 
     const token = authHeader.substring(7); // Remove 'Bearer ' prefix
@@ -40,10 +41,11 @@ export function authMiddleware(req: AuthenticatedRequest, res: Response, next: N
     
     if (!jwtSecret) {
       console.error('JWT_SECRET environment variable not set');
-      return res.status(500).json({
+      res.status(500).json({
         code: 'CONFIGURATION_ERROR',
         message: 'Authentication configuration error'
       });
+      return;
     }
 
     try {
@@ -60,28 +62,30 @@ export function authMiddleware(req: AuthenticatedRequest, res: Response, next: N
       next();
     } catch (jwtError) {
       if (jwtError instanceof jwt.TokenExpiredError) {
-        return res.status(401).json({
+        res.status(401).json({
           code: 'TOKEN_EXPIRED',
           message: 'JWT token has expired'
         });
       } else if (jwtError instanceof jwt.JsonWebTokenError) {
-        return res.status(401).json({
+        res.status(401).json({
           code: 'INVALID_TOKEN',
           message: 'Invalid JWT token'
         });
       } else {
-        return res.status(401).json({
+        res.status(401).json({
           code: 'TOKEN_VERIFICATION_FAILED',
           message: 'Token verification failed'
         });
       }
+      return;
     }
   } catch (error) {
     console.error('Authentication middleware error:', error);
-    return res.status(500).json({
+    res.status(500).json({
       code: 'AUTH_ERROR',
       message: 'Authentication processing error'
     });
+    return;
   }
 }
 
@@ -243,7 +247,7 @@ export function generateToken(payload: Omit<JWTPayload, 'iat' | 'exp'>, expiresI
     throw new Error('JWT_SECRET environment variable not set');
   }
 
-  return jwt.sign(payload, jwtSecret, { expiresIn });
+  return jwt.sign(payload, jwtSecret, { expiresIn } as jwt.SignOptions);
 }
 
 /**

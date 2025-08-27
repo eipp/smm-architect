@@ -62,7 +62,7 @@ describe('Agent Executor Integration Tests', () => {
       expect(response.jobId).toMatch(/^job-research-/);
       expect(response.outputs).toBeDefined();
       expect(response.modelUsage).toBeDefined();
-      expect(response.modelUsage.length).toBeGreaterThan(0);
+      expect(response.modelUsage!.length).toBeGreaterThan(0);
 
       // Verify BrandTwin output structure
       const brandTwin = response.outputs.brandTwin;
@@ -73,11 +73,12 @@ describe('Agent Executor Integration Tests', () => {
       expect(brandTwin.metadata).toBeDefined();
 
       // Verify model usage tracking
-      const usage = response.modelUsage[0];
-      expect(usage.modelId).toBeDefined();
-      expect(usage.totalTokens).toBeGreaterThan(0);
-      expect(usage.costEstimateUsd).toBeGreaterThan(0);
-      expect(usage.promptHash).toBeDefined();
+      const usage = response.modelUsage?.[0];
+      expect(usage).toBeDefined();
+      expect(usage!.modelId).toBeDefined();
+      expect(usage!.totalTokens).toBeGreaterThan(0);
+      expect(usage!.costEstimateUsd).toBeGreaterThan(0);
+      expect(usage!.promptHash).toBeDefined();
 
       // Verify quality score
       expect(response.qualityScore).toBeGreaterThanOrEqual(0);
@@ -86,7 +87,7 @@ describe('Agent Executor Integration Tests', () => {
       console.log('✅ Research agent execution completed');
       console.log(`Job ID: ${response.jobId}`);
       console.log(`Duration: ${response.duration}ms`);
-      console.log(`Model usage: ${response.modelUsage.length} calls`);
+      console.log(`Model usage: ${response.modelUsage?.length || 0} calls`);
       console.log(`Quality score: ${response.qualityScore}`);
     }, 30000);
 
@@ -128,18 +129,19 @@ describe('Agent Executor Integration Tests', () => {
       const response = await agentExecutor.executeJob(request);
 
       expect(response.modelUsage).toBeDefined();
-      expect(response.modelUsage.length).toBeGreaterThan(0);
+      expect(response.modelUsage!.length).toBeGreaterThan(0);
 
-      const totalCost = response.modelUsage.reduce((sum, usage) => sum + usage.costEstimateUsd, 0);
+      const totalCost = response.modelUsage!.reduce((sum, usage) => sum + (usage?.costEstimateUsd || 0), 0);
       expect(totalCost).toBeGreaterThan(0);
 
       // Verify usage tracking fields
-      const usage = response.modelUsage[0];
-      expect(usage.inputTokens).toBeGreaterThan(0);
-      expect(usage.outputTokens).toBeGreaterThan(0);
-      expect(usage.totalTokens).toBe(usage.inputTokens + usage.outputTokens);
-      expect(usage.provider).toBeDefined();
-      expect(usage.timestamp).toBeDefined();
+      const usage = response.modelUsage![0];
+      expect(usage).toBeDefined();
+      expect(usage!.inputTokens).toBeGreaterThan(0);
+      expect(usage!.outputTokens).toBeGreaterThan(0);
+      expect(usage!.totalTokens).toBe((usage!.inputTokens || 0) + (usage!.outputTokens || 0));
+      expect(usage!.provider).toBeDefined();
+      expect(usage!.timestamp).toBeDefined();
     });
   });
 
@@ -251,9 +253,11 @@ describe('Agent Executor Integration Tests', () => {
       const activeJobs = agentExecutor.getActiveJobs();
       expect(activeJobs.length).toBeGreaterThan(0);
       
-      // Cancel the first job
-      const cancelled = await agentExecutor.cancelJob(activeJobs[0]);
-      expect(cancelled).toBe(true);
+      // Cancel the first job if it exists
+      if (activeJobs.length > 0 && activeJobs[0] !== undefined) {
+        const cancelled = await agentExecutor.cancelJob(activeJobs[0]);
+        expect(cancelled).toBe(true);
+      }
       
       // Wait for execution to complete
       const response = await executionPromise;
@@ -349,15 +353,15 @@ describe('Agent Executor Integration Tests', () => {
       const response = await agentExecutor.executeJob(request);
 
       expect(response.modelUsage).toBeDefined();
-      expect(response.modelUsage.length).toBeGreaterThan(0);
+      expect(response.modelUsage?.length).toBeGreaterThan(0);
 
       // Verify cost tracking
-      const totalCost = response.modelUsage.reduce((sum, usage) => sum + usage.costEstimateUsd, 0);
+      const totalCost = response.modelUsage?.reduce((sum, usage) => sum + (usage?.costEstimateUsd || 0), 0) || 0;
       expect(totalCost).toBeGreaterThan(0);
       expect(totalCost).toBeLessThan(1.0); // Should be reasonable for a test
 
       // Verify all usage records have required fields
-      response.modelUsage.forEach(usage => {
+      response.modelUsage?.forEach(usage => {
         expect(usage.modelId).toBeDefined();
         expect(usage.totalTokens).toBeGreaterThan(0);
         expect(usage.costEstimateUsd).toBeGreaterThanOrEqual(0);

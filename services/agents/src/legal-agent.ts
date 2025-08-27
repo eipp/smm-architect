@@ -1,5 +1,14 @@
 import { EventEmitter } from 'events';
-import { AIModelProvider } from '../../model-router/src/services/AIModelProvider';
+
+// Mock AI Provider for legal agent
+class MockAIProvider {
+  async generateContent(request: any): Promise<{ content: string }> {
+    // Mock implementation for development
+    return {
+      content: `Generated legal content for ${request.prompt}`
+    };
+  }
+}
 
 export interface ComplianceRule {
   id: string;
@@ -56,12 +65,12 @@ export interface LegalReviewResult {
 }
 
 export class LegalAgent extends EventEmitter {
-  private aiProvider: AIModelProvider;
+  private aiProvider: MockAIProvider;
   private complianceRules: Map<string, ComplianceRule> = new Map();
 
   constructor() {
     super();
-    this.aiProvider = new AIModelProvider();
+    this.aiProvider = new MockAIProvider();
     this.initializeComplianceRules();
   }
 

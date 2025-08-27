@@ -85,7 +85,7 @@ export function errorHandler(
 
   // Handle different error types
   if (error instanceof ApiError) {
-    return res.status(error.statusCode).json({
+    res.status(error.statusCode).json({
       success: false,
       error: {
         code: error.code,
@@ -95,11 +95,12 @@ export function errorHandler(
         requestId,
       },
     } as ErrorResponse);
+    return;
   }
 
   // Handle validation errors
   if (error.name === 'ValidationError') {
-    return res.status(400).json({
+    res.status(400).json({
       success: false,
       error: {
         code: 'VALIDATION_ERROR',
@@ -109,11 +110,12 @@ export function errorHandler(
         requestId,
       },
     } as ErrorResponse);
+    return;
   }
 
   // Handle JWT errors
   if (error.name === 'JsonWebTokenError') {
-    return res.status(401).json({
+    res.status(401).json({
       success: false,
       error: {
         code: 'INVALID_TOKEN',
@@ -122,10 +124,11 @@ export function errorHandler(
         requestId,
       },
     } as ErrorResponse);
+    return;
   }
 
   if (error.name === 'TokenExpiredError') {
-    return res.status(401).json({
+    res.status(401).json({
       success: false,
       error: {
         code: 'TOKEN_EXPIRED',
@@ -134,6 +137,7 @@ export function errorHandler(
         requestId,
       },
     } as ErrorResponse);
+    return;
   }
 
   // Handle Multer errors (file upload)
@@ -168,7 +172,7 @@ export function errorHandler(
         break;
     }
 
-    return res.status(400).json({
+    res.status(400).json({
       success: false,
       error: {
         code,
@@ -177,11 +181,12 @@ export function errorHandler(
         requestId,
       },
     } as ErrorResponse);
+    return;
   }
 
   // Handle database errors
   if (error.message.includes('duplicate key') || error.message.includes('unique constraint')) {
-    return res.status(409).json({
+    res.status(409).json({
       success: false,
       error: {
         code: 'DUPLICATE_RESOURCE',
@@ -190,10 +195,11 @@ export function errorHandler(
         requestId,
       },
     } as ErrorResponse);
+    return;
   }
 
   if (error.message.includes('foreign key constraint') || error.message.includes('violates foreign key')) {
-    return res.status(400).json({
+    res.status(400).json({
       success: false,
       error: {
         code: 'INVALID_REFERENCE',
@@ -202,11 +208,12 @@ export function errorHandler(
         requestId,
       },
     } as ErrorResponse);
+    return;
   }
 
   // Handle timeout errors
   if (error.message.includes('timeout') || error.name === 'TimeoutError') {
-    return res.status(408).json({
+    res.status(408).json({
       success: false,
       error: {
         code: 'REQUEST_TIMEOUT',
@@ -215,11 +222,12 @@ export function errorHandler(
         requestId,
       },
     } as ErrorResponse);
+    return;
   }
 
   // Handle network/connection errors
   if (error.message.includes('ECONNREFUSED') || error.message.includes('ENOTFOUND')) {
-    return res.status(502).json({
+    res.status(502).json({
       success: false,
       error: {
         code: 'SERVICE_UNAVAILABLE',
@@ -228,6 +236,7 @@ export function errorHandler(
         requestId,
       },
     } as ErrorResponse);
+    return;
   }
 
   // Default to internal server error

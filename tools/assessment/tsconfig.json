@@ -12,7 +12,8 @@
     "declaration": true,
     "outDir": "./dist",
     "rootDir": "./",
-    "types": []
+    "types": ["node"],
+    "lib": ["ES2022", "DOM"]
   },
   "include": [
     "./**/*.ts"

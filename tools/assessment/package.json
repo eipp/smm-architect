@@ -19,11 +19,12 @@
     "deprecate-info": "node cli.js deprecate-scripts"
   },
   "dependencies": {
-    "commander": "^11.0.0"
+    "commander": "^11.0.0",
+    "pg": "^8.11.3"
   },
   "devDependencies": {
-    "@types/node": "^20.0.0",
-    "typescript": "^5.0.0"
+    "@types/node": "^20.19.11",
+    "typescript": "^5.9.2"
   },
   "engines": {
     "node": ">=18.0.0"

@@ -115,7 +115,7 @@ services:
 
   # Infrastructure Services
   vault:
-    image: vault:1.15
+    image: hashicorp/vault:1.15.2
     container_name: smm-vault
     ports:
       - "8200:8200"

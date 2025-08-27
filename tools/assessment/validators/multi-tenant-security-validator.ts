@@ -36,6 +36,7 @@ import {
 } from '../core/types.js';
 import { IValidator } from '../core/orchestrator.js';
 import { SMMAssessmentConfigManager } from '../core/config.js';
+import { createTestDatabaseClient, setTenantContext, clearTenantContext, checkRLSPolicies, testTenantIsolation, testCrossTenantLeakage, closeDatabaseClient } from '../utils/database.js';
 
 export class MultiTenantSecurityValidator implements IValidator {
   public readonly name = 'multi-tenant-security';
@@ -49,6 +50,7 @@ export class MultiTenantSecurityValidator implements IValidator {
   private evilTenant: string;
 
   constructor() {
+    this.config = {} as SMMProductionAssessmentConfig; // Will be set in validate method
     this.configManager = SMMAssessmentConfigManager.getInstance();
     this.testTenantA = `tenant-a-${randomUUID()}`;
     this.testTenantB = `tenant-b-${randomUUID()}`;
@@ -359,52 +361,46 @@ export class MultiTenantSecurityValidator implements IValidator {
 
   private async checkRLSPolicies(): Promise<boolean> {
     try {
-      // This would check if RLS policies are enabled on key tables
-      // For now, we'll check if the database client has RLS support
-      const result = await this.executeDatabaseQuery(`
-        SELECT schemaname, tablename, rowsecurity 
-        FROM pg_tables 
-        WHERE schemaname = 'public' 
-        AND tablename IN ('workspaces', 'workspace_contracts', 'audit_bundles')
-      `);
-      
-      return result.every((row: any) => row.rowsecurity === true);
-    } catch {
+      const client = await createTestDatabaseClient({});
+      const result = await checkRLSPolicies(client);
+      await closeDatabaseClient(client);
+      return result;
+    } catch (error) {
+      console.error('RLS policy check failed:', error);
       return false;
     }
   }
 
   private async testTenantContextSetting(): Promise<boolean> {
     try {
-      // Test setting tenant context
-      await this.executeDatabaseQuery(`SELECT set_config('smm.tenant_id', $1, true)`, [this.testTenantA]);
+      const client = await createTestDatabaseClient({});
+      await setTenantContext(client, this.testTenantA);
       
       // Verify context was set
-      const result = await this.executeDatabaseQuery(`SELECT current_setting('smm.tenant_id', true)`);
-      return result[0]?.current_setting === this.testTenantA;
-    } catch {
+      const result = await client.query('SELECT current_setting(\'app.current_tenant_id\', true) as tenant_id');
+      const isSet = result.rows[0]?.tenant_id === this.testTenantA;
+      
+      await clearTenantContext(client);
+      await closeDatabaseClient(client);
+      
+      return isSet;
+    } catch (error) {
+      console.error('Tenant context setting test failed:', error);
       return false;
     }
   }
 
   private async testQueryFiltering(): Promise<boolean> {
     try {
-      // Set tenant context for tenant A
-      await this.executeDatabaseQuery(`SELECT set_config('smm.tenant_id', $1, true)`, [this.testTenantA]);
+      const client = await createTestDatabaseClient({});
       
-      // Query should only return tenant A's data
-      const tenantAResult = await this.executeDatabaseQuery(`
-        SELECT COUNT(*) as count FROM workspaces WHERE tenant_id = $1
-      `, [this.testTenantA]);
+      // Test tenant isolation
+      const result = await testTenantIsolation(client, this.testTenantA, this.testTenantB);
       
-      // Try to query tenant B's data while in tenant A context
-      const crossTenantResult = await this.executeDatabaseQuery(`
-        SELECT COUNT(*) as count FROM workspaces WHERE tenant_id = $1
-      `, [this.testTenantB]);
-      
-      // Should not be able to see tenant B's data
-      return crossTenantResult[0]?.count === 0 || crossTenantResult[0]?.count === '0';
-    } catch {
+      await closeDatabaseClient(client);
+      return result;
+    } catch (error) {
+      console.error('Query filtering test failed:', error);
       return false;
     }
   }
@@ -534,48 +530,101 @@ export class MultiTenantSecurityValidator implements IValidator {
    */
   
   private async setupTestTenantData(): Promise<void> {
-    // Create test workspaces for both tenants
     try {
-      await this.createTestWorkspace(this.testTenantA, 'Test Workspace A');
-      await this.createTestWorkspace(this.testTenantB, 'Test Workspace B');
+      // Create database client
+      const client = await createTestDatabaseClient({});
+      
+      // Create test workspaces for tenant A
+      await setTenantContext(client, this.testTenantA);
+      await client.query(`
+        INSERT INTO workspaces (workspace_id, tenant_id, created_by, created_at, updated_at, lifecycle, contract_version, goals, primary_channels, budget, approval_policy, risk_profile, data_retention, ttl_hours, policy_bundle_ref, policy_bundle_checksum, contract_data)
+        VALUES ($1, $2, $3, NOW(), NOW(), $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+      `, [
+        `test-workspace-a-${Date.now()}`,
+        this.testTenantA,
+        'system',
+        'ACTIVE',
+        '1.0',
+        JSON.stringify({ primary: 'engagement' }),
+        JSON.stringify(['linkedin', 'twitter']),
+        JSON.stringify({ daily: 100 }),
+        JSON.stringify({ required: true }),
+        'low',
+        JSON.stringify({ period: 30 }),
+        720,
+        'test-ref-a',
+        'test-checksum-a',
+        JSON.stringify({ test: true })
+      ]);
+      
+      // Create test workspaces for tenant B
+      await setTenantContext(client, this.testTenantB);
+      await client.query(`
+        INSERT INTO workspaces (workspace_id, tenant_id, created_by, created_at, updated_at, lifecycle, contract_version, goals, primary_channels, budget, approval_policy, risk_profile, data_retention, ttl_hours, policy_bundle_ref, policy_bundle_checksum, contract_data)
+        VALUES ($1, $2, $3, NOW(), NOW(), $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+      `, [
+        `test-workspace-b-${Date.now()}`,
+        this.testTenantB,
+        'system',
+        'ACTIVE',
+        '1.0',
+        JSON.stringify({ primary: 'engagement' }),
+        JSON.stringify(['linkedin', 'twitter']),
+        JSON.stringify({ daily: 100 }),
+        JSON.stringify({ required: true }),
+        'low',
+        JSON.stringify({ period: 30 }),
+        720,
+        'test-ref-b',
+        'test-checksum-b',
+        JSON.stringify({ test: true })
+      ]);
+      
+      // Create test workspaces for evil tenant
+      await setTenantContext(client, this.evilTenant);
+      await client.query(`
+        INSERT INTO workspaces (workspace_id, tenant_id, created_by, created_at, updated_at, lifecycle, contract_version, goals, primary_channels, budget, approval_policy, risk_profile, data_retention, ttl_hours, policy_bundle_ref, policy_bundle_checksum, contract_data)
+        VALUES ($1, $2, $3, NOW(), NOW(), $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+      `, [
+        `test-workspace-evil-${Date.now()}`,
+        this.evilTenant,
+        'system',
+        'ACTIVE',
+        '1.0',
+        JSON.stringify({ primary: 'engagement' }),
+        JSON.stringify(['linkedin', 'twitter']),
+        JSON.stringify({ daily: 100 }),
+        JSON.stringify({ required: true }),
+        'low',
+        JSON.stringify({ period: 30 }),
+        720,
+        'test-ref-evil',
+        'test-checksum-evil',
+        JSON.stringify({ test: true })
+      ]);
+      
+      // Clean up
+      await clearTenantContext(client);
+      await closeDatabaseClient(client);
+      
+      console.log('Test tenant data created successfully');
     } catch (error) {
-      console.warn('Failed to setup test tenant data:', error);
+      console.error('Failed to setup test tenant data:', error);
+      throw new Error(`Failed to setup test tenant data: ${error instanceof Error ? error.message : String(error)}`);
     }
-  }
-
-  private async createTestWorkspace(tenantId: string, name: string): Promise<void> {
-    // Set tenant context
-    await this.executeDatabaseQuery(`SELECT set_config('smm.tenant_id', $1, true)`, [tenantId]);
-    
-    // Create workspace
-    await this.executeDatabaseQuery(`
-      INSERT INTO workspaces (workspace_id, tenant_id, name, status, created_at) 
-      VALUES ($1, $2, $3, $4, NOW())
-      ON CONFLICT (workspace_id) DO NOTHING
-    `, [randomUUID(), tenantId, name, 'active']);
   }
 
   private async testDataSeparation(): Promise<boolean> {
     try {
-      // Set context for tenant A
-      await this.executeDatabaseQuery(`SELECT set_config('smm.tenant_id', $1, true)`, [this.testTenantA]);
+      const client = await createTestDatabaseClient({});
       
-      // Query should only return tenant A's workspaces
-      const tenantAWorkspaces = await this.executeDatabaseQuery(`
-        SELECT COUNT(*) as count FROM workspaces
-      `);
+      // Test tenant isolation
+      const result = await testTenantIsolation(client, this.testTenantA, this.testTenantB);
       
-      // Set context for tenant B
-      await this.executeDatabaseQuery(`SELECT set_config('smm.tenant_id', $1, true)`, [this.testTenantB]);
-      
-      // Query should only return tenant B's workspaces
-      const tenantBWorkspaces = await this.executeDatabaseQuery(`
-        SELECT COUNT(*) as count FROM workspaces
-      `);
-      
-      // Each tenant should only see their own data
-      return tenantAWorkspaces[0]?.count !== tenantBWorkspaces[0]?.count;
-    } catch {
+      await closeDatabaseClient(client);
+      return result;
+    } catch (error) {
+      console.error('Data separation test failed:', error);
       return false;
     }
   }
@@ -601,17 +650,16 @@ export class MultiTenantSecurityValidator implements IValidator {
   
   private async testDatabaseLeakage(): Promise<boolean> {
     try {
-      // Try to access other tenant's data directly
-      await this.executeDatabaseQuery(`SELECT set_config('smm.tenant_id', $1, true)`, [this.evilTenant]);
+      const client = await createTestDatabaseClient({});
       
-      const result = await this.executeDatabaseQuery(`
-        SELECT * FROM workspaces WHERE tenant_id != $1 LIMIT 1
-      `, [this.evilTenant]);
+      // Test cross-tenant leakage
+      const result = await testCrossTenantLeakage(client, this.testTenantA, this.evilTenant);
       
-      // If we get results, there's leakage
-      return result.length > 0;
-    } catch {
-      return false;
+      await closeDatabaseClient(client);
+      return result;
+    } catch (error) {
+      console.error('Database leakage test failed:', error);
+      return true; // Assume leakage for safety
     }
   }
 
@@ -683,19 +731,15 @@ export class MultiTenantSecurityValidator implements IValidator {
   }
 
   private async executeDatabaseQuery(query: string, params: any[] = []): Promise<any[]> {
-    // This would use the actual database client
-    // For now, simulate the behavior
-    if (query.includes('DROP') || query.includes('DELETE') || query.includes('INSERT')) {
-      throw new Error('Simulated database protection');
+    try {
+      const client = await createTestDatabaseClient({});
+      const result = await client.query(query, params);
+      await closeDatabaseClient(client);
+      return result.rows;
+    } catch (error) {
+      console.error('Database query failed:', error);
+      throw error;
     }
-    
-    // Simulate RLS behavior
-    if (query.includes('workspaces') && params.length > 0) {
-      const tenantId = params[0];
-      return [{ count: tenantId === this.testTenantA ? 1 : 0 }];
-    }
-    
-    return [{ current_setting: params[0] || 'test' }];
   }
 
   /**

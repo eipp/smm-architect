@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { body, param, query, validationResult } from 'express-validator';
+import { body, param, query, validationResult, matchedData } from 'express-validator';
 import { AuthenticatedRequest, requireScopes } from '../middleware/auth';
 import { ApiError } from '../middleware/error-handler';
 import { PublisherService } from '../services/PublisherService';
@@ -238,14 +238,17 @@ router.get('/optimization/:platform',
       }
 
       const { platform } = req.params;
-      const { workspaceId } = req.query;
+      // Get validated data from express-validator
+      const validatedData = matchedData(req);
+      const workspaceId = validatedData.workspaceId as string;
       
       // Verify user has access to workspace
       if (req.user?.workspaceId !== workspaceId && !req.user?.scopes.includes('admin')) {
         throw new ApiError(403, 'WORKSPACE_ACCESS_DENIED', 'Access denied to workspace');
       }
 
-      const optimization = await publisherService.getContentOptimization(platform, workspaceId as string);
+      // Ensure workspaceId is a string
+      const optimization = await publisherService.getContentOptimization(platform, workspaceId);
 
       res.json({
         success: true,
@@ -279,7 +282,7 @@ router.get('/analytics/:postId',
 
       const { postId } = req.params;
       
-      const analytics = await publisherService.getCrossPlatformAnalytics(postId);
+      const analytics = await publisherService.getCrossPlatformAnalytics(postId || '');
 
       res.json({
         success: true,
@@ -480,7 +483,7 @@ router.get('/media/:workspaceId',
         throw new ApiError(403, 'WORKSPACE_ACCESS_DENIED', 'Access denied to workspace');
       }
 
-      const mediaFiles = await mediaUploadService.getWorkspaceMedia(workspaceId, {
+      const mediaFiles = await mediaUploadService.getWorkspaceMedia((workspaceId || '') as string, {
         type: type as string,
         limit: parseInt(limit as string),
         offset: parseInt(offset as string)

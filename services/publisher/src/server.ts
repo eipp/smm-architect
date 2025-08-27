@@ -60,13 +60,16 @@ const PORT = process.env.PORT || 8081;
 // Health check dependencies
 let redisClient: any;
 let publishQueue: Queue.Queue;
+let server: any;
 
 // Initialize Redis client
 async function initializeRedis() {
   try {
     redisClient = createClient({
-      host: process.env.REDIS_HOST || 'localhost',
-      port: parseInt(process.env.REDIS_PORT || '6379'),
+      socket: {
+        host: process.env.REDIS_HOST || 'localhost',
+        port: parseInt(process.env.REDIS_PORT || '6379'),
+      },
       password: process.env.REDIS_PASSWORD,
     });
 
@@ -250,17 +253,19 @@ app.get('/ready', async (req, res) => {
   try {
     // Check if all required services are ready
     if (!redisClient || !redisClient.isOpen) {
-      return res.status(503).json({
+      res.status(503).json({
         ready: false,
         message: 'Redis not ready',
       });
+      return;
     }
 
     if (!publishQueue) {
-      return res.status(503).json({
+      res.status(503).json({
         ready: false,
         message: 'Publish queue not ready',
       });
+      return;
     }
 
     res.json({
@@ -327,7 +332,7 @@ const shutdown = async (signal: string) => {
   logger.info(`Received ${signal}, starting graceful shutdown...`);
   
   // Stop accepting new connections
-  server.close(async (err) => {
+  server.close(async (err: Error | null) => {
     if (err) {
       logger.error('Error during server shutdown:', err);
       process.exit(1);
@@ -377,7 +382,7 @@ async function startServer() {
     await initializeRedis();
     
     // Start HTTP server
-    const server = app.listen(PORT, () => {
+    server = app.listen(PORT, () => {
       logger.info(`Publisher Service started on port ${PORT}`, {
         environment: process.env.NODE_ENV,
         logLevel: logger.level,
@@ -405,5 +410,5 @@ export default app;
 
 // Start server if not in test mode
 if (process.env.NODE_ENV !== 'test') {
-  const server = startServer();
+  startServer();
 }

@@ -356,11 +356,12 @@ export class PublisherService {
         error: 'Failed to retrieve job status',
       };
     }
+  }
 
   /**
    * Get optimization recommendations for content
    */
-  async getContentOptimization(platform: string, workspaceId: string): Promise<ContentOptimization> {
+  async getContentOptimization(platform: string, workspaceId?: string): Promise<ContentOptimization> {
     // This would typically analyze historical performance data
     // For now, return platform-specific recommendations
     
@@ -527,7 +528,7 @@ export class PublisherService {
       
     } catch (error) {
       console.error(`Failed to process scheduled publish job ${id}:`, error);
-      await this.updateScheduledPostStatus(id, 'failed', error.message);
+      await this.updateScheduledPostStatus(id, 'failed', error instanceof Error ? error.message : String(error));
       throw error;
     }
   }

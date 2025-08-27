@@ -117,7 +117,8 @@ export enum ProductionImpact {
   FINANCIAL_LOSS = 'financial_loss',
   REPUTATION_DAMAGE = 'reputation_damage',
   PERFORMANCE_DEGRADATION = 'performance_degradation',
-  USER_EXPERIENCE_IMPACT = 'user_experience_impact'
+  USER_EXPERIENCE_IMPACT = 'user_experience_impact',
+  SECURITY_VULNERABILITY = 'security_vulnerability'
 }
 
 export enum RecommendationType {

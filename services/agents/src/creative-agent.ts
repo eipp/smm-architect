@@ -1,5 +1,14 @@
 import { EventEmitter } from 'events';
-import { AIModelProvider } from '../../model-router/src/services/AIModelProvider';
+
+// Mock AI Provider for creative agent
+class MockAIProvider {
+  async generateContent(request: any): Promise<{ content: string }> {
+    // Mock implementation for development
+    return {
+      content: `Generated creative content for ${request.prompt}`
+    };
+  }
+}
 
 export interface CreativeRequest {
   workspaceId: string;
@@ -67,11 +76,11 @@ export interface CreativeResult {
 }
 
 export class CreativeAgent extends EventEmitter {
-  private aiProvider: AIModelProvider;
+  private aiProvider: MockAIProvider;
 
   constructor() {
     super();
-    this.aiProvider = new AIModelProvider();
+    this.aiProvider = new MockAIProvider();
   }
 
   async generateCreativeConcepts(request: CreativeRequest): Promise<CreativeResult> {

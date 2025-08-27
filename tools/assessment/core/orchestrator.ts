@@ -30,84 +30,11 @@ import { AgentOrchestrationValidator } from '../validators/agent-orchestration-v
 import { MultiTenantSecurityValidator } from '../validators/multi-tenant-security-validator.js';
 import { CampaignSimulationValidator } from '../validators/campaign-simulation-validator.js';
 import { ExternalIntegrationValidator } from '../validators/external-integration-validator.js';
+import { ComplianceFrameworkValidator } from '../validators/compliance-framework-validator.js';
+import { WorkspaceContractLifecycleValidator } from '../validators/workspace-contract-lifecycle-validator.js';
+import { ProductionDataFlowValidator } from '../validators/production-data-flow-validator.js';
+import { MonitoringAlertingValidator } from '../validators/monitoring-alerting-validator.js';
 import { RiskAnalysisEngine } from '../engines/risk-analysis-engine.js';
-
-// Placeholder validators (to be implemented)
-class ComplianceFrameworkValidator implements IValidator {
-  name = 'compliance-framework';
-  category = AssessmentCategory.COMPLIANCE_FRAMEWORK;
-  criticalityLevel = CriticalityLevel.CRITICAL;
-  async validate(_config: SMMProductionAssessmentConfig): Promise<AssessmentResult> {
-    return {
-      validatorName: this.name,
-      category: this.category,
-      status: AssessmentStatus.NOT_APPLICABLE,
-      score: 75,
-      criticalityLevel: this.criticalityLevel,
-      findings: [],
-      recommendations: [],
-      executionTime: 0,
-      timestamp: new Date()
-    };
-  }
-}
-
-class WorkspaceLifecycleValidator implements IValidator {
-  name = 'workspace-lifecycle';
-  category = AssessmentCategory.WORKSPACE_LIFECYCLE;
-  criticalityLevel = CriticalityLevel.HIGH;
-  async validate(_config: SMMProductionAssessmentConfig): Promise<AssessmentResult> {
-    return {
-      validatorName: this.name,
-      category: this.category,
-      status: AssessmentStatus.NOT_APPLICABLE,
-      score: 75,
-      criticalityLevel: this.criticalityLevel,
-      findings: [],
-      recommendations: [],
-      executionTime: 0,
-      timestamp: new Date()
-    };
-  }
-}
-
-class DataFlowValidator implements IValidator {
-  name = 'data-flow';
-  category = AssessmentCategory.DATA_FLOW_VALIDATION;
-  criticalityLevel = CriticalityLevel.MEDIUM;
-  async validate(_config: SMMProductionAssessmentConfig): Promise<AssessmentResult> {
-    return {
-      validatorName: this.name,
-      category: this.category,
-      status: AssessmentStatus.NOT_APPLICABLE,
-      score: 75,
-      criticalityLevel: this.criticalityLevel,
-      findings: [],
-      recommendations: [],
-      executionTime: 0,
-      timestamp: new Date()
-    };
-  }
-}
-
-class MonitoringAlertingValidator implements IValidator {
-  name = 'monitoring-alerting';
-  category = AssessmentCategory.MONITORING_ALERTING;
-  criticalityLevel = CriticalityLevel.MEDIUM;
-  async validate(_config: SMMProductionAssessmentConfig): Promise<AssessmentResult> {
-    return {
-      validatorName: this.name,
-      category: this.category,
-      status: AssessmentStatus.NOT_APPLICABLE,
-      score: 75,
-      criticalityLevel: this.criticalityLevel,
-      findings: [],
-      recommendations: [],
-      executionTime: 0,
-      timestamp: new Date()
-    };
-  }
-}
 
 export interface IValidator {
   name: string;
@@ -135,8 +62,8 @@ export class SMMProductionAssessmentOrchestrator {
       new CampaignSimulationValidator(),
       new ExternalIntegrationValidator(),
       new ComplianceFrameworkValidator(),
-      new WorkspaceLifecycleValidator(),
-      new DataFlowValidator(),
+      new WorkspaceContractLifecycleValidator(),
+      new ProductionDataFlowValidator(),
       new MonitoringAlertingValidator()
     ];
 
@@ -210,8 +137,19 @@ export class SMMProductionAssessmentOrchestrator {
         if (result.status === 'fulfilled') {
           results.push(result.value);
         } else {
-          console.error(`❌ Validator ${this.validators[index].name} failed:`, result.reason);
-          results.push(this.createFailedValidationResult(this.validators[index], result.reason));
+          const validator = this.validators[index];
+          if (validator) {
+            console.error(`❌ Validator ${validator.name} failed:`, result.reason);
+            results.push(this.createFailedValidationResult(validator, result.reason));
+          } else {
+            console.error(`❌ Unknown validator at index ${index} failed:`, result.reason);
+            results.push(this.createFailedValidationResult({
+              name: 'unknown',
+              category: AssessmentCategory.AGENT_ORCHESTRATION,
+              criticalityLevel: CriticalityLevel.INFO,
+              validate: async () => { throw new Error('Unknown validator'); }
+            } as IValidator, result.reason));
+          }
         }
       });
     } else {

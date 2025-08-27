@@ -36,6 +36,7 @@ export class CampaignSimulationValidator implements IValidator {
   private configManager: SMMAssessmentConfigManager;
 
   constructor() {
+    this.config = {} as SMMProductionAssessmentConfig; // Will be set in validate method
     this.configManager = SMMAssessmentConfigManager.getInstance();
   }
 

@@ -280,7 +280,7 @@ export class MediaUploadService {
         url: 'https://example.com/media-2.mp4',
         cdnUrl: 'https://cdn.example.com/media-2.mp4',
         thumbnailUrl: 'https://cdn.example.com/thumbnails/media-2.jpg',
-        metadata: { duration: 60, format: 'mp4', resolution: '1920x1080' },
+        metadata: { duration: 60, format: 'mp4' },
         uploadedAt: new Date(Date.now() - 43200000), // 12 hours ago
         uploadedBy: 'user-456',
       },
