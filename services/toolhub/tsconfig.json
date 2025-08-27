@@ -23,7 +23,8 @@
     "exactOptionalPropertyTypes": true,
     "noImplicitOverride": true,
     "noPropertyAccessFromIndexSignature": false,
-    "noUncheckedIndexedAccess": false
+    "noUncheckedIndexedAccess": false,
+    "types": []
   },
   "include": [
     "src/**/*"

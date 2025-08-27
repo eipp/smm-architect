@@ -7,7 +7,10 @@
     "rootDir": "./",
     "strict": true,
     "esModuleInterop": true,
+    "moduleResolution": "node",
+    "allowSyntheticDefaultImports": true,
     "skipLibCheck": true,
+    "skipDefaultLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
     "declaration": true,
@@ -21,8 +24,12 @@
     "src/**/*"
   ],
   "exclude": [
+    "node_modules/**/*",
+    "**/node_modules/**/*",
     "node_modules",
     "dist",
-    "coverage"
+    "coverage",
+    "**/dist/**/*",
+    "**/coverage/**/*"
   ]
 }

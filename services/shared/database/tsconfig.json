@@ -25,7 +25,8 @@
     "noPropertyAccessFromIndexSignature": false,
     "noUncheckedIndexedAccess": false,
     "experimentalDecorators": true,
-    "emitDecoratorMetadata": true
+    "emitDecoratorMetadata": true,
+    "types": []
   },
   "include": [
     "*.ts",

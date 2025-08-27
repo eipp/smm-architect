@@ -1,6 +1,5 @@
 import crypto from 'crypto';
 import { KMSProvider } from '../types';
-import * as forge from 'node-forge';
 import { VaultKMSAdapter } from '../kms/adapters/vault';
 import { AWSKMSAdapter } from '../kms/adapters/aws';
 import { GCPKMSAdapter } from '../kms/adapters/gcp';
@@ -11,40 +10,38 @@ import { GCPKMSAdapter } from '../kms/adapters/gcp';
  */
 export class KMSService implements KMSProvider {
   private provider: 'aws' | 'gcp' | 'vault' | 'local';
-  private config: any;
   private vaultAdapter?: VaultKMSAdapter;
   private awsAdapter?: AWSKMSAdapter;
   private gcpAdapter?: GCPKMSAdapter;
 
   constructor(provider: 'aws' | 'gcp' | 'vault' | 'local', config: any = {}) {
     this.provider = provider;
-    this.config = config;
     
     // Initialize appropriate adapter based on provider
     switch (provider) {
       case 'vault':
         this.vaultAdapter = new VaultKMSAdapter({
-          vaultUrl: config.vaultUrl || process.env.VAULT_ADDR || 'http://localhost:8200',
-          vaultToken: config.vaultToken || process.env.VAULT_TOKEN,
+          vaultUrl: config.vaultUrl || process.env['VAULT_ADDR'] || 'http://localhost:8200',
+          vaultToken: config.vaultToken || process.env['VAULT_TOKEN'],
           transitMount: config.transitMount || 'transit',
           keyPrefix: config.keyPrefix || 'smm-audit'
         });
         break;
       case 'aws':
         this.awsAdapter = new AWSKMSAdapter({
-          region: config.region || process.env.AWS_REGION,
-          accessKeyId: config.accessKeyId || process.env.AWS_ACCESS_KEY_ID,
-          secretAccessKey: config.secretAccessKey || process.env.AWS_SECRET_ACCESS_KEY,
-          sessionToken: config.sessionToken || process.env.AWS_SESSION_TOKEN,
+          region: config.region || process.env['AWS_REGION'],
+          accessKeyId: config.accessKeyId || process.env['AWS_ACCESS_KEY_ID'],
+          secretAccessKey: config.secretAccessKey || process.env['AWS_SECRET_ACCESS_KEY'],
+          sessionToken: config.sessionToken || process.env['AWS_SESSION_TOKEN'],
           endpoint: config.endpoint
         });
         break;
       case 'gcp':
         this.gcpAdapter = new GCPKMSAdapter({
-          projectId: config.projectId || process.env.GOOGLE_CLOUD_PROJECT,
-          locationId: config.locationId || process.env.GCP_LOCATION,
-          keyRingId: config.keyRingId || process.env.GCP_KMS_KEYRING,
-          keyFilename: config.keyFilename || process.env.GOOGLE_APPLICATION_CREDENTIALS,
+          projectId: config.projectId || process.env['GOOGLE_CLOUD_PROJECT'],
+          locationId: config.locationId || process.env['GCP_LOCATION'],
+          keyRingId: config.keyRingId || process.env['GCP_KMS_KEYRING'],
+          keyFilename: config.keyFilename || process.env['GOOGLE_APPLICATION_CREDENTIALS'],
           credentials: config.credentials
         });
         break;
@@ -243,7 +240,8 @@ export class KMSService implements KMSProvider {
       const signature = sign.sign(keyPair.privateKey, 'base64');
       return signature;
     } catch (error) {
-      throw new Error(`Local signing failed: ${error.message}`);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      throw new Error(`Local signing failed: ${errorMessage}`);
     }
   }
 
@@ -298,7 +296,7 @@ export class KMSService implements KMSProvider {
   /**
    * Utility method to get key metadata
    */
-  async getKeyMetadata(keyId: string): Promise<{
+  async getKeyMetadata(_keyId: string): Promise<{
     keyId: string;
     algorithm: string;
     keySize: number;
@@ -306,7 +304,7 @@ export class KMSService implements KMSProvider {
     status: 'active' | 'disabled' | 'deleted';
   }> {
     return {
-      keyId,
+      keyId: _keyId,
       algorithm: 'RSA-2048',
       keySize: 2048,
       createdAt: new Date().toISOString(),
@@ -317,8 +315,8 @@ export class KMSService implements KMSProvider {
   /**
    * Rotate a key (create new version)
    */
-  async rotateKey(keyId: string): Promise<string> {
-    const newKeyId = `${keyId}-v${Date.now()}`;
+  async rotateKey(_keyId: string): Promise<string> {
+    const newKeyId = `${_keyId}-v${Date.now()}`;
     return this.createKey(newKeyId);
   }
 
