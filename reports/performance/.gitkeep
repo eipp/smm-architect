@@ -1,2 +1,0 @@
-# This file ensures the reports/performance directory is tracked by Git
-# Performance test reports will be generated here by CI workflows

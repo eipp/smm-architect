@@ -160,6 +160,12 @@ build/
 coverage/
 .nyc_output/
 
+# Performance test artifacts
+reports/performance/*.json
+tests/performance/baselines/*.json
+!reports/performance/.gitkeep
+!tests/performance/baselines/.gitkeep
+
 # Sentry
 .sentryclirc
 sentry.properties
