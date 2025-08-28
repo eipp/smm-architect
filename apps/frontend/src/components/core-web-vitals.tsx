@@ -1,11 +1,11 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { getCLS, getFID, getFCP, getLCP, getTTFB, type Metric } from "web-vitals"
+import { onCLS, onINP, onFCP, onLCP, onTTFB, type Metric } from "web-vitals"
 
 interface VitalsData {
   cls: number | null
-  fid: number | null
+  inp: number | null
   fcp: number | null
   lcp: number | null
   ttfb: number | null
@@ -13,7 +13,7 @@ interface VitalsData {
 
 interface VitalsThresholds {
   cls: { good: number; needsImprovement: number }
-  fid: { good: number; needsImprovement: number }
+  inp: { good: number; needsImprovement: number }
   fcp: { good: number; needsImprovement: number }
   lcp: { good: number; needsImprovement: number }
   ttfb: { good: number; needsImprovement: number }
@@ -22,7 +22,7 @@ interface VitalsThresholds {
 // Web Vitals thresholds (in milliseconds, except CLS which is a score)
 const VITALS_THRESHOLDS: VitalsThresholds = {
   cls: { good: 0.1, needsImprovement: 0.25 },
-  fid: { good: 100, needsImprovement: 300 },
+  inp: { good: 200, needsImprovement: 500 },
   fcp: { good: 1800, needsImprovement: 3000 },
   lcp: { good: 2500, needsImprovement: 4000 },
   ttfb: { good: 800, needsImprovement: 1800 }
@@ -32,7 +32,7 @@ const VITALS_THRESHOLDS: VitalsThresholds = {
 const TARGET_VALUES = {
   lcp: 1200, // LCP < 1.2s
   cls: 0.02,  // CLS < 0.02
-  fid: 100,   // FID < 100ms
+  inp: 200,   // INP < 200ms
   fcp: 1500,  // FCP < 1.5s
   ttfb: 600   // TTFB < 600ms
 }
@@ -62,7 +62,7 @@ function formatValue(metric: keyof VitalsData, value: number): string {
 export function CoreWebVitals() {
   const [vitals, setVitals] = useState<VitalsData>({
     cls: null,
-    fid: null,
+    inp: null,
     fcp: null,
     lcp: null,
     ttfb: null
@@ -99,11 +99,11 @@ export function CoreWebVitals() {
     }
 
     // Measure Core Web Vitals
-    getCLS(onMetric)
-    getFID(onMetric)
-    getFCP(onMetric)
-    getLCP(onMetric)
-    getTTFB(onMetric)
+    onCLS(onMetric)
+    onINP(onMetric)
+    onFCP(onMetric)
+    onLCP(onMetric)
+    onTTFB(onMetric)
 
     // Keyboard shortcut to toggle visibility
     function handleKeyPress(e: KeyboardEvent) {

@@ -1,0 +1,46 @@
+{{- if .Values.autoscaling.enabled }}
+{{- range $service, $cfg := dict "core-service" (dict "hpa" .Values.autoscaling.coreService) "toolhub" (dict "hpa" .Values.autoscaling.toolhub) "frontend" (dict "hpa" .Values.autoscaling.frontend) "model-router" (dict "hpa" .Values.autoscaling.modelRouter) "publisher" (dict "hpa" .Values.autoscaling.publisher) "agents" (dict "hpa" .Values.autoscaling.agents) }}
+{{- if and $cfg.hpa $cfg.hpa.minReplicas $cfg.hpa.maxReplicas }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "smm-architect.fullname" $ }}-{{ $service }}
+  labels:
+    {{- include "smm-architect.labels" $ | nindent 4 }}
+    {{- include "smm-architect.componentLabels" $service | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "smm-architect.fullname" $ }}-{{ $service }}
+  minReplicas: {{ $cfg.hpa.minReplicas }}
+  maxReplicas: {{ $cfg.hpa.maxReplicas }}
+  {{- $cpuTarget := $cfg.hpa.targetCPUUtilizationPercentage }}
+  {{- $memTarget := $cfg.hpa.targetMemoryUtilizationPercentage }}
+  {{- if or $cpuTarget $memTarget }}
+  metrics:
+  {{- if $cpuTarget }}
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ $cfg.hpa.targetCPUUtilizationPercentage }}
+  {{- end }}
+  {{- if $memTarget }}
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: {{ $cfg.hpa.targetMemoryUtilizationPercentage }}
+  {{- end }}
+  {{- end }}
+  {{- with $cfg.hpa.behavior }}
+  behavior:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+---
+{{- end }}
+{{- end }}
+{{- end }}

@@ -61,7 +61,7 @@ class VaultClient {
         });
         this.client = axios_1.default.create({
             baseURL: this.config.address.replace(/\/$/, ''),
-            timeout: this.config.timeout,
+            timeout: this.config.timeout ?? 30000,
             httpsAgent,
             headers: {
                 'Content-Type': 'application/json'
@@ -71,7 +71,7 @@ class VaultClient {
         this.client.interceptors.request.use((config) => this.requestInterceptor(config), (error) => Promise.reject(error));
         // Add response interceptor for error handling and retries
         this.client.interceptors.response.use(response => response, this.responseErrorInterceptor.bind(this));
-        this.currentToken = this.config.token;
+        this.currentToken = this.config.token ?? undefined;
     }
     /**
      * Initialize the client by authenticating with Vault

@@ -77,6 +77,17 @@ repos:
       - id: detect-secrets
         args: ['--baseline', '.secrets.baseline']
 
+  # Dependency signature verification
+  - repo: local
+    hooks:
+      - id: verify-dependency-signatures
+        name: Verify npm package signatures
+        entry: ./tools/scripts/verify-dependency-signatures.sh
+        language: script
+        pass_filenames: false
+        stages: [pre-push]
+        types: [javascript, typescript]
+
 # Hook configuration
 default_install_hook_types: [pre-commit, commit-msg, pre-push]
 default_stages: [commit, push]

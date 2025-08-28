@@ -8,7 +8,10 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import winston from 'winston';
+import axios from 'axios';
 import { withTenantContext, requireValidTenantContext } from '../database/client';
+import { jwtTokenCache, CachedTokenPayload } from '../jwt-cache';
+import { securityMetrics } from '../security/security-metrics';
 
 const logger = winston.createLogger({
   level: process.env.LOG_LEVEL || 'info',
@@ -20,6 +23,65 @@ const logger = winston.createLogger({
     new winston.transports.Console()
   ]
 });
+
+/**
+ * SIEM Audit Logging Function
+ * Sends security events to external SIEM systems
+ */
+async function sendToSIEM(auditEvent: {
+  timestamp: Date;
+  eventType: string;
+  userId?: string;
+  tenantId?: string;
+  ipAddress?: string;
+  userAgent?: string;
+  action: string;
+  outcome: 'success' | 'failure' | 'error';
+  details: Record<string, any>;
+  riskScore?: number;
+}): Promise<void> {
+  // Skip if SIEM is not configured
+  if (!process.env.SIEM_ENDPOINT || process.env.SIEM_ENABLED !== 'true') {
+    return;
+  }
+
+  try {
+    const payload = {
+      timestamp: auditEvent.timestamp.toISOString(),
+      eventId: `auth_${Date.now()}_${Math.random().toString(36).substring(2)}`,
+      source: 'smm-architect-auth',
+      ...auditEvent
+    };
+
+    // Send to SIEM endpoint (async, non-blocking)
+    setImmediate(async () => {
+      try {
+        await axios.post(process.env.SIEM_ENDPOINT!, payload, {
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': process.env.SIEM_API_KEY ? `Bearer ${process.env.SIEM_API_KEY}` : undefined
+          },
+          timeout: 5000 // 5 second timeout to avoid blocking auth flow
+        });
+        
+        logger.debug('SIEM audit event sent successfully', {
+          eventType: auditEvent.eventType,
+          userId: auditEvent.userId
+        });
+      } catch (siemError) {
+        logger.warn('Failed to send audit event to SIEM', {
+          error: siemError instanceof Error ? siemError.message : String(siemError),
+          eventType: auditEvent.eventType
+        });
+      }
+    });
+  } catch (error) {
+    // Log SIEM errors but don't fail the authentication flow
+    logger.warn('SIEM audit logging error', {
+      error: error instanceof Error ? error.message : String(error)
+    });
+  }
+}
 
 export interface AuthenticatedUser {
   userId: string;
@@ -40,6 +102,30 @@ export interface TokenGenerationOptions {
 }
 
 /**
+ * Validate JWT secret meets security requirements
+ */
+function validateJWTSecret(secretKey: string): void {
+  if (!secretKey) {
+    throw new Error('JWT_SECRET environment variable must be set');
+  }
+  
+  if (secretKey.length < 32) {
+    throw new Error('JWT secret must be at least 32 characters for security');
+  }
+  
+  // Reject weak patterns
+  const weakPatterns = /^(test|dev|default|sample|example|secret|password|admin)/i;
+  if (weakPatterns.test(secretKey)) {
+    throw new Error('Production JWT secret cannot contain weak/default values');
+  }
+  
+  // Reject all-same characters or simple patterns
+  if (/^(.)\1+$/.test(secretKey) || secretKey === '123456789012345678901234567890123') {
+    throw new Error('JWT secret must have sufficient entropy');
+  }
+}
+
+/**
  * Generate a secure JWT token with hardened settings
  */
 export function generateSecureToken(
@@ -48,9 +134,7 @@ export function generateSecureToken(
   options: TokenGenerationOptions = {}
 ): string {
   const secretKey = process.env.JWT_SECRET || process.env.AUTH_JWT_SECRET;
-  if (!secretKey) {
-    throw new Error('JWT secret not configured');
-  }
+  validateJWTSecret(secretKey!);
   
   const payload = {
     userId: user.userId,
@@ -70,10 +154,10 @@ export function generateSecureToken(
   
   const signOptions: jwt.SignOptions = {
     algorithm: 'HS256', // Pin to secure algorithm
-    expiresIn: options.expiresIn || process.env.JWT_EXPIRES_IN || '1h',
-    audience: options.audience || process.env.JWT_AUDIENCE || 'smm-architect-api',
-    issuer: options.issuer || process.env.JWT_ISSUER || 'smm-architect',
-    notBefore: options.notBefore || '0s',
+    expiresIn: options.expiresIn || process.env['JWT_EXPIRES_IN'] || '1h',
+    audience: options.audience || process.env['JWT_AUDIENCE'] || 'smm-architect-api',
+    issuer: options.issuer || process.env['JWT_ISSUER'] || 'smm-architect',
+    notBefore: (options.notBefore || '0s') as string | number,
     jwtid: options.jwtId,
     subject: options.subject || user.userId
   };
@@ -144,10 +228,25 @@ export class AuthorizationError extends Error {
  */
 async function extractUserFromToken(token: string): Promise<AuthenticatedUser> {
   try {
-    const secretKey = process.env.JWT_SECRET || process.env.AUTH_JWT_SECRET;
-    if (!secretKey) {
-      throw new AuthenticationError('JWT secret not configured');
+    // Check cache first for performance
+    const cachedPayload = await jwtTokenCache.getCachedToken(token);
+    if (cachedPayload) {
+      logger.debug('JWT token cache hit', {
+        userId: cachedPayload.userId,
+        tenantId: cachedPayload.tenantId
+      });
+      return {
+        userId: cachedPayload.userId,
+        tenantId: cachedPayload.tenantId,
+        email: cachedPayload.email,
+        roles: cachedPayload.roles,
+        permissions: cachedPayload.permissions,
+        sessionId: cachedPayload.sessionId
+      };
     }
+
+    const secretKey = process.env['JWT_SECRET'] || process.env['AUTH_JWT_SECRET'];
+    validateJWTSecret(secretKey!);
 
     // JWT verification options with security hardening
     const verifyOptions: jwt.VerifyOptions = {
@@ -155,10 +254,10 @@ async function extractUserFromToken(token: string): Promise<AuthenticatedUser> {
       algorithms: ['HS256', 'RS256', 'ES256'], // Pin to secure algorithms only
       
       // Issuer validation
-      issuer: process.env.JWT_ISSUER || 'smm-architect',
+      issuer: process.env['JWT_ISSUER'] || 'smm-architect',
       
       // Audience validation
-      audience: process.env.JWT_AUDIENCE || 'smm-architect-api',
+      audience: process.env['JWT_AUDIENCE'] || 'smm-architect-api',
       
       // Clock tolerance (small window to account for clock skew)
       clockTolerance: 30, // 30 seconds tolerance
@@ -170,7 +269,7 @@ async function extractUserFromToken(token: string): Promise<AuthenticatedUser> {
       ignoreNotBefore: false,
       
       // Maximum token age (additional security)
-      maxAge: process.env.JWT_MAX_AGE || '24h'
+      maxAge: process.env['JWT_MAX_AGE'] || '24h'
     };
 
     const decoded = jwt.verify(token, secretKey, verifyOptions) as any;
@@ -181,7 +280,7 @@ async function extractUserFromToken(token: string): Promise<AuthenticatedUser> {
     }
     
     // Validate token version for rotation support
-    const expectedVersion = process.env.JWT_VERSION || '1';
+    const expectedVersion = process.env['JWT_VERSION'] || '1';
     if (decoded.version && decoded.version !== expectedVersion) {
       throw new AuthenticationError('Invalid token: version mismatch');
     }
@@ -200,8 +299,8 @@ async function extractUserFromToken(token: string): Promise<AuthenticatedUser> {
     if (decoded.scopes && !Array.isArray(decoded.scopes)) {
       throw new AuthenticationError('Invalid token: malformed scopes');
     }
-    
-    return {
+
+    const user: AuthenticatedUser = {
       userId: decoded.userId,
       tenantId: decoded.tenantId,
       email: decoded.email,
@@ -209,18 +308,96 @@ async function extractUserFromToken(token: string): Promise<AuthenticatedUser> {
       permissions: decoded.permissions || [],
       sessionId: decoded.sessionId
     };
+
+    // Cache the validated token for performance
+    const cachePayload: CachedTokenPayload = {
+      ...user,
+      cachedAt: Date.now(),
+      expiresAt: decoded.exp ? decoded.exp * 1000 : Date.now() + (24 * 60 * 60 * 1000) // Convert to milliseconds
+    };
+    
+    // Fire and forget cache operation (don't block on cache failures)
+    jwtTokenCache.cacheToken(token, cachePayload).catch(error => {
+      logger.warn('Failed to cache JWT token', {
+        error: error instanceof Error ? error.message : String(error),
+        userId: user.userId
+      });
+    });
+    
+    return user;
   } catch (error) {
+    // Enhanced security-focused error handling to prevent information disclosure
+    const securityEvent = {
+      type: 'JWT_VALIDATION_FAILED',
+      timestamp: new Date().toISOString(),
+      tokenLength: token?.length || 0,
+      errorCategory: 'unknown',
+      severity: 'high',
+      ip: 'unknown' // Will be populated by middleware
+    };
+    
     if (error instanceof jwt.JsonWebTokenError) {
-      // Log security events for monitoring
-      logger.warn('JWT validation failed', {
-        error: error.message,
-        errorType: error.constructor.name,
-        tokenLength: token?.length || 0
+      // Classify JWT errors for internal monitoring without exposing details
+      if (error instanceof jwt.TokenExpiredError) {
+        securityEvent.errorCategory = 'TOKEN_EXPIRED';
+        securityEvent.severity = 'medium';
+      } else if (error instanceof jwt.NotBeforeError) {
+        securityEvent.errorCategory = 'TOKEN_NOT_ACTIVE';
+        securityEvent.severity = 'medium';
+      } else if (error.message.includes('invalid signature')) {
+        securityEvent.errorCategory = 'INVALID_SIGNATURE';
+        securityEvent.severity = 'critical';
+      } else if (error.message.includes('invalid algorithm')) {
+        securityEvent.errorCategory = 'INVALID_ALGORITHM';
+        securityEvent.severity = 'critical';
+      } else if (error.message.includes('malformed')) {
+        securityEvent.errorCategory = 'MALFORMED_TOKEN';
+        securityEvent.severity = 'high';
+      } else {
+        securityEvent.errorCategory = 'JWT_GENERIC_ERROR';
+        securityEvent.severity = 'high';
+      }
+      
+      // Log comprehensive security event internally (never expose to client)
+      logger.warn('JWT security event', {
+        ...securityEvent,
+        internalErrorType: error.constructor.name,
+        internalErrorMessage: error.message,
+        tokenPrefix: token?.substring(0, 8) + '...' || 'none',
+        // Additional security context
+        potentialAttack: securityEvent.severity === 'critical',
+        requiresInvestigation: ['INVALID_SIGNATURE', 'INVALID_ALGORITHM'].includes(securityEvent.errorCategory)
       });
       
-      throw new AuthenticationError(`Invalid token: ${error.message}`);
+      // Record JWT validation failure
+      securityMetrics.recordTokenValidationFailure(
+        'unknown', // tenant will be updated if available
+        securityEvent.errorCategory,
+        'jwt',
+        securityEvent.errorCategory
+      );
+      
+      // Always return the same generic error regardless of specific JWT error
+      throw new AuthenticationError('Authentication token is invalid or expired');
+    } else if (error instanceof AuthenticationError) {
+      // Re-throw our custom authentication errors without modification
+      throw error;
+    } else {
+      // Handle unexpected errors with maximum security
+      securityEvent.errorCategory = 'UNEXPECTED_ERROR';
+      securityEvent.severity = 'critical';
+      
+      logger.error('Critical authentication error', {
+        ...securityEvent,
+        errorType: error instanceof Error ? error.constructor.name : 'unknown',
+        errorMessage: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+        requiresImmediateInvestigation: true
+      });
+      
+      // Return generic error even for unexpected errors
+      throw new AuthenticationError('Authentication system error');
     }
-    throw error;
   }
 }
 
@@ -230,6 +407,9 @@ async function extractUserFromToken(token: string): Promise<AuthenticatedUser> {
  */
 export function authMiddleware() {
   return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    // Capture start time for performance metrics
+    (req as any).authStartTime = Date.now();
+    
     try {
       // Extract token from Authorization header
       const authHeader = req.headers.authorization;
@@ -255,11 +435,71 @@ export function authMiddleware() {
           roles: user.roles,
           path: req.path
         });
+        
+        // Record successful authentication
+        const authStartTime = (req as any).authStartTime || Date.now();
+        const duration = (Date.now() - authStartTime) / 1000;
+        
+        securityMetrics.recordAuthSuccess(
+          user.tenantId,
+          'jwt',
+          req.path,
+          req.ip || 'unknown',
+          duration
+        );
+        
+        // Send successful authentication to SIEM
+        await sendToSIEM({
+          timestamp: new Date(),
+          eventType: 'authentication_success',
+          userId: user.userId,
+          tenantId: user.tenantId,
+          ipAddress: req.ip,
+          userAgent: req.headers['user-agent'],
+          action: 'jwt_authentication',
+          outcome: 'success',
+          details: {
+            endpoint: req.path,
+            method: req.method,
+            roles: user.roles,
+            duration_ms: Date.now() - authStartTime
+          },
+          riskScore: 10 // Low risk for successful auth
+        });
       });
       
       next();
     } catch (error) {
       if (error instanceof AuthenticationError || error instanceof AuthorizationError) {
+        // Record authentication failure with comprehensive metrics
+        const tenantId = (req as AuthRequest).tenantId || 'unknown';
+        securityMetrics.recordAuthFailure(
+          tenantId,
+          error.message,
+          req.path,
+          req.ip || 'unknown',
+          req.headers['user-agent'] || 'unknown'
+        );
+        
+        // Send authentication failure to SIEM
+        await sendToSIEM({
+          timestamp: new Date(),
+          eventType: 'authentication_failure',
+          tenantId: tenantId !== 'unknown' ? tenantId : undefined,
+          ipAddress: req.ip,
+          userAgent: req.headers['user-agent'],
+          action: 'jwt_authentication',
+          outcome: 'failure',
+          details: {
+            endpoint: req.path,
+            method: req.method,
+            errorCode: error.code,
+            errorMessage: error.message,
+            statusCode: error.statusCode
+          },
+          riskScore: error.statusCode === 401 ? 50 : 70 // Higher risk for 403 errors
+        });
+        
         logger.warn('Authentication failed', {
           error: error.message,
           ip: req.ip,
@@ -428,11 +668,47 @@ export function requireTenantAccess() {
       await requireValidTenantContext();
       
       // Extract tenant ID from request (path param, header, etc.)
-      const requestTenantId = req.params.tenantId || 
+      const requestTenantId = req.params['tenantId'] || 
                              req.headers['x-tenant-id'] || 
                              user.tenantId;
       
       if (requestTenantId && requestTenantId !== user.tenantId) {
+        // Send tenant isolation violation to SIEM
+        await sendToSIEM({
+          timestamp: new Date(),
+          eventType: 'tenant_isolation_violation',
+          userId: user.userId,
+          tenantId: user.tenantId,
+          ipAddress: req.ip,
+          userAgent: req.headers['user-agent'],
+          action: 'cross_tenant_access_attempt',
+          outcome: 'failure',
+          details: {
+            userTenantId: user.tenantId,
+            requestedTenantId: requestTenantId,
+            endpoint: req.path,
+            method: req.method,
+            headers: {
+              'x-tenant-id': req.headers['x-tenant-id'],
+              'user-agent': req.headers['user-agent']
+            }
+          },
+          riskScore: 95 // Very high risk for tenant isolation violations
+        });
+        
+        // Record tenant isolation violation metric
+        const securityMetrics = getSecurityMetrics();
+        securityMetrics.recordTenantIsolationViolation(
+          user.tenantId,
+          user.userId,
+          requestTenantId,
+          req.path,
+          req.ip || 'unknown',
+          'auth-middleware'
+        ).catch(err => {
+          logger.warn('Failed to record tenant isolation violation metric:', err);
+        });
+        
         logger.warn('Tenant access violation attempt', {
           userId: user.userId,
           userTenantId: user.tenantId,
@@ -469,7 +745,66 @@ export function requireTenantAccess() {
 export function apiKeyAuth() {
   return (req: Request, res: Response, next: NextFunction): void => {
     const apiKey = req.headers['x-api-key'] as string;
-    const validApiKeys = process.env.VALID_API_KEYS?.split(',') || [];
+    
+    // Strict API key validation - fail if not configured
+    const apiKeyString = process.env['VALID_API_KEYS'];
+    if (!apiKeyString) {
+      logger.error('VALID_API_KEYS environment variable not configured', {
+        path: req.path,
+        ip: req.ip
+      });
+      res.status(500).json({
+        error: 'API authentication not configured',
+        code: 'API_CONFIG_ERROR'
+      });
+      return;
+    }
+    
+    const validApiKeys = apiKeyString.split(',').filter(k => k.trim()).map(k => k.trim());
+    if (validApiKeys.length === 0) {
+      logger.error('No valid API keys configured', {
+        path: req.path,
+        ip: req.ip
+      });
+      res.status(500).json({
+        error: 'API authentication not configured',
+        code: 'API_CONFIG_ERROR'
+      });
+      return;
+    }
+    
+    // Additional security validations for production
+    if (process.env.NODE_ENV === 'production') {
+      for (const key of validApiKeys) {
+        // Enforce minimum key length in production
+        if (key.length < 32) {
+          logger.error('API key security violation: insufficient length', {
+            keyLength: key.length,
+            minimumRequired: 32,
+            path: req.path
+          });
+          res.status(500).json({
+            error: 'API key configuration security violation',
+            code: 'WEAK_API_KEY_CONFIG'
+          });
+          return;
+        }
+        
+        // Reject weak patterns in production
+        const weakPatterns = /^(test|dev|development|sample|example|admin|default|key|api)/i;
+        if (weakPatterns.test(key)) {
+          logger.error('API key security violation: weak pattern detected', {
+            keyPrefix: key.substring(0, 4) + '...',
+            path: req.path
+          });
+          res.status(500).json({
+            error: 'API key configuration security violation',
+            code: 'WEAK_API_KEY_PATTERN'
+          });
+          return;
+        }
+      }
+    }
     
     if (!apiKey || !validApiKeys.includes(apiKey)) {
       logger.warn('Invalid API key', {
@@ -515,13 +850,37 @@ export function requireScopes(...scopes: string[]) {
     if (!hasAllScopes) {
       const missingScopes = scopes.filter(scope => !userScopes.includes(scope));
       
+      // Check for privilege escalation attempts
+      const isEscalationAttempt = missingScopes.some(scope => 
+        scope.includes(':admin') || scope.includes(':write') && !userScopes.some(us => us.includes(':read'))
+      );
+      
+      if (isEscalationAttempt) {
+        securityMetrics.recordPrivilegeEscalationAttempt(
+          user.tenantId,
+          user.userId,
+          userScopes.join(','),
+          missingScopes.join(','),
+          req.path
+        );
+      } else {
+        securityMetrics.recordUnauthorizedAccess(
+          user.tenantId,
+          user.userId,
+          extractResourceType(req.path),
+          req.method,
+          req.path
+        );
+      }
+      
       logger.warn('Insufficient scopes', {
         userId: user.userId,
         tenantId: user.tenantId,
         requiredScopes: scopes,
         userScopes,
         missingScopes,
-        path: req.path
+        path: req.path,
+        isEscalationAttempt
       });
       
       res.status(403).json({
@@ -615,6 +974,17 @@ export const RESOURCE_SCOPES = {
   // System administration
   SYSTEM: 'system'
 };
+
+/**
+ * Extract resource type from request path for security metrics
+ */
+function extractResourceType(path: string): string {
+  const pathSegments = path.split('/').filter(Boolean);
+  if (pathSegments.length > 1) {
+    return pathSegments[1]; // Usually /api/resource-type/...
+  }
+  return 'unknown';
+}
 
 /**
  * Pre-configured middleware for common resource types

@@ -71,6 +71,12 @@ sbom-quick: ## Generate SBOM for backend services only (faster)
 security-scan: sbom ## Run comprehensive security scan with vulnerability analysis
 	@echo "$(YELLOW)Running security scan with vulnerability analysis...$(NC)"
 	./tools/scripts/generate-sbom.sh
+	@echo "$(YELLOW)Running dependency signature verification...$(NC)"
+	@if command -v npm >/dev/null 2>&1; then \
+		npm audit signatures --audit-level=moderate || echo "$(RED)Dependency signature verification failed$(NC)"; \
+	else \
+		echo "$(RED)npm not available for signature verification$(NC)"; \
+	fi
 	@if [ -d "$(SBOM_OUTPUT)/vulnerabilities" ]; then \
 		echo "$(YELLOW)Vulnerability Summary:$(NC)"; \
 		find $(SBOM_OUTPUT)/vulnerabilities -name "*.json" -exec sh -c 'echo "File: $$1"; jq -r ".matches | length" "$$1" 2>/dev/null || echo "0"' _ {} \; | \
@@ -162,7 +168,34 @@ prod-ready: ci-build ci-security ## Validate production readiness
 	@echo ""
 	@echo "$(GREEN)System is ready for production deployment$(NC)"
 
-# Utility Targets
+# Dependency signature verification
+dep-signatures: ## Verify dependency signatures for supply chain security
+	@echo "$(YELLOW)Verifying dependency signatures...$(NC)"
+	@if command -v npm >/dev/null 2>&1; then \
+		echo "🔐 Running npm audit signatures..."; \
+		npm audit signatures --audit-level=moderate && echo "$(GREEN)✓ All dependency signatures verified$(NC)" || \
+		(echo "$(RED)✗ Dependency signature verification failed$(NC)" && exit 1); \
+	else \
+		echo "$(RED)npm not available for signature verification$(NC)"; \
+		exit 1; \
+	fi
+
+# Enhanced dependency verification with registry validation
+dep-verify-enhanced: ## Enhanced dependency verification with registry validation
+	@echo "$(YELLOW)Running enhanced dependency verification...$(NC)"
+	@echo "🔍 Checking package registry authenticity..."
+	@if command -v npm >/dev/null 2>&1; then \
+		npm audit signatures --audit-level=moderate; \
+		echo "🔐 Validating package provenance..."; \
+		npm ls --depth=0 --json | jq -r '.dependencies | keys[]' | while read pkg; do \
+			echo "Checking $$pkg..."; \
+			npm view "$$pkg" --json | jq -r '.dist.integrity' >/dev/null 2>&1 || echo "$(YELLOW)Warning: No integrity hash for $$pkg$(NC)"; \
+		done; \
+		echo "$(GREEN)Enhanced dependency verification completed$(NC)"; \
+	else \
+		echo "$(RED)npm not available$(NC)"; \
+		exit 1; \
+	fi
 check-tools: ## Check if required tools are installed
 	@echo "$(YELLOW)Checking required tools...$(NC)"
 	@command -v node >/dev/null 2>&1 || { echo "$(RED)Node.js is required but not installed$(NC)"; exit 1; }

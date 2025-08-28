@@ -68,7 +68,7 @@ export function initializeSentry(config: SentryConfig, context: ServiceContext):
     ],
     
     // Before sending to Sentry, we can filter or modify events
-    beforeSend(event, hint) {
+    beforeSend(event, _hint) {
       // Filter out network errors that are not actionable
       if (event.exception?.values?.[0]?.type === 'AbortError') {
         return null;
@@ -78,14 +78,14 @@ export function initializeSentry(config: SentryConfig, context: ServiceContext):
       if (!event.tags) {
         event.tags = {};
       }
-      event.tags.service = context.serviceName;
-      event.tags.environment = context.environment;
+      event.tags!['service'] = context.serviceName;
+      event.tags!['environment'] = context.environment;
       
       return event;
     },
     
     // Before sending breadcrumbs, we can filter or modify them
-    beforeBreadcrumb(breadcrumb, hint) {
+    beforeBreadcrumb(breadcrumb, _hint) {
       // Filter out console logs that are not errors or warnings in production
       if (context.environment === 'production' && 
           breadcrumb.category === 'console' && 
@@ -195,24 +195,30 @@ export async function withAISpan<T>(
     name: operation,
   }, async (span) => {
     // Set AI-specific attributes
-    span.setAttribute("ai.model", modelName);
-    span.setAttribute("ai.operation", operation);
-    span.setAttribute("service.name", "smm-architect");
+    if (span) {
+      span.setAttribute("ai.model", modelName);
+      span.setAttribute("ai.operation", operation);
+      span.setAttribute("service.name", "smm-architect");
+    }
     
     try {
       const startTime = Date.now();
-      const result = await callback(span);
+      const result = await callback(span!);
       
       // Track success metrics
       const duration = Date.now() - startTime;
-      span.setAttribute("ai.duration_ms", duration);
-      span.setAttribute("ai.status", "success");
+      if (span) {
+        span.setAttribute("ai.duration_ms", duration);
+        span.setAttribute("ai.status", "success");
+      }
       
       return result;
     } catch (error) {
       // Track error metrics
-      span.setAttribute("ai.status", "error");
-      span.setAttribute("ai.error", error instanceof Error ? error.message : String(error));
+      if (span) {
+        span.setAttribute("ai.status", "error");
+        span.setAttribute("ai.error", error instanceof Error ? error.message : String(error));
+      }
       
       // Re-throw the error for proper error handling
       throw error;
@@ -251,26 +257,32 @@ export async function withAgentSpan<T>(
     name: `${agentName}: ${task}`,
   }, async (span) => {
     // Set agent-specific attributes
-    span.setAttribute("ai.model", modelName);
-    span.setAttribute("ai.agent", agentName);
-    span.setAttribute("ai.task", task);
-    span.setAttribute("service.name", "smm-architect");
-    span.setAttribute("service.component", "agent-layer");
+    if (span) {
+      span.setAttribute("ai.model", modelName);
+      span.setAttribute("ai.agent", agentName);
+      span.setAttribute("ai.task", task);
+      span.setAttribute("service.name", "smm-architect");
+      span.setAttribute("service.component", "agent-layer");
+    }
     
     try {
       const startTime = Date.now();
-      const result = await callback(span);
+      const result = await callback(span!);
       
       // Track success metrics
       const duration = Date.now() - startTime;
-      span.setAttribute("ai.duration_ms", duration);
-      span.setAttribute("ai.status", "success");
+      if (span) {
+        span.setAttribute("ai.duration_ms", duration);
+        span.setAttribute("ai.status", "success");
+      }
       
       return result;
     } catch (error) {
       // Track error metrics
-      span.setAttribute("ai.status", "error");
-      span.setAttribute("ai.error", error instanceof Error ? error.message : String(error));
+      if (span) {
+        span.setAttribute("ai.status", "error");
+        span.setAttribute("ai.error", error instanceof Error ? error.message : String(error));
+      }
       
       // Capture the error for this specific agent
       Sentry.captureException(error, {

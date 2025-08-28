@@ -167,6 +167,9 @@ sentry.properties
 # Encore specific
 encore.app
 
+# Turbo cache
+.turbo/
+
 # Docker
 docker-compose.override.yml
 

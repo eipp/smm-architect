@@ -566,7 +566,7 @@ function exitSecureContext() {
  *
  * @deprecated Use withTenantContext() for tenant-scoped operations
  */
-const originalGetPrismaClient = getPrismaClient;
+const originalGetPrismaClient = createPrismaClient;
 // Override getPrismaClient to add security warnings
 function getPrismaClient() {
     // Check if we're in a secure context (within withTenantContext or system operation)

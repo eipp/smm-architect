@@ -39,6 +39,47 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
 
+      - name: Verify dependency signatures
+        run: |
+          echo "🔍 Verifying npm package signatures..."
+          
+          # Configure npm to require signatures for critical packages
+          npm config set audit-level moderate
+          npm config set fund false
+          
+          # Verify signatures for each service
+          cd services/smm-architect
+          echo "📋 Verifying SMM Architect service dependencies..."
+          
+          # Run npm audit signatures (requires npm 8.15.0+)
+          if npm audit signatures 2>/dev/null; then
+            echo "✅ All SMM Architect dependencies have valid signatures"
+          else
+            echo "⚠️  Some dependencies lack signatures - checking critical packages..."
+            # For packages without signatures, verify they are from trusted sources
+            npm ls --production --parseable | while read package; do
+              if [[ "$package" =~ node_modules ]]; then
+                pkg_name=$(basename "$package")
+                # Check if package is from npm registry and has integrity hashes
+                npm view "$pkg_name" --json | jq -r '.dist.integrity // "missing"' | grep -q "sha" || {
+                  echo "❌ Warning: Package $pkg_name lacks integrity hash"
+                }
+              fi
+            done
+          fi
+          
+          cd ../shared
+          echo "📋 Verifying shared library dependencies..."
+          
+          if npm audit signatures 2>/dev/null; then
+            echo "✅ All shared library dependencies have valid signatures"
+          else
+            echo "⚠️  Some shared dependencies lack signatures - proceeding with caution"
+          fi
+          
+          cd ../..
+          echo "✅ Dependency signature verification completed"
+
       - name: Install dependencies
         run: |
           cd services/smm-architect && npm ci

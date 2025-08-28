@@ -1,4 +1,4 @@
-import axios, { AxiosInstance, AxiosRequestConfig } from 'axios';
+import axios, { AxiosInstance } from 'axios';
 import https from 'https';
 
 export interface VaultClientConfig {
@@ -61,7 +61,7 @@ export interface VaultAuthResponse {
 export class VaultClient {
   private client: AxiosInstance;
   private config: VaultClientConfig;
-  private currentToken?: string;
+  private currentToken: string | undefined;
   private tokenExpiry?: Date;
 
   constructor(config: VaultClientConfig) {
@@ -83,7 +83,7 @@ export class VaultClient {
 
     this.client = axios.create({
       baseURL: this.config.address.replace(/\/$/, ''),
-      timeout: this.config.timeout,
+      timeout: this.config.timeout ?? 30000,
       httpsAgent,
       headers: {
         'Content-Type': 'application/json'
@@ -102,7 +102,7 @@ export class VaultClient {
       this.responseErrorInterceptor.bind(this)
     );
 
-    this.currentToken = this.config.token;
+    this.currentToken = this.config.token ?? undefined;
   }
 
   /**

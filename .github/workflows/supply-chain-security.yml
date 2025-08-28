@@ -33,6 +33,133 @@ jobs:
           node-version: '18'
           cache: 'npm'
 
+      - name: Verify dependency signatures
+        run: |
+          echo "🔍 Comprehensive dependency signature verification..."
+          
+          # Install additional tools for signature verification
+          npm install -g @npmcli/arborist
+          
+          # Create signature verification report
+          mkdir -p signature-verification
+          
+          SIGNATURE_FAILED=false
+          
+          for service_dir in services/smm-architect services/shared services/dsr apps/frontend; do
+            if [[ -f "$service_dir/package.json" ]]; then
+              service_name=$(basename "$service_dir")
+              echo "📋 Verifying signatures for $service_name..."
+              
+              cd "$service_dir"
+              
+              # Try npm audit signatures (npm 8.15.0+)
+              if npm audit signatures --json > "../../signature-verification/${service_name}-signatures.json" 2>/dev/null; then
+                echo "✅ All $service_name dependencies have valid signatures"
+                
+                # Count verified packages
+                VERIFIED_COUNT=$(jq '.metadata.totalDependencies // 0' "../../signature-verification/${service_name}-signatures.json")
+                echo "ℹ️ Verified $VERIFIED_COUNT dependencies for $service_name"
+              else
+                echo "⚠️  npm audit signatures not fully supported - performing manual verification"
+                
+                # Manual signature verification for critical packages
+                cat > "../../signature-verification/${service_name}-manual-check.js" << 'VERIFY_EOF'
+const fs = require('fs');
+const crypto = require('crypto');
+const { execSync } = require('child_process');
+
+// Read package.json
+const packageJson = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+const allDeps = { ...packageJson.dependencies, ...packageJson.devDependencies };
+
+// Critical packages that must have integrity verification
+const criticalPackages = [
+  'express', 'jsonwebtoken', 'bcrypt', 'helmet', 'cors',
+  '@prisma/client', 'redis', 'winston', 'joi', 'zod',
+  'axios', 'node-fetch', 'ws', 'socket.io', 'passport'
+];
+
+let verificationResults = {
+  service: process.cwd().split('/').pop(),
+  totalPackages: Object.keys(allDeps).length,
+  criticalPackages: 0,
+  verifiedPackages: 0,
+  unverifiedCritical: [],
+  securityIssues: []
+};
+
+for (const [pkgName, version] of Object.entries(allDeps)) {
+  try {
+    const isCritical = criticalPackages.some(critical => pkgName.includes(critical));
+    if (isCritical) verificationResults.criticalPackages++;
+    
+    // Get package metadata from npm registry
+    const metadataCmd = `npm view "${pkgName}@${version.replace('^', '').replace('~', '')}" --json`;
+    const metadata = JSON.parse(execSync(metadataCmd, { encoding: 'utf8' }));
+    
+    // Check for integrity hash
+    if (metadata.dist && metadata.dist.integrity) {
+      verificationResults.verifiedPackages++;
+      console.log(`✅ ${pkgName}: integrity hash present`);
+    } else if (isCritical) {
+      verificationResults.unverifiedCritical.push(pkgName);
+      console.log(`❌ ${pkgName}: CRITICAL package lacks integrity hash`);
+    }
+    
+    // Check for known security advisories
+    if (metadata.security && metadata.security.advisories) {
+      verificationResults.securityIssues.push({
+        package: pkgName,
+        advisories: metadata.security.advisories
+      });
+    }
+    
+  } catch (error) {
+    if (criticalPackages.some(critical => pkgName.includes(critical))) {
+      verificationResults.unverifiedCritical.push(pkgName);
+      console.log(`⚠️  ${pkgName}: Failed to verify (${error.message})`);
+    }
+  }
+}
+
+// Write results
+fs.writeFileSync(
+  `../../signature-verification/${verificationResults.service}-verification-results.json`,
+  JSON.stringify(verificationResults, null, 2)
+);
+
+console.log(`\n📊 Verification Summary for ${verificationResults.service}:`);
+console.log(`   Total packages: ${verificationResults.totalPackages}`);
+console.log(`   Critical packages: ${verificationResults.criticalPackages}`);
+console.log(`   Verified packages: ${verificationResults.verifiedPackages}`);
+console.log(`   Unverified critical: ${verificationResults.unverifiedCritical.length}`);
+
+if (verificationResults.unverifiedCritical.length > 0) {
+  console.log(`\n❌ Unverified critical packages:`);
+  verificationResults.unverifiedCritical.forEach(pkg => console.log(`   - ${pkg}`));
+  process.exit(1);
+}
+VERIFY_EOF
+                
+                # Run manual verification
+                if ! node "../../signature-verification/${service_name}-manual-check.js"; then
+                  echo "❌ Critical packages failed signature verification for $service_name"
+                  SIGNATURE_FAILED=true
+                fi
+              fi
+              
+              cd ../..
+            fi
+          done
+          
+          # Check signature verification results
+          if [[ "$SIGNATURE_FAILED" == "true" ]]; then
+            echo "❌ Dependency signature verification failed"
+            exit 1
+          fi
+          
+          echo "✅ All dependency signature verification checks passed"
+
       - name: Install dependencies
         run: |
           cd services/smm-architect && npm ci

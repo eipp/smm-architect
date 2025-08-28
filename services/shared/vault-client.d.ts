@@ -54,7 +54,7 @@ export interface VaultAuthResponse {
 export declare class VaultClient {
     private client;
     private config;
-    private currentToken?;
+    private currentToken;
     private tokenExpiry?;
     constructor(config: VaultClientConfig);
     /**

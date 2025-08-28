@@ -1,4 +1,4 @@
-{{- range $service, $config := dict "core-service" (dict "port" .Values.service.ports.coreService "replicas" .Values.replicaCount.coreService "resources" .Values.resources.coreService "image" "core") "toolhub" (dict "port" .Values.service.ports.toolhub "replicas" .Values.replicaCount.toolhub "resources" .Values.resources.toolhub "image" "toolhub") "model-router" (dict "port" .Values.service.ports.modelRouter "replicas" .Values.replicaCount.modelRouter "resources" .Values.resources.modelRouter "image" "model-router") "publisher" (dict "port" .Values.service.ports.publisher "replicas" .Values.replicaCount.publisher "resources" .Values.resources.publisher "image" "publisher") "agents" (dict "port" .Values.service.ports.agents "replicas" .Values.replicaCount.agents "resources" .Values.resources.agents "image" "agents") }}
+{{- range $service, $config := dict "core-service" (dict "port" .Values.service.ports.coreService "replicas" .Values.replicaCount.coreService "resources" .Values.resources.coreService "image" "core") "toolhub" (dict "port" .Values.service.ports.toolhub "replicas" .Values.replicaCount.toolhub "resources" .Values.resources.toolhub "image" "toolhub") "frontend" (dict "port" .Values.service.ports.frontend "replicas" .Values.replicaCount.frontend "resources" .Values.resources.frontend "image" "frontend") "model-router" (dict "port" .Values.service.ports.modelRouter "replicas" .Values.replicaCount.modelRouter "resources" .Values.resources.modelRouter "image" "model-router") "publisher" (dict "port" .Values.service.ports.publisher "replicas" .Values.replicaCount.publisher "resources" .Values.resources.publisher "image" "publisher") "agents" (dict "port" .Values.service.ports.agents "replicas" .Values.replicaCount.agents "resources" .Values.resources.agents "image" "agents") }}
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -28,13 +28,21 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       serviceAccountName: {{ include "smm-architect.serviceAccountName" $ }}
+      automountServiceAccountToken: {{ $.Values.serviceAccount.automountToken | default false }}
+      terminationGracePeriodSeconds: {{ $.Values.terminationGracePeriodSeconds | default 30 }}
       securityContext:
         {{- toYaml $.Values.podSecurityContext | nindent 8 }}
       containers:
         - name: {{ $service }}
           securityContext:
             {{- toYaml $.Values.securityContext | nindent 12 }}
-          image: "{{ $.Values.global.imageRegistry | default $.Values.image.registry }}/{{ $.Values.image.repository }}/{{ $config.image }}:{{ $.Values.image.tag | default $.Chart.AppVersion }}"
+{{- $registry := $.Values.global.imageRegistry | default $.Values.image.registry -}}
+{{- $repo := printf "%s/%s/%s" $registry $.Values.image.repository $config.image -}}
+{{- if $.Values.image.digest }}
+          image: "{{ $repo }}@sha256:{{ $.Values.image.digest }}"
+{{- else }}
+          image: "{{ $repo }}:{{ $.Values.image.tag | default $.Chart.AppVersion }}"
+{{- end }}
           imagePullPolicy: {{ $.Values.image.pullPolicy }}
           ports:
             - name: http
@@ -73,13 +81,17 @@ spec:
           volumeMounts:
             - name: tmp
               mountPath: /tmp
+          {{- if $.Values.logging.writeToFile }}
             - name: logs
               mountPath: /app/logs
+          {{- end }}
       volumes:
         - name: tmp
           emptyDir: {}
+      {{- if $.Values.logging.writeToFile }}
         - name: logs
           emptyDir: {}
+      {{- end }}
       {{- with $.Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

@@ -1,4 +1,5 @@
 import { PrismaClient } from './generated/client';
+import { PrismaClient } from '@prisma/client';
 import winston from 'winston';
 
 const logger = winston.createLogger({
@@ -84,12 +85,7 @@ export function createPrismaClient(): PrismaClient {
 /**
  * Get the global Prisma client instance
  */
-export function getPrismaClient(): PrismaClient {
-  if (!prismaClient) {
-    return createPrismaClient();
-  }
-  return prismaClient;
-}
+
 
 /**
  * Close database connections gracefully
@@ -666,16 +662,25 @@ function exitSecureContext(): void {
  * 
  * @deprecated Use withTenantContext() for tenant-scoped operations
  */
-const originalGetPrismaClient = getPrismaClient;
+const originalGetPrismaClient = createPrismaClient;
 
 // Override getPrismaClient to add security warnings
 export function getPrismaClient(): PrismaClient {
   // Check if we're in a secure context (within withTenantContext or system operation)
-  if (!_isInSecureContext && process.env.NODE_ENV !== 'test') {
-    logger.warn('SECURITY WARNING: Direct database client access detected', {
-      stack: new Error().stack,
-      recommendation: 'Use withTenantContext() or withRetryTransaction() instead'
-    });
+  if (!_isInSecureContext) {
+    if (process.env.NODE_ENV === 'production') {
+      // In production, enforce secure context usage
+      throw new Error(
+        'SECURITY VIOLATION: Direct database access not allowed in production. ' +
+        'Use withTenantContext() for tenant-scoped operations or withSystemContext() for admin operations.'
+      );
+    } else if (process.env.NODE_ENV !== 'test') {
+      // In development, warn but allow
+      logger.warn('SECURITY WARNING: Direct database client access detected', {
+        stack: new Error().stack,
+        recommendation: 'Use withTenantContext() or withRetryTransaction() instead'
+      });
+    }
   }
   
   return originalGetPrismaClient();

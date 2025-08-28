@@ -55,10 +55,76 @@ class SimpleAuthService {
   }
 
   async generateToken(payload: any): Promise<string> {
-    // Mock token generation - in production this would be a proper JWT
-    const secret = process.env.JWT_SECRET || 'default-secret';
+    // Enforce secure JWT secret configuration with comprehensive validation
+    const secret = process.env.JWT_SECRET;
+    if (!secret) {
+      throw new Error('JWT_SECRET environment variable must be configured - no fallback allowed');
+    }
+    
+    // Comprehensive JWT secret validation
+    this.validateJWTSecret(secret);
+    
     const tokenData = JSON.stringify({ ...payload, exp: Date.now() + 24 * 60 * 60 * 1000 });
     return crypto.createHmac('sha256', secret).update(tokenData).digest('hex');
+  }
+
+  /**
+   * Validate JWT secret meets comprehensive security requirements
+   */
+  validateJWTSecret(secret: string): void {
+    if (!secret || secret.trim().length === 0) {
+      throw new Error('JWT secret cannot be empty or whitespace');
+    }
+    
+    if (secret.length < 32) {
+      throw new Error('JWT secret must be at least 32 characters for adequate security');
+    }
+    
+    // Reject known weak patterns and defaults
+    const weakPatterns = [
+      /^(test|dev|development|default|sample|example|secret|password|admin|root|user|demo)$/i,
+      /^(default-secret|test-secret|dev-secret|admin-secret)$/i,
+      /^(123|111|000|aaa|abc|password|qwerty)/i
+    ];
+    
+    for (const pattern of weakPatterns) {
+      if (pattern.test(secret)) {
+        throw new Error('JWT secret contains weak/predictable patterns - use a cryptographically secure random value');
+      }
+    }
+    
+    // Reject all-same characters or simple sequential patterns
+    if (/^(.)\1+$/.test(secret)) {
+      throw new Error('JWT secret cannot consist of repeated characters');
+    }
+    
+    if (/^(012|123|234|345|456|567|678|789|890|abc|bcd|cde)/.test(secret.toLowerCase())) {
+      throw new Error('JWT secret cannot contain simple sequential patterns');
+    }
+    
+    // Ensure sufficient entropy (basic check for character diversity)
+    const uniqueChars = new Set(secret.toLowerCase()).size;
+    if (uniqueChars < 8) {
+      throw new Error('JWT secret must contain at least 8 different characters for sufficient entropy');
+    }
+    
+    // Production environment additional checks
+    if (process.env.NODE_ENV === 'production') {
+      if (secret.length < 64) {
+        throw new Error('Production JWT secret must be at least 64 characters');
+      }
+      
+      // Check for mixed case, numbers, and symbols
+      const hasLowerCase = /[a-z]/.test(secret);
+      const hasUpperCase = /[A-Z]/.test(secret);
+      const hasNumbers = /\d/.test(secret);
+      const hasSymbols = /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?~`]/.test(secret);
+      
+      const complexityScore = [hasLowerCase, hasUpperCase, hasNumbers, hasSymbols].filter(Boolean).length;
+      if (complexityScore < 3) {
+        throw new Error('Production JWT secret must contain at least 3 of: lowercase, uppercase, numbers, symbols');
+      }
+    }
   }
 }
 
@@ -91,8 +157,22 @@ async function getUserProfile(userId: string, tenantId: string): Promise<User> {
 }
 
 async function generateRefreshToken(userId: string, tenantId: string): Promise<string> {
-  const secret = process.env.JWT_SECRET || 'default-secret';
-  const tokenData = JSON.stringify({ userId, tenantId, type: 'refresh', exp: Date.now() + 30 * 24 * 60 * 60 * 1000 });
+  const secret = process.env.JWT_SECRET;
+  if (!secret) {
+    throw new Error('JWT_SECRET environment variable must be configured for refresh token generation');
+  }
+  
+  // Use the same validation as the auth service
+  authService.validateJWTSecret(secret);
+  
+  const tokenData = JSON.stringify({ 
+    userId, 
+    tenantId, 
+    type: 'refresh', 
+    exp: Date.now() + 30 * 24 * 60 * 60 * 1000,
+    iat: Date.now(),
+    version: process.env.JWT_VERSION || '1'
+  });
   return crypto.createHmac('sha256', secret).update(tokenData).digest('hex');
 }
 

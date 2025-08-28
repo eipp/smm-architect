@@ -10,6 +10,7 @@ image:
   repository: smm-architect
   pullPolicy: IfNotPresent
   tag: "latest"
+  digest: ""
 
 replicaCount:
   coreService: 3
@@ -22,10 +23,14 @@ replicaCount:
 nameOverride: ""
 fullnameOverride: ""
 
+logging:
+  writeToFile: false
+
 serviceAccount:
   create: true
   annotations: {}
   name: ""
+  automountToken: false
 
 podAnnotations: {}
 
@@ -49,6 +54,8 @@ securityContext:
     - ALL
   seccompProfile:
     type: RuntimeDefault
+
+terminationGracePeriodSeconds: 30
 
 # Health and readiness probes
 probes:
@@ -368,6 +375,9 @@ nodeSelector: {}
 tolerations: []
 
 affinity: {}
+
+networkPolicy:
+  enabled: false
 
 # PostgreSQL configuration
 postgresql:

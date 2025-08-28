@@ -121,6 +121,12 @@ services:
       start_period: 40s
     security_opt:
       - no-new-privileges:true
+      - seccomp:default
+      - apparmor:default
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
     read_only: true
     tmpfs:
       - /tmp:noexec,nosuid,size=100M
@@ -170,6 +176,12 @@ services:
       start_period: 30s
     security_opt:
       - no-new-privileges:true
+      - seccomp:default
+      - apparmor:default
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
     read_only: true
     tmpfs:
       - /tmp:noexec,nosuid,size=100M

@@ -1,0 +1,21 @@
+{{- if .Values.podDisruptionBudget.enabled }}
+{{- $map := dict "core-service" (dict "replicas" .Values.replicaCount.coreService "pdb" .Values.podDisruptionBudget.coreService) "toolhub" (dict "replicas" .Values.replicaCount.toolhub "pdb" .Values.podDisruptionBudget.toolhub) "frontend" (dict "replicas" .Values.replicaCount.frontend "pdb" .Values.podDisruptionBudget.frontend) "model-router" (dict "replicas" .Values.replicaCount.modelRouter "pdb" .Values.podDisruptionBudget.modelRouter) "publisher" (dict "replicas" .Values.replicaCount.publisher "pdb" .Values.podDisruptionBudget.publisher) "agents" (dict "replicas" .Values.replicaCount.agents "pdb" .Values.podDisruptionBudget.agents) -}}
+{{- range $service, $cfg := $map }}
+{{- if and $cfg.replicas (gt (int $cfg.replicas) 1) $cfg.pdb $cfg.pdb.minAvailable }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "smm-architect.fullname" $ }}-{{ $service }}
+  labels:
+    {{- include "smm-architect.labels" $ | nindent 4 }}
+    {{- include "smm-architect.componentLabels" $service | nindent 4 }}
+spec:
+  minAvailable: {{ $cfg.pdb.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "smm-architect.selectorLabels" $ | nindent 6 }}
+      app.kubernetes.io/component: {{ $service }}
+---
+{{- end }}
+{{- end }}
+{{- end }}

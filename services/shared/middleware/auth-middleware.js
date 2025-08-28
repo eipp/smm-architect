@@ -57,10 +57,10 @@ function generateSecureToken(user, scopes = [], options = {}) {
     };
     const signOptions = {
         algorithm: 'HS256', // Pin to secure algorithm
-        expiresIn: options.expiresIn || process.env.JWT_EXPIRES_IN || '1h',
-        audience: options.audience || process.env.JWT_AUDIENCE || 'smm-architect-api',
-        issuer: options.issuer || process.env.JWT_ISSUER || 'smm-architect',
-        notBefore: options.notBefore || '0s',
+        expiresIn: options.expiresIn || process.env['JWT_EXPIRES_IN'] || '1h',
+        audience: options.audience || process.env['JWT_AUDIENCE'] || 'smm-architect-api',
+        issuer: options.issuer || process.env['JWT_ISSUER'] || 'smm-architect',
+        notBefore: (options.notBefore || '0s'),
         jwtid: options.jwtId,
         subject: options.subject || user.userId
     };
@@ -93,6 +93,8 @@ function validateTokenStructure(token) {
     }
 }
 class AuthenticationError extends Error {
+    statusCode;
+    code;
     constructor(message, statusCode = 401, code = 'AUTHENTICATION_FAILED') {
         super(message);
         this.statusCode = statusCode;
@@ -102,6 +104,8 @@ class AuthenticationError extends Error {
 }
 exports.AuthenticationError = AuthenticationError;
 class AuthorizationError extends Error {
+    statusCode;
+    code;
     constructor(message, statusCode = 403, code = 'AUTHORIZATION_FAILED') {
         super(message);
         this.statusCode = statusCode;
@@ -115,7 +119,7 @@ exports.AuthorizationError = AuthorizationError;
  */
 async function extractUserFromToken(token) {
     try {
-        const secretKey = process.env.JWT_SECRET || process.env.AUTH_JWT_SECRET;
+        const secretKey = process.env['JWT_SECRET'] || process.env['AUTH_JWT_SECRET'];
         if (!secretKey) {
             throw new AuthenticationError('JWT secret not configured');
         }
@@ -124,9 +128,9 @@ async function extractUserFromToken(token) {
             // Algorithm pinning - only allow specific secure algorithms
             algorithms: ['HS256', 'RS256', 'ES256'], // Pin to secure algorithms only
             // Issuer validation
-            issuer: process.env.JWT_ISSUER || 'smm-architect',
+            issuer: process.env['JWT_ISSUER'] || 'smm-architect',
             // Audience validation
-            audience: process.env.JWT_AUDIENCE || 'smm-architect-api',
+            audience: process.env['JWT_AUDIENCE'] || 'smm-architect-api',
             // Clock tolerance (small window to account for clock skew)
             clockTolerance: 30, // 30 seconds tolerance
             // Ensure token is not expired
@@ -134,7 +138,7 @@ async function extractUserFromToken(token) {
             // Ensure token is active (not before check)
             ignoreNotBefore: false,
             // Maximum token age (additional security)
-            maxAge: process.env.JWT_MAX_AGE || '24h'
+            maxAge: process.env['JWT_MAX_AGE'] || '24h'
         };
         const decoded = jsonwebtoken_1.default.verify(token, secretKey, verifyOptions);
         // Validate required fields
@@ -142,7 +146,7 @@ async function extractUserFromToken(token) {
             throw new AuthenticationError('Invalid token: missing required claims');
         }
         // Validate token version for rotation support
-        const expectedVersion = process.env.JWT_VERSION || '1';
+        const expectedVersion = process.env['JWT_VERSION'] || '1';
         if (decoded.version && decoded.version !== expectedVersion) {
             throw new AuthenticationError('Invalid token: version mismatch');
         }
@@ -356,7 +360,7 @@ function requireTenantAccess() {
             // Validate tenant context is properly set
             await (0, client_1.requireValidTenantContext)();
             // Extract tenant ID from request (path param, header, etc.)
-            const requestTenantId = req.params.tenantId ||
+            const requestTenantId = req.params['tenantId'] ||
                 req.headers['x-tenant-id'] ||
                 user.tenantId;
             if (requestTenantId && requestTenantId !== user.tenantId) {
@@ -393,7 +397,7 @@ function requireTenantAccess() {
 function apiKeyAuth() {
     return (req, res, next) => {
         const apiKey = req.headers['x-api-key'];
-        const validApiKeys = process.env.VALID_API_KEYS?.split(',') || [];
+        const validApiKeys = process.env['VALID_API_KEYS']?.split(',') || [];
         if (!apiKey || !validApiKeys.includes(apiKey)) {
             logger.warn('Invalid API key', {
                 providedKey: apiKey ? 'PROVIDED' : 'MISSING',
