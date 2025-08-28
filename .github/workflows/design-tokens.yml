@@ -40,12 +40,12 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '18'
-          cache: 'npm'
-          cache-dependency-path: '**/package-lock.json'
+          cache: 'pnpm'
+          cache-dependency-path: '**/pnpm-lock.yaml'
 
       - name: 📥 Install dependencies
         run: |
-          npm ci
+          pnpm install
           npm install -g @tokens-studio/sd-transforms
           npm install -g style-dictionary
 
@@ -79,14 +79,14 @@ jobs:
         run: |
           echo "Validating design tokens..."
           cd apps/frontend
-          npm run lint:tokens
-          npm run test:tokens
+          pnpm run lint:tokens
+          pnpm run test:tokens
 
       - name: 📊 Check bundle impact
         run: |
           echo "Analyzing bundle size impact..."
           cd apps/frontend
-          npm run build:analyze
+          pnpm run build:analyze
 
       - name: 🔍 Detect changes
         id: changes
@@ -169,10 +169,10 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '18'
-          cache: 'npm'
+          cache: 'pnpm'
 
       - name: 📥 Install dependencies
-        run: npm ci
+        run: pnpm install
 
       - name: 🎭 Install Playwright
         run: npx playwright install --with-deps
@@ -180,7 +180,7 @@ jobs:
       - name: 🔧 Build Storybook
         run: |
           cd apps/frontend
-          npm run build-storybook
+          pnpm run build-storybook
 
       - name: 📸 Run visual regression tests
         run: |
@@ -235,15 +235,15 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '18'
-          cache: 'npm'
+          cache: 'pnpm'
 
       - name: 📥 Install dependencies
-        run: npm ci
+        run: pnpm install
 
       - name: ♿ Run accessibility tests
         run: |
           cd apps/frontend
-          npm run test:a11y
+          pnpm run test:a11y
 
       - name: 📊 Generate accessibility report
         run: |

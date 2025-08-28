@@ -105,18 +105,18 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
+          cache: 'pnpm'
 
       - name: Install dependencies
         run: |
-          npm ci
+          pnpm install
           npm install -g artillery@latest
 
       - name: Setup test environment
         run: |
           mkdir -p reports/performance
           mkdir -p tests/performance/baselines
-          chmod +x scripts/run-performance-tests.sh
+          chmod +x tools/scripts/run-performance-tests.sh
 
       - name: Setup Kubernetes cluster (for integration tests)
         if: matrix.name == 'load'

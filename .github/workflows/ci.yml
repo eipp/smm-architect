@@ -82,8 +82,8 @@ jobs:
 
       - name: Install dependencies
         run: |
-          cd services/smm-architect && npm ci
-          cd ../shared && npm ci
+          cd services/smm-architect && pnpm install
+          cd ../shared && pnpm install
 
       - name: Apply database migrations
         env:
@@ -266,13 +266,13 @@ jobs:
 
       - name: Run ESLint
         run: |
-          cd services/smm-architect && npm run lint
-          cd ../toolhub && npm run lint
+          cd services/smm-architect && pnpm run lint
+          cd ../toolhub && pnpm run lint
 
       - name: Type checking
         run: |
-          cd services/smm-architect && npm run type-check
-          cd ../toolhub && npm run type-check
+          cd services/smm-architect && pnpm run type-check
+          cd ../toolhub && pnpm run type-check
 
       - name: Prettier format check
         run: |
@@ -865,7 +865,7 @@ jobs:
           extra_args: --debug --only-verified
 
       - name: CodeQL Analysis
-        uses: github/codeql-action/analyze@v2
+        uses: github/codeql-action/analyze@v3
         with:
           languages: 'typescript,javascript'
           config-file: .github/codeql/codeql-config.yml
@@ -911,7 +911,7 @@ jobs:
             security-report.json
 
       - name: Upload SARIF results to GitHub Security
-        uses: github/codeql-action/upload-sarif@v2
+        uses: github/codeql-action/upload-sarif@v3
         if: always()
         with:
           sarif_file: |

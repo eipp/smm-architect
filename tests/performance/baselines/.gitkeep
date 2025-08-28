@@ -1,0 +1,2 @@
+# This file ensures the tests/performance/baselines directory is tracked by Git
+# Performance test baselines will be stored here for regression testing

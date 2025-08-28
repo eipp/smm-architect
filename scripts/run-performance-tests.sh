@@ -1,0 +1,1 @@
+../tools/scripts/run-performance-tests.sh

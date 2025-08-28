@@ -221,7 +221,7 @@ service:
     agents: 3004
 
 ingress:
-  enabled: true
+  enabled: false
   className: "nginx"
   annotations:
     nginx.ingress.kubernetes.io/rewrite-target: /
@@ -306,7 +306,7 @@ resources:
       ephemeral-storage: 4Gi
 
 autoscaling:
-  enabled: true
+  enabled: false
   coreService:
     minReplicas: 2
     maxReplicas: 10
@@ -356,7 +356,7 @@ autoscaling:
 
 # Pod Disruption Budgets
 podDisruptionBudget:
-  enabled: true
+  enabled: false
   coreService:
     minAvailable: 1
   toolhub:
@@ -383,9 +383,9 @@ networkPolicy:
 postgresql:
   enabled: true
   auth:
-    postgresPassword: "smm_password"
+    postgresPassword: ""
     username: "smm_user"
-    password: "smm_password"
+    password: ""
     database: "smm_architect"
   primary:
     persistence:
@@ -399,7 +399,7 @@ redis:
   enabled: true
   auth:
     enabled: true
-    password: "redis_password"
+    password: ""
   master:
     persistence:
       enabled: true
@@ -413,12 +413,13 @@ monitoring:
     enabled: true
   grafana:
     enabled: true
-    adminPassword: "admin_password"
+    adminPassword: ""
 
 # External secrets (set these in production)
 secrets:
-  databaseUrl: "postgresql://smm_user:smm_password@smm-architect-postgresql:5432/smm_architect"
-  redisUrl: "redis://smm-architect-redis-master:6379"
+  create: false
+  databaseUrl: ""
+  redisUrl: ""
   sentryDsn: ""
   openaiApiKey: ""
   anthropicApiKey: ""

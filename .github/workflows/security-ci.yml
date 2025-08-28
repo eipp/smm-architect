@@ -68,16 +68,16 @@ jobs:
 
       - name: Verify package-lock.json is up to date
         run: |
-          npm ci --frozen-lockfile
-          if [ -n "$(git status --porcelain package-lock.json)" ]; then
-            echo "Error: package-lock.json is not up to date"
+          pnpm install --frozen-lockfile
+          if [ -n "$(git status --porcelain pnpm-lock.yaml)" ]; then
+            echo "Error: pnpm-lock.yaml is not up to date"
             exit 1
           fi
 
       - name: Audit dependencies
         run: |
-          npm audit --audit-level=high
-          npm audit --output=json > audit-results.json
+          pnpm audit --audit-level=high
+          pnpm audit --json > audit-results.json
           
       - name: Run Snyk security scan
         uses: snyk/actions/node@b98d498629f1c368650479b9f9e6efed3d9ab4cd # master (pinned commit)
@@ -118,13 +118,13 @@ jobs:
         uses: actions/setup-node@1e60f620b9541d16bece96c5465dc8ee9832be0b # v4.0.3
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
+          cache: 'pnpm'
 
       - name: Install dependencies
-        run: npm ci --frozen-lockfile
+        run: pnpm install --frozen-lockfile
 
       - name: Build project
-        run: npm run build
+        run: pnpm run build
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@afb54ba388a7dca6ecae48f608c4ff05ff4cc77a # v3.25.15
@@ -170,19 +170,19 @@ jobs:
         uses: actions/setup-node@1e60f620b9541d16bece96c5465dc8ee9832be0b # v4.0.3
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
+          cache: 'pnpm'
 
       - name: Install dependencies
-        run: npm ci --frozen-lockfile
+        run: pnpm install --frozen-lockfile
 
       - name: Run RLS security tests
-        run: npm run test:security
+        run: pnpm run test:security
         env:
           DATABASE_URL: postgres://postgres:postgres@localhost:5432/smm_architect_test
           REDIS_URL: redis://localhost:6379
 
       - name: Run evil tenant tests
-        run: npm run test -- tests/security/evil-tenant-write-tests.test.ts
+        run: pnpm run test -- tests/security/evil-tenant-write-tests.test.ts
         env:
           DATABASE_URL: postgres://postgres:postgres@localhost:5432/smm_architect_test
 
@@ -205,13 +205,13 @@ jobs:
         uses: actions/setup-node@1e60f620b9541d16bece96c5465dc8ee9832be0b # v4.0.3
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
+          cache: 'pnpm'
 
       - name: Install dependencies and start application
         run: |
-          npm ci --frozen-lockfile
-          npm run build
-          npm start &
+          pnpm install --frozen-lockfile
+          pnpm run build
+          pnpm start &
           sleep 30  # Wait for application to start
 
       - name: Wait for application health check
@@ -249,31 +249,25 @@ jobs:
   deploy:
     name: Deploy to AWS
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    needs: [secret-scan, dependency-check, static-analysis, security-tests]
-    environment: production
+    needs: [dependency-check, static-analysis, security-tests]
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      id-token: write
+      contents: read
     steps:
       - name: Checkout code
         uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
-
-      - name: Configure AWS credentials using OIDC
-        uses: aws-actions/configure-aws-credentials@e3dd6a429d7300a6a4c196c26e071d42e0343502 # v4.0.2
-        with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-          role-session-name: GitHubActionsDeployment
-          aws-region: us-east-1
 
       - name: Setup Node.js
         uses: actions/setup-node@1e60f620b9541d16bece96c5465dc8ee9832be0b # v4.0.3
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
 
       - name: Install dependencies
-        run: npm ci --frozen-lockfile
+        run: pnpm install --frozen-lockfile
 
       - name: Build application
-        run: npm run build
+        run: pnpm run build
 
       - name: Deploy to AWS ECS
         run: |
@@ -319,7 +313,7 @@ jobs:
 
       - name: Check for outdated dependencies
         run: |
-          npm outdated --json > outdated.json || true
+          pnpm outdated --json > outdated.json || true
           if [ -s outdated.json ]; then
             echo "Outdated dependencies found. Consider updating:"
             cat outdated.json

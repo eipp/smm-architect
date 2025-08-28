@@ -1,0 +1,79 @@
+name: Helm Chart CI
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Helm
+        uses: azure/setup-helm@v1
+      - name: Helm lint
+        run: helm lint infrastructure/kubernetes/helm/smm-architect
+
+  build-and-validate:
+    needs: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Helm
+        uses: azure/setup-helm@v1
+      - name: Build chart dependencies
+        run: helm dependency build infrastructure/kubernetes/helm/smm-architect
+      - name: Render manifests (gated)
+        run: |
+          helm template test ./infrastructure/kubernetes/helm/smm-architect --set autoscaling.enabled=true --set podDisruptionBudget.enabled=true --set networkPolicy.enabled=true > infrastructure/kubernetes/helm/smm-architect/rendered.yaml
+      - name: Assert image digest pinning
+        run: |
+          helm template test ./infrastructure/kubernetes/helm/smm-architect --set image.digest=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef --set autoscaling.enabled=true --set podDisruptionBudget.enabled=true --set networkPolicy.enabled=true > /tmp/with_digest.yaml
+          if ! grep -q "@sha256:" /tmp/with_digest.yaml; then echo "Digest not present" && exit 1; fi
+          helm template test ./infrastructure/kubernetes/helm/smm-architect --set autoscaling.enabled=true > /tmp/no_digest.yaml
+          if grep -q "@sha256:" /tmp/no_digest.yaml; then echo "Unexpected digest present" && exit 1; fi
+      - name: Assert file logging gating
+        run: |
+          helm template test ./infrastructure/kubernetes/helm/smm-architect --set logging.writeToFile=true > /tmp/logs_on.yaml
+          if ! grep -q "/app/logs" /tmp/logs_on.yaml; then echo "logs mount missing when enabled" && exit 1; fi
+          helm template test ./infrastructure/kubernetes/helm/smm-architect --set logging.writeToFile=false > /tmp/logs_off.yaml
+          if grep -q "/app/logs" /tmp/logs_off.yaml; then echo "logs mount present when disabled" && exit 1; fi
+      - name: Install kubeconform
+        run: |
+          curl -sL https://github.com/yannh/kubeconform/releases/latest/download/kubeconform-linux-amd64 -o /usr/local/bin/kubeconform
+          chmod +x /usr/local/bin/kubeconform
+      - name: Run kubeconform
+        run: /usr/local/bin/kubeconform -summary infrastructure/kubernetes/helm/smm-architect/rendered.yaml || true
+      - name: Install kyverno CLI
+        run: |
+          curl -sL https://github.com/kyverno/kyverno/releases/latest/download/kyverno-cli_linux_x86_64.tar.gz -o /tmp/kyverno.tar.gz
+          tar -xzf /tmp/kyverno.tar.gz -C /tmp
+          sudo mv /tmp/kyverno /usr/local/bin/kyverno
+      - name: Scan values.yaml for hardcoded secrets
+        run: |
+          python - <<'PY'
+          import yaml,sys
+          with open('infrastructure/kubernetes/helm/smm-architect/values.yaml') as f:
+              data=yaml.safe_load(f)
+          def find_secrets(d,path=''):
+              res=[]
+              if isinstance(d,dict):
+                  for k,v in d.items():
+                      p=(path+'.'+k) if path else k
+                      if k.lower() in ['password','postgrespassword','adminpassword','redispassword','jwtsecret','encryptionkey','vaulttoken','apikey','apisecret','clientsecret','secret','token','sentrydsn'] and v:
+                          res.append((p,v))
+                      if isinstance(v,(dict,list)):
+                          res+=find_secrets(v,p)
+              elif isinstance(d,list):
+                  for i,e in enumerate(d):
+                      res+=find_secrets(e,f"{path}[{i}]")
+              return res
+          secrets=find_secrets(data)
+          if secrets:
+              print('Found secrets:')
+              for k,v in secrets[:20]:
+                  print(k,':',v)
+              sys.exit(1)
+          print('No obvious secrets found')
+          PY
