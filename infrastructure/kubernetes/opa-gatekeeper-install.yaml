@@ -1,0 +1,647 @@
+# OPA Gatekeeper Installation and Configuration for SMM Architect
+# This file contains the complete setup for OPA Gatekeeper with production-ready configuration
+
+---
+# Gatekeeper System Namespace
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: gatekeeper-system
+  labels:
+    control-plane: controller-manager
+    admission.gatekeeper.sh/ignore: "no-self-managing"
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+
+---
+# Gatekeeper Configuration
+apiVersion: config.gatekeeper.sh/v1alpha1
+kind: Config
+metadata:
+  name: config
+  namespace: gatekeeper-system
+spec:
+  # Match configuration for policy enforcement
+  match:
+    - excludedNamespaces: 
+        - "kube-system"
+        - "kube-public" 
+        - "kube-node-lease"
+        - "gatekeeper-system"
+        - "istio-system"
+        - "monitoring"
+      processes: ["*"]
+  
+  # Validation settings
+  validation:
+    traces:
+      - user:
+          kind:
+            group: "*"
+            version: "*" 
+            kind: "*"
+        kind:
+          group: "*"
+          version: "*"
+          kind: "*"
+  
+  # Experimental features
+  experimental:
+    defaultGVKs: true
+  
+  # Sync configuration for data replication
+  sync:
+    syncOnly:
+      - group: ""
+        version: "v1"
+        kind: "Namespace"
+      - group: ""
+        version: "v1"
+        kind: "Pod"
+      - group: "apps"
+        version: "v1"
+        kind: "Deployment"
+      - group: "apps" 
+        version: "v1"
+        kind: "StatefulSet"
+      - group: "batch"
+        version: "v1"
+        kind: "Job"
+      - group: "batch"
+        version: "v1"
+        kind: "CronJob"
+
+---
+# Assign configuration for data access
+apiVersion: config.gatekeeper.sh/v1alpha1
+kind: Assign
+metadata:
+  name: add-smm-labels
+  namespace: gatekeeper-system
+spec:
+  applyTo:
+    - groups: ["apps"]
+      kinds: ["Deployment", "StatefulSet"]
+      versions: ["v1"]
+  match:
+    scope: Namespaced
+    kinds:
+      - apiGroups: ["apps"]
+        kinds: ["Deployment", "StatefulSet"]
+    namespaces: ["smm-architect"]
+  location: "metadata.labels.gatekeeper-enforced"
+  parameters:
+    assign:
+      value: "true"
+
+---
+# AssignMetadata for automatic labeling
+apiVersion: mutations.gatekeeper.sh/v1alpha1
+kind: AssignMetadata
+metadata:
+  name: smm-security-labels
+  namespace: gatekeeper-system
+spec:
+  match:
+    scope: Namespaced
+    kinds:
+      - apiGroups: ["apps"]
+        kinds: ["Deployment"]
+    namespaces: ["smm-architect"]
+  location: "metadata.labels"
+  parameters:
+    assign:
+      value:
+        security-scan: "enabled"
+        policy-enforced: "true"
+        compliance-required: "true"
+
+---
+# Gatekeeper Webhook Configuration
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionWebhook  
+metadata:
+  name: gatekeeper-validating-webhook-configuration
+webhooks:
+- name: validation.gatekeeper.sh
+  clientConfig:
+    service:
+      name: gatekeeper-webhook-service
+      namespace: gatekeeper-system
+      path: "/v1/admit"
+  rules:
+  - operations: ["CREATE", "UPDATE"]
+    apiGroups: ["*"]
+    apiVersions: ["*"]
+    resources: ["*"]
+  namespaceSelector:
+    matchExpressions:
+    - key: admission.gatekeeper.sh/ignore
+      operator: DoesNotExist
+  failurePolicy: Fail
+  sideEffects: None
+  admissionReviewVersions: ["v1", "v1beta1"]
+  
+---
+# Gatekeeper Mutating Webhook Configuration
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingAdmissionWebhook
+metadata:
+  name: gatekeeper-mutating-webhook-configuration
+webhooks:
+- name: mutation.gatekeeper.sh
+  clientConfig:
+    service:
+      name: gatekeeper-webhook-service
+      namespace: gatekeeper-system
+      path: "/v1/mutate"
+  rules:
+  - operations: ["CREATE", "UPDATE"]
+    apiGroups: ["*"]
+    apiVersions: ["*"]
+    resources: ["*"]
+  namespaceSelector:
+    matchExpressions:
+    - key: admission.gatekeeper.sh/ignore
+      operator: DoesNotExist
+  failurePolicy: Fail
+  sideEffects: None
+  admissionReviewVersions: ["v1", "v1beta1"]
+
+---
+# Prometheus ServiceMonitor for Gatekeeper metrics
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: gatekeeper-metrics
+  namespace: gatekeeper-system
+  labels:
+    app: gatekeeper
+    prometheus: monitoring
+spec:
+  selector:
+    matchLabels:
+      app: gatekeeper
+  endpoints:
+  - port: metrics
+    interval: 30s
+    path: /metrics
+
+---
+# NetworkPolicy for Gatekeeper
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: gatekeeper-network-policy
+  namespace: gatekeeper-system
+spec:
+  podSelector:
+    matchLabels:
+      app: gatekeeper
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: kube-system
+    ports:
+    - protocol: TCP
+      port: 8443  # Webhook port
+    - protocol: TCP
+      port: 9090  # Metrics port
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: monitoring
+    ports:
+    - protocol: TCP
+      port: 9090  # Prometheus metrics
+  egress:
+  - to: []
+    ports:
+    - protocol: TCP
+      port: 443   # Kubernetes API
+    - protocol: TCP
+      port: 6443  # Kubernetes API alternative
+  - to: []
+    ports:
+    - protocol: UDP
+      port: 53    # DNS
+    - protocol: TCP
+      port: 53    # DNS over TCP
+
+---
+# Gatekeeper RBAC Configuration
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: gatekeeper-admin
+  namespace: gatekeeper-system
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: gatekeeper-manager-role
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - events
+  verbs:
+  - create
+  - patch
+- apiGroups:
+  - "*"
+  resources:
+  - "*"
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - admissionregistration.k8s.io
+  resources:
+  - validatingadmissionwebhooks
+  - mutatingadmissionwebhooks
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - config.gatekeeper.sh
+  resources:
+  - "*"
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - constraints.gatekeeper.sh
+  resources:
+  - "*"
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - templates.gatekeeper.sh
+  resources:
+  - "*" 
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: gatekeeper-manager-rolebinding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: gatekeeper-manager-role
+subjects:
+- kind: ServiceAccount
+  name: gatekeeper-admin
+  namespace: gatekeeper-system
+
+---
+# Policy Violation Monitoring
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: gatekeeper-policy-violations
+  namespace: gatekeeper-system
+  labels:
+    app: gatekeeper
+    prometheus: monitoring
+spec:
+  groups:
+  - name: gatekeeper.violations
+    rules:
+    - alert: GatekeeperHighViolationRate
+      expr: rate(gatekeeper_violations_total[5m]) > 0.1
+      for: 2m
+      labels:
+        severity: warning
+      annotations:
+        summary: "High rate of Gatekeeper policy violations"
+        description: "Gatekeeper is detecting {{ $value }} violations per second"
+    
+    - alert: GatekeeperBudgetLimitViolation
+      expr: increase(gatekeeper_violations_total{violation_kind="BudgetLimitEnforcement"}[5m]) > 0
+      for: 0m
+      labels:
+        severity: critical
+      annotations:
+        summary: "Budget limit violation detected"
+        description: "Budget limit policy violation in namespace {{ $labels.namespace }}"
+    
+    - alert: GatekeeperTenantIsolationViolation
+      expr: increase(gatekeeper_violations_total{violation_kind="TenantIsolation"}[5m]) > 0
+      for: 0m
+      labels:
+        severity: critical
+      annotations:
+        summary: "Tenant isolation violation detected"
+        description: "Tenant isolation policy violation in namespace {{ $labels.namespace }}"
+        
+    - alert: GatekeeperWebhookDown
+      expr: up{job="gatekeeper-webhook"} == 0
+      for: 1m
+      labels:
+        severity: critical
+      annotations:
+        summary: "Gatekeeper webhook is down"
+        description: "Gatekeeper admission webhook is not responding"
+
+---
+# ConfigMap for policy testing
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gatekeeper-policy-tests
+  namespace: gatekeeper-system
+data:
+  test-budget-policy.yaml: |
+    # Test budget limit policy
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: test-budget-violation
+      namespace: smm-architect
+      labels:
+        smm-architect.io/tenant-id: "test-tenant"
+        smm-architect.io/workspace-id: "test-workspace"
+        smm-architect.io/component: "model-router"
+      annotations:
+        smm-architect.io/budget-config: |
+          {
+            "monthlySpent": 15000,
+            "dailySpent": 600,
+            "hourlyRequestCount": 1500
+          }
+    spec:
+      replicas: 1
+      selector:
+        matchLabels:
+          app: test-budget
+      template:
+        metadata:
+          labels:
+            app: test-budget
+        spec:
+          containers:
+          - name: test
+            image: nginx:alpine
+            env:
+            - name: MAX_TOKENS
+              value: "10000"
+  
+  test-model-access.yaml: |
+    # Test model access control
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: test-model-access
+      namespace: smm-architect
+      labels:
+        smm-architect.io/tenant-id: "basic-tenant"
+        smm-architect.io/tenant-tier: "basic"
+        smm-architect.io/workspace-id: "basic-workspace"
+        smm-architect.io/component: "model-router"
+      annotations:
+        smm-architect.io/model-id: "gpt-4-turbo"  # Should violate basic tier policy
+    spec:
+      replicas: 1
+      selector:
+        matchLabels:
+          app: test-model
+      template:
+        metadata:
+          labels:
+            app: test-model
+        spec:
+          containers:
+          - name: test
+            image: nginx:alpine
+
+  test-tenant-isolation.yaml: |
+    # Test tenant isolation
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: test-tenant-isolation
+      namespace: smm-architect
+      labels:
+        smm-architect.io/component: "model-router"
+        # Missing required tenant-id and workspace-id labels
+      annotations:
+        smm-architect.io/network-policy: "enabled"
+    spec:
+      replicas: 1
+      selector:
+        matchLabels:
+          app: test-isolation
+      template:
+        metadata:
+          labels:
+            app: test-isolation
+        spec:
+          containers:
+          - name: test
+            image: nginx:alpine
+            securityContext:
+              runAsNonRoot: true
+              readOnlyRootFilesystem: false  # Should violate policy
+
+---
+# Policy validation script
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: policy-validation-script
+  namespace: gatekeeper-system
+data:
+  validate-policies.sh: |
+    #!/bin/bash
+    set -euo pipefail
+    
+    echo "🔍 SMM Architect OPA Gatekeeper Policy Validation"
+    echo "================================================="
+    
+    # Colors for output
+    RED='\033[0;31m'
+    GREEN='\033[0;32m'
+    YELLOW='\033[1;33m'
+    NC='\033[0m' # No Color
+    
+    # Function to print colored output
+    print_status() {
+        local status=$1
+        local message=$2
+        case $status in
+            "PASS")
+                echo -e "${GREEN}✅ PASS${NC}: $message"
+                ;;
+            "FAIL") 
+                echo -e "${RED}❌ FAIL${NC}: $message"
+                ;;
+            "WARN")
+                echo -e "${YELLOW}⚠️  WARN${NC}: $message"
+                ;;
+            "INFO")
+                echo -e "ℹ️  INFO: $message"
+                ;;
+        esac
+    }
+    
+    # Check if Gatekeeper is installed
+    if kubectl get namespace gatekeeper-system > /dev/null 2>&1; then
+        print_status "PASS" "Gatekeeper system namespace exists"
+    else
+        print_status "FAIL" "Gatekeeper system namespace not found"
+        exit 1
+    fi
+    
+    # Check if constraint templates are installed
+    echo ""
+    echo "🔧 Checking Constraint Templates..."
+    
+    constraint_templates=(
+        "budgetlimitenforcement"
+        "modelaccesscontrol" 
+        "tenantisolation"
+        "resourcequotalimits"
+        "dataresidencycompliance"
+    )
+    
+    for template in "${constraint_templates[@]}"; do
+        if kubectl get constrainttemplate "$template" > /dev/null 2>&1; then
+            print_status "PASS" "ConstraintTemplate '$template' exists"
+        else
+            print_status "FAIL" "ConstraintTemplate '$template' missing"
+        fi
+    done
+    
+    # Check if constraints are installed
+    echo ""
+    echo "📋 Checking Constraint Instances..."
+    
+    constraints=(
+        "budgetlimitenforcement/smm-budget-limits"
+        "modelaccesscontrol/smm-model-access"
+        "tenantisolation/smm-tenant-isolation" 
+        "resourcequotalimits/smm-resource-limits"
+        "dataresidencycompliance/smm-data-compliance"
+    )
+    
+    for constraint in "${constraints[@]}"; do
+        constraint_type=$(echo "$constraint" | cut -d'/' -f1)
+        constraint_name=$(echo "$constraint" | cut -d'/' -f2)
+        
+        if kubectl get "$constraint_type" "$constraint_name" > /dev/null 2>&1; then
+            print_status "PASS" "Constraint '$constraint_name' of type '$constraint_type' exists"
+        else
+            print_status "FAIL" "Constraint '$constraint_name' of type '$constraint_type' missing"
+        fi
+    done
+    
+    # Test policy enforcement with dry-run
+    echo ""
+    echo "🧪 Testing Policy Enforcement (Dry Run)..."
+    
+    # Test budget limit policy
+    echo "Testing budget limit enforcement..."
+    if kubectl apply --dry-run=server -f - <<EOF
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: test-budget-violation
+      namespace: smm-architect
+      labels:
+        smm-architect.io/tenant-id: "test-tenant"
+        smm-architect.io/workspace-id: "test-workspace"
+        smm-architect.io/component: "model-router"
+      annotations:
+        smm-architect.io/budget-config: |
+          {
+            "monthlySpent": 15000,
+            "dailySpent": 600,
+            "hourlyRequestCount": 1500
+          }
+    spec:
+      replicas: 1
+      selector:
+        matchLabels:
+          app: test-budget
+      template:
+        metadata:
+          labels:
+            app: test-budget
+        spec:
+          containers:
+          - name: test
+            image: nginx:alpine
+            env:
+            - name: MAX_TOKENS
+              value: "10000"
+    EOF
+    then
+        print_status "WARN" "Budget limit policy may not be working - dry run succeeded"
+    else
+        print_status "PASS" "Budget limit policy is working - deployment rejected"
+    fi
+    
+    # Check Gatekeeper metrics
+    echo ""
+    echo "📊 Checking Gatekeeper Metrics..."
+    
+    if kubectl get servicemonitor gatekeeper-metrics -n gatekeeper-system > /dev/null 2>&1; then
+        print_status "PASS" "Gatekeeper ServiceMonitor exists"
+    else
+        print_status "WARN" "Gatekeeper ServiceMonitor not found"
+    fi
+    
+    # Check webhook status
+    echo ""
+    echo "🔗 Checking Webhook Status..."
+    
+    if kubectl get validatingwebhookconfiguration gatekeeper-validating-webhook-configuration > /dev/null 2>&1; then
+        print_status "PASS" "Validating webhook configuration exists"
+    else
+        print_status "FAIL" "Validating webhook configuration missing"
+    fi
+    
+    if kubectl get mutatingwebhookconfiguration gatekeeper-mutating-webhook-configuration > /dev/null 2>&1; then
+        print_status "PASS" "Mutating webhook configuration exists"
+    else
+        print_status "WARN" "Mutating webhook configuration missing"
+    fi
+    
+    echo ""
+    echo "🎉 Policy validation completed!"
+    echo "For detailed policy status, run:"
+    echo "kubectl get constraints -A"
+    echo "kubectl get constrainttemplates"

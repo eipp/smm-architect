@@ -1,0 +1,357 @@
+---
+# Namespace with Pod Security Standards enforcement
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: smm-architect
+  labels:
+    # Pod Security Standards enforcement
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+    
+    # Additional security labels
+    security-tier: "production"
+    compliance-level: "high"
+    
+    # Network policy enforcement
+    network-policy: "enabled"
+    
+    # Monitoring labels
+    monitoring: "enabled"
+    
+spec: {}
+
+---
+# Pod Security Policy (for clusters that still use PSP)
+# This will be deprecated but included for compatibility
+apiVersion: policy/v1beta1
+kind: PodSecurityPolicy
+metadata:
+  name: smm-architect-restricted
+  namespace: smm-architect
+spec:
+  privileged: false
+  allowPrivilegeEscalation: false
+  requiredDropCapabilities:
+    - ALL
+  volumes:
+    - 'configMap'
+    - 'emptyDir'
+    - 'projected'
+    - 'secret'
+    - 'downwardAPI'
+    - 'persistentVolumeClaim'
+    # Explicitly exclude hostPath and others
+  hostNetwork: false
+  hostIPC: false
+  hostPID: false
+  runAsUser:
+    rule: 'MustRunAsNonRoot'
+  supplementalGroups:
+    rule: 'MustRunAs'
+    ranges:
+      - min: 1
+        max: 65535
+  fsGroup:
+    rule: 'MustRunAs'
+    ranges:
+      - min: 1
+        max: 65535
+  readOnlyRootFilesystem: true
+  seccompProfile:
+    rule: 'MustRunAs'
+    defaultProfile: 'RuntimeDefault'
+  seLinux:
+    rule: 'RunAsAny'
+
+---
+# ClusterRole for the PSP
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: smm-architect-psp-user
+rules:
+- apiGroups: ['policy']
+  resources: ['podsecuritypolicies']
+  verbs: ['use']
+  resourceNames:
+  - smm-architect-restricted
+
+---
+# RoleBinding for the PSP
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: smm-architect-psp-binding
+  namespace: smm-architect
+roleRef:
+  kind: ClusterRole
+  name: smm-architect-psp-user
+  apiGroup: rbac.authorization.k8s.io
+subjects:
+- kind: ServiceAccount
+  name: default
+  namespace: smm-architect
+- kind: ServiceAccount
+  name: smm-architect-service-account
+  namespace: smm-architect
+
+---
+# Security Context Constraints for OpenShift (if applicable)
+apiVersion: security.openshift.io/v1
+kind: SecurityContextConstraints
+metadata:
+  name: smm-architect-scc
+allowHostDirVolumePlugin: false
+allowHostIPC: false
+allowHostNetwork: false
+allowHostPID: false
+allowHostPorts: false
+allowPrivilegeEscalation: false
+allowPrivilegedContainer: false
+allowedCapabilities: null
+defaultAddCapabilities: null
+fsGroup:
+  type: MustRunAs
+  ranges:
+  - min: 1
+    max: 65535
+readOnlyRootFilesystem: true
+requiredDropCapabilities:
+- ALL
+runAsUser:
+  type: MustRunAsNonRoot
+seccompProfiles:
+- runtime/default
+seLinuxContext:
+  type: MustRunAs
+supplementalGroups:
+  type: MustRunAs
+  ranges:
+  - min: 1
+    max: 65535
+volumes:
+- configMap
+- downwardAPI
+- emptyDir
+- persistentVolumeClaim
+- projected
+- secret
+users:
+- system:serviceaccount:smm-architect:default
+- system:serviceaccount:smm-architect:smm-architect-service-account
+
+---
+# ValidatingAdmissionWebhook for additional security checks
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionWebhook
+metadata:
+  name: smm-architect-security-webhook
+webhooks:
+- name: security-validation.smm-architect.com
+  clientConfig:
+    service:
+      name: security-webhook-service
+      namespace: smm-architect
+      path: /validate
+  rules:
+  - operations: ["CREATE", "UPDATE"]
+    apiGroups: [""]
+    apiVersions: ["v1"]
+    resources: ["pods"]
+  namespaceSelector:
+    matchLabels:
+      name: smm-architect
+  sideEffects: None
+  admissionReviewVersions: ["v1", "v1beta1"]
+  failurePolicy: Fail
+
+---
+# OPA Gatekeeper ConstraintTemplate for security validation
+apiVersion: templates.gatekeeper.sh/v1beta1
+kind: ConstraintTemplate
+metadata:
+  name: k8srequiredsecuritycontext
+spec:
+  crd:
+    spec:
+      names:
+        kind: K8sRequiredSecurityContext
+      validation:
+        type: object
+        properties:
+          runAsNonRoot:
+            type: boolean
+          readOnlyRootFilesystem:
+            type: boolean
+          allowPrivilegeEscalation:
+            type: boolean
+  targets:
+    - target: admission.k8s.gatekeeper.sh
+      rego: |
+        package k8srequiredsecuritycontext
+        
+        violation[{"msg": msg}] {
+          container := input.review.object.spec.containers[_]
+          not container.securityContext.runAsNonRoot == true
+          msg := sprintf("Container <%v> must run as non-root user", [container.name])
+        }
+        
+        violation[{"msg": msg}] {
+          container := input.review.object.spec.containers[_]
+          not container.securityContext.readOnlyRootFilesystem == true
+          msg := sprintf("Container <%v> must have readOnlyRootFilesystem=true", [container.name])
+        }
+        
+        violation[{"msg": msg}] {
+          container := input.review.object.spec.containers[_]
+          container.securityContext.allowPrivilegeEscalation == true
+          msg := sprintf("Container <%v> must have allowPrivilegeEscalation=false", [container.name])
+        }
+        
+        violation[{"msg": msg}] {
+          container := input.review.object.spec.containers[_]
+          capabilities := container.securityContext.capabilities.add[_]
+          msg := sprintf("Container <%v> must not add capabilities: <%v>", [container.name, capabilities])
+        }
+
+---
+# Gatekeeper Constraint to enforce security context
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredSecurityContext
+metadata:
+  name: must-have-security-context
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    namespaces: ["smm-architect"]
+  parameters:
+    runAsNonRoot: true
+    readOnlyRootFilesystem: true
+    allowPrivilegeEscalation: false
+
+---
+# Resource Quota for the namespace
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: smm-architect-quota
+  namespace: smm-architect
+spec:
+  hard:
+    requests.cpu: "20"      # 20 CPU cores
+    requests.memory: "40Gi" # 40 GB memory
+    limits.cpu: "40"        # 40 CPU cores max
+    limits.memory: "80Gi"   # 80 GB memory max
+    requests.storage: "100Gi"
+    persistentvolumeclaims: "10"
+    pods: "50"
+    services: "20"
+    secrets: "30"
+    configmaps: "30"
+    count/deployments.apps: "20"
+    count/replicasets.apps: "30"
+    count/networkpolicies.networking.k8s.io: "20"
+
+---
+# Limit Range for pod and container limits
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: smm-architect-limits
+  namespace: smm-architect
+spec:
+  limits:
+  - default:
+      cpu: "500m"
+      memory: "1Gi"
+      ephemeral-storage: "2Gi"
+    defaultRequest:
+      cpu: "100m"
+      memory: "128Mi"
+      ephemeral-storage: "512Mi"
+    max:
+      cpu: "4"
+      memory: "8Gi"
+      ephemeral-storage: "10Gi"
+    min:
+      cpu: "50m"
+      memory: "64Mi"
+      ephemeral-storage: "256Mi"
+    type: Container
+  - default:
+      cpu: "2"
+      memory: "4Gi"
+      ephemeral-storage: "8Gi"
+    defaultRequest:
+      cpu: "500m"
+      memory: "512Mi"
+      ephemeral-storage: "1Gi"
+    max:
+      cpu: "8"
+      memory: "16Gi"
+      ephemeral-storage: "20Gi"
+    min:
+      cpu: "100m"
+      memory: "128Mi"
+      ephemeral-storage: "512Mi"
+    type: Pod
+  - max:
+      storage: "10Gi"
+    min:
+      storage: "1Gi"
+    type: PersistentVolumeClaim
+
+---
+# Service Account with minimal privileges
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: smm-architect-service-account
+  namespace: smm-architect
+  labels:
+    app: smm-architect
+  annotations:
+    # For AWS IRSA
+    eks.amazonaws.com/role-arn: "arn:aws:iam::ACCOUNT-ID:role/smm-architect-service-role"
+    # For GCP Workload Identity
+    iam.gke.io/gcp-service-account: "smm-architect@PROJECT-ID.iam.gserviceaccount.com"
+automountServiceAccountToken: false
+
+---
+# Role with minimal required permissions
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  namespace: smm-architect
+  name: smm-architect-role
+rules:
+- apiGroups: [""]
+  resources: ["configmaps", "secrets"]
+  verbs: ["get", "list"]
+- apiGroups: [""]
+  resources: ["events"]
+  verbs: ["create"]
+- apiGroups: ["coordination.k8s.io"]
+  resources: ["leases"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+# Minimal permissions for leader election and configuration
+
+---
+# RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: smm-architect-binding
+  namespace: smm-architect
+subjects:
+- kind: ServiceAccount
+  name: smm-architect-service-account
+  namespace: smm-architect
+roleRef:
+  kind: Role
+  name: smm-architect-role
+  apiGroup: rbac.authorization.k8s.io

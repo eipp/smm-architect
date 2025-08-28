@@ -1,0 +1,212 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: model-router-metrics
+  namespace: smm-architect
+  labels:
+    app: model-router
+    component: metrics
+spec:
+  selector:
+    matchLabels:
+      app: model-router
+  endpoints:
+  - port: http
+    path: /metrics
+    interval: 30s
+    scrapeTimeout: 10s
+    honorLabels: true
+    relabelings:
+    - sourceLabels: [__meta_kubernetes_service_name]
+      targetLabel: service
+    - sourceLabels: [__meta_kubernetes_namespace]
+      targetLabel: namespace
+    - sourceLabels: [__meta_kubernetes_pod_name]
+      targetLabel: pod
+    - sourceLabels: [__meta_kubernetes_pod_node_name]
+      targetLabel: node
+    metricRelabelings:
+    # Drop high cardinality metrics that might cause issues
+    - sourceLabels: [__name__]
+      regex: 'model_router_request_duration_seconds_bucket'
+      action: drop
+    # Add instance label for better identification
+    - sourceLabels: [pod]
+      targetLabel: instance
+      replacement: '${1}'
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: model-router-metrics
+  namespace: smm-architect
+  labels:
+    app: model-router
+    component: metrics
+spec:
+  ports:
+  - name: http
+    port: 3003
+    targetPort: 3003
+    protocol: TCP
+  selector:
+    app: model-router
+  type: ClusterIP
+---
+# Grafana Dashboard ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: model-router-dashboard
+  namespace: smm-architect
+  labels:
+    grafana_dashboard: "1"
+data:
+  model-router-dashboard.json: |
+    {
+      "dashboard": {
+        "id": null,
+        "title": "Model Router Metrics",
+        "tags": ["model-router", "ai", "performance"],
+        "timezone": "browser",
+        "panels": [
+          {
+            "id": 1,
+            "title": "Request Rate (RED)",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "rate(model_router_requests_total[5m])",
+                "legendFormat": "{{method}} {{route}} {{status_code}}"
+              }
+            ],
+            "yAxes": [{
+              "label": "Requests/sec"
+            }],
+            "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}
+          },
+          {
+            "id": 2,
+            "title": "Error Rate (RED)",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "rate(model_router_errors_total[5m])",
+                "legendFormat": "{{method}} {{route}} {{error_type}}"
+              }
+            ],
+            "yAxes": [{
+              "label": "Errors/sec"
+            }],
+            "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0}
+          },
+          {
+            "id": 3,
+            "title": "Request Duration (RED)",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "histogram_quantile(0.95, rate(model_router_request_duration_seconds_bucket[5m]))",
+                "legendFormat": "P95 {{method}} {{route}}"
+              },
+              {
+                "expr": "histogram_quantile(0.50, rate(model_router_request_duration_seconds_bucket[5m]))",
+                "legendFormat": "P50 {{method}} {{route}}"
+              }
+            ],
+            "yAxes": [{
+              "label": "Duration (seconds)"
+            }],
+            "gridPos": {"h": 8, "w": 24, "x": 0, "y": 8}
+          },
+          {
+            "id": 4,
+            "title": "Circuit Breaker States",
+            "type": "stat",
+            "targets": [
+              {
+                "expr": "model_router_circuit_breaker_state",
+                "legendFormat": "{{model_id}} ({{circuit_breaker_name}})"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "mappings": [
+                  {"value": 0, "text": "CLOSED", "color": "green"},
+                  {"value": 1, "text": "OPEN", "color": "red"},
+                  {"value": 2, "text": "HALF_OPEN", "color": "yellow"}
+                ]
+              }
+            },
+            "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16}
+          },
+          {
+            "id": 5,
+            "title": "Endpoint Health",
+            "type": "stat",
+            "targets": [
+              {
+                "expr": "model_router_endpoint_health",
+                "legendFormat": "{{endpoint_url}}"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "mappings": [
+                  {"value": 1, "text": "Healthy", "color": "green"},
+                  {"value": 0, "text": "Unhealthy", "color": "red"}
+                ]
+              }
+            },
+            "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16}
+          },
+          {
+            "id": 6,
+            "title": "Model Request Distribution",
+            "type": "piechart",
+            "targets": [
+              {
+                "expr": "sum by (model_id) (rate(model_router_model_requests_total[5m]))",
+                "legendFormat": "{{model_id}}"
+              }
+            ],
+            "gridPos": {"h": 8, "w": 12, "x": 0, "y": 24}
+          },
+          {
+            "id": 7,
+            "title": "Token Usage",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "rate(model_router_tokens_total{token_type=\"total\"}[5m])",
+                "legendFormat": "{{model_id}}"
+              }
+            ],
+            "yAxes": [{
+              "label": "Tokens/sec"
+            }],
+            "gridPos": {"h": 8, "w": 12, "x": 12, "y": 24}
+          },
+          {
+            "id": 8,
+            "title": "Cost per Hour",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "rate(model_router_cost_usd_total[1h]) * 3600",
+                "legendFormat": "{{model_provider}}"
+              }
+            ],
+            "yAxes": [{
+              "label": "USD/hour"
+            }],
+            "gridPos": {"h": 8, "w": 24, "x": 0, "y": 32}
+          }
+        ],
+        "time": {
+          "from": "now-1h",
+          "to": "now"
+        },
+        "refresh": "30s"
+      }
+    }

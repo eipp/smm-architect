@@ -1,5 +1,5 @@
 import { PrismaClient, Workspace, WorkspaceRun, SimulationReport, AgentRun } from './generated/client';
-import { getPrismaClient, withRetryTransaction } from './client';
+import { withTenantContext, withRetryTransaction } from './client';
 import winston from 'winston';
 
 const logger = winston.createLogger({
@@ -66,54 +66,56 @@ export interface CreateAgentRunData {
 }
 
 export class WorkspaceRepository {
-  private client: PrismaClient;
+  private tenantId: string;
 
-  constructor(client?: PrismaClient) {
-    this.client = client || getPrismaClient();
+  constructor(tenantId: string) {
+    this.tenantId = tenantId;
   }
 
   /**
    * Create a new workspace with transaction safety
    */
   async createWorkspace(data: CreateWorkspaceData): Promise<Workspace> {
-    return withRetryTransaction(async (tx) => {
-      // Check if workspace already exists
-      const existing = await tx.workspace.findUnique({
-        where: { workspaceId: data.workspaceId }
-      });
+    return withTenantContext(this.tenantId, async (client) => {
+      return withRetryTransaction(async (tx) => {
+        // Check if workspace already exists
+        const existing = await tx.workspace.findUnique({
+          where: { workspaceId: data.workspaceId }
+        });
 
-      if (existing) {
-        throw new Error(`Workspace ${data.workspaceId} already exists`);
-      }
-
-      // Create workspace
-      const workspace = await tx.workspace.create({
-        data: {
-          workspaceId: data.workspaceId,
-          tenantId: data.tenantId,
-          createdBy: data.createdBy,
-          createdAt: new Date(),
-          contractVersion: data.contractVersion,
-          goals: data.goals,
-          primaryChannels: data.primaryChannels,
-          budget: data.budget,
-          approvalPolicy: data.approvalPolicy,
-          riskProfile: data.riskProfile,
-          dataRetention: data.dataRetention,
-          ttlHours: data.ttlHours,
-          policyBundleRef: data.policyBundleRef,
-          policyBundleChecksum: data.policyBundleChecksum,
-          contractData: data.contractData
+        if (existing) {
+          throw new Error(`Workspace ${data.workspaceId} already exists`);
         }
-      });
 
-      logger.info('Workspace created', {
-        workspaceId: workspace.workspaceId,
-        tenantId: workspace.tenantId,
-        createdBy: workspace.createdBy
-      });
+        // Create workspace
+        const workspace = await tx.workspace.create({
+          data: {
+            workspaceId: data.workspaceId,
+            tenantId: data.tenantId,
+            createdBy: data.createdBy,
+            createdAt: new Date(),
+            contractVersion: data.contractVersion,
+            goals: data.goals,
+            primaryChannels: data.primaryChannels,
+            budget: data.budget,
+            approvalPolicy: data.approvalPolicy,
+            riskProfile: data.riskProfile,
+            dataRetention: data.dataRetention,
+            ttlHours: data.ttlHours,
+            policyBundleRef: data.policyBundleRef,
+            policyBundleChecksum: data.policyBundleChecksum,
+            contractData: data.contractData
+          }
+        });
 
-      return workspace;
+        logger.info('Workspace created', {
+          workspaceId: workspace.workspaceId,
+          tenantId: workspace.tenantId,
+          createdBy: workspace.createdBy
+        });
+
+        return workspace;
+      });
     });
   }
 
@@ -124,22 +126,24 @@ export class WorkspaceRepository {
     workspaceId: string, 
     includeRelations: boolean = false
   ): Promise<Workspace | null> {
-    return this.client.workspace.findUnique({
-      where: { workspaceId },
-      include: includeRelations ? {
-        runs: {
-          orderBy: { startedAt: 'desc' },
-          take: 10
-        },
-        simulationReports: {
-          orderBy: { createdAt: 'desc' },
-          take: 5
-        },
-        agentRuns: {
-          orderBy: { createdAt: 'desc' },
-          take: 10
-        }
-      } : undefined
+    return withTenantContext(this.tenantId, async (client) => {
+      return client.workspace.findUnique({
+        where: { workspaceId },
+        include: includeRelations ? {
+          runs: {
+            orderBy: { startedAt: 'desc' },
+            take: 10
+          },
+          simulationReports: {
+            orderBy: { createdAt: 'desc' },
+            take: 5
+          },
+          agentRuns: {
+            orderBy: { createdAt: 'desc' },
+            take: 10
+          }
+        } : undefined
+      });
     });
   }
 
@@ -147,23 +151,24 @@ export class WorkspaceRepository {
    * List workspaces for a tenant with pagination
    */
   async listWorkspaces(
-    tenantId: string,
     limit: number = 50,
     offset: number = 0
   ): Promise<{ workspaces: Workspace[]; total: number }> {
-    const [workspaces, total] = await Promise.all([
-      this.client.workspace.findMany({
-        where: { tenantId },
-        orderBy: { createdAt: 'desc' },
-        take: limit,
-        skip: offset
-      }),
-      this.client.workspace.count({
-        where: { tenantId }
-      })
-    ]);
+    return withTenantContext(this.tenantId, async (client) => {
+      const [workspaces, total] = await Promise.all([
+        client.workspace.findMany({
+          where: { tenantId: this.tenantId },
+          orderBy: { createdAt: 'desc' },
+          take: limit,
+          skip: offset
+        }),
+        client.workspace.count({
+          where: { tenantId: this.tenantId }
+        })
+      ]);
 
-    return { workspaces, total };
+      return { workspaces, total };
+    });
   }
 
   /**
@@ -174,12 +179,14 @@ export class WorkspaceRepository {
     lifecycle: string,
     updatedBy: string
   ): Promise<Workspace> {
-    return this.client.workspace.update({
-      where: { workspaceId },
-      data: {
-        lifecycle,
-        updatedAt: new Date()
-      }
+    return withTenantContext(this.tenantId, async (client) => {
+      return client.workspace.update({
+        where: { workspaceId },
+        data: {
+          lifecycle,
+          updatedAt: new Date()
+        }
+      });
     });
   }
 
@@ -187,13 +194,15 @@ export class WorkspaceRepository {
    * Delete workspace and all related data
    */
   async deleteWorkspace(workspaceId: string): Promise<void> {
-    await withRetryTransaction(async (tx) => {
-      // Prisma will handle cascade deletes based on schema relations
-      await tx.workspace.delete({
-        where: { workspaceId }
-      });
+    await withTenantContext(this.tenantId, async (client) => {
+      await withRetryTransaction(async (tx) => {
+        // Prisma will handle cascade deletes based on schema relations
+        await tx.workspace.delete({
+          where: { workspaceId }
+        });
 
-      logger.info('Workspace deleted', { workspaceId });
+        logger.info('Workspace deleted', { workspaceId });
+      });
     });
   }
 

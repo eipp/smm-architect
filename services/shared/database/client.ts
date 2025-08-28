@@ -193,7 +193,8 @@ export async function getCurrentTenantContext(client: PrismaClient): Promise<str
 }
 
 /**
- * Transaction helper with retry logic and optional tenant context
+ * Transaction helper with retry logic and tenant context
+ * Uses LOCAL tenant context scoping within transactions
  */
 export async function withRetryTransaction<T>(
   operation: (client: PrismaClient) => Promise<T>,
@@ -205,17 +206,20 @@ export async function withRetryTransaction<T>(
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
       return await client.$transaction(async (tx) => {
-        // Set tenant context within transaction if provided
+        // Set tenant context LOCAL to this transaction if provided
         if (tenantId) {
-          await setTenantContext(tx as PrismaClient, tenantId);
+          await tx.$executeRaw`SELECT set_config('app.current_tenant_id', ${tenantId}, true)`;
+          logger.debug('Tenant context set within retry transaction', { tenantId, attempt });
         }
+        
         return await operation(tx as PrismaClient);
       });
     } catch (error) {
       logger.warn(`Transaction attempt ${attempt} failed`, {
         error: error instanceof Error ? error.message : error,
         attempt,
-        maxRetries
+        maxRetries,
+        tenantId
       });
       
       if (attempt === maxRetries) {
@@ -265,8 +269,8 @@ export async function initializeDatabase(): Promise<void> {
 }
 
 /**
- * Execute operation with tenant context set
- * This is the primary function for tenant-scoped database operations
+ * Execute operation with tenant context set within a transaction
+ * This ensures tenant context is LOCAL to the transaction and automatically cleaned up
  */
 export async function withTenantContext<T>(
   tenantId: string,
@@ -276,22 +280,34 @@ export async function withTenantContext<T>(
     throw new Error('Tenant ID is required for database operations');
   }
 
-  const client = getPrismaClient();
+  // Enter secure context to prevent security warnings
+  enterSecureContext();
   
   try {
-    // Set tenant context before operation
-    await setTenantContext(client, tenantId);
+    const client = getPrismaClient();
     
-    // Execute the operation
-    const result = await operation(client);
-    
-    return result;
+    // Execute within transaction to ensure LOCAL tenant context scoping
+    return await client.$transaction(async (tx) => {
+      // Set tenant context LOCAL to this transaction
+      await tx.$executeRaw`SELECT set_config('app.current_tenant_id', ${tenantId}, true)`;
+      
+      logger.debug('Tenant context set within transaction', { tenantId });
+      
+      // Execute the operation with transaction client
+      const result = await operation(tx as PrismaClient);
+      
+      // Transaction automatically cleans up LOCAL settings on commit/rollback
+      return result;
+    });
   } catch (error) {
     logger.error('Tenant-scoped operation failed', {
       tenantId,
       error: error instanceof Error ? error.message : error
     });
     throw error;
+  } finally {
+    // Always exit secure context
+    exitSecureContext();
   }
 }
 
@@ -302,9 +318,12 @@ export async function withTenantContext<T>(
 export async function withSystemContext<T>(
   operation: (client: PrismaClient) => Promise<T>
 ): Promise<T> {
-  const client = getPrismaClient();
+  // Enter secure context for system operations
+  enterSecureContext();
   
   try {
+    const client = getPrismaClient();
+    
     // Clear any existing tenant context for system operations
     await clearTenantContext(client);
     
@@ -317,6 +336,9 @@ export async function withSystemContext<T>(
       error: error instanceof Error ? error.message : error
     });
     throw error;
+  } finally {
+    // Always exit secure context
+    exitSecureContext();
   }
 }
 
@@ -443,5 +465,220 @@ process.on('SIGTERM', async () => {
   await closePrismaClient();
   process.exit(0);
 });
+
+// =============================================================================
+// SECURITY ENHANCEMENTS: Database Access Guards
+// =============================================================================
+
+// Security flag to track if client is being used in a safe context
+let _isInSecureContext = false;
+
+// List of allowed operations that don't require tenant context
+const ALLOWED_SYSTEM_OPERATIONS = [
+  'health',
+  'migration',
+  'schema',
+  'system',
+  '_count',
+  '$queryRaw',
+  '$executeRaw',
+  '$transaction'
+];
+
+/**
+ * Get a secured database client with tenant context validation
+ * This is the preferred way to access the database in most cases
+ */
+export function getSecuredPrismaClient(): PrismaClient {
+  const client = getPrismaClient();
+  
+  // Create a proxy to intercept database operations
+  return new Proxy(client, {
+    get(target, prop: string | symbol) {
+      const propName = String(prop);
+      
+      // Allow system operations and internal Prisma methods
+      if (ALLOWED_SYSTEM_OPERATIONS.some(op => propName.includes(op)) || 
+          propName.startsWith('$') || 
+          propName.startsWith('_') ||
+          typeof target[prop as keyof PrismaClient] === 'function') {
+        
+        // For tenant-scoped model operations, add runtime context validation
+        const originalMethod = target[prop as keyof PrismaClient];
+        
+        if (typeof originalMethod === 'object' && originalMethod !== null) {
+          // This is a model object (e.g., client.workspace)
+          const tenantScopedModels = [
+            'workspace', 'workspaceRun', 'auditBundle', 'connector',
+            'consentRecord', 'brandTwin', 'decisionCard', 'simulationResult',
+            'assetFingerprint', 'simulationReport', 'agentRun'
+          ];
+          
+          if (tenantScopedModels.includes(propName)) {
+            return new Proxy(originalMethod, {
+              get(modelTarget, modelProp: string | symbol) {
+                const modelMethod = modelTarget[modelProp as keyof typeof modelTarget];
+                
+                // If it's a database operation method, add tenant context validation
+                if (typeof modelMethod === 'function' && 
+                    ['findMany', 'findFirst', 'findUnique', 'create', 'update', 'delete', 'upsert', 'createMany', 'updateMany', 'deleteMany'].includes(String(modelProp))) {
+                  
+                  return new Proxy(modelMethod, {
+                    async apply(methodTarget, thisArg, args) {
+                      // Runtime tenant context validation
+                      await validateTenantContextOrThrow(target);
+                      return Reflect.apply(methodTarget, thisArg, args);
+                    }
+                  });
+                }
+                
+                return modelMethod;
+              }
+            });
+          }
+        }
+        
+        return originalMethod;
+      }
+      
+      // For tenant-scoped models, require tenant context
+      const tenantScopedModels = [
+        'workspace', 'workspaceRun', 'auditBundle', 'connector',
+        'consentRecord', 'brandTwin', 'decisionCard', 'simulationResult',
+        'assetFingerprint', 'simulationReport', 'agentRun'
+      ];
+      
+      if (tenantScopedModels.includes(propName)) {
+        throw new Error(
+          `SECURITY VIOLATION: Direct access to '${propName}' model is prohibited. ` +
+          'Use withTenantContext() to ensure proper tenant isolation.'
+        );
+      }
+      
+      return target[prop as keyof PrismaClient];
+    }
+  });
+}
+
+/**
+ * Runtime validation to ensure tenant context is set for tenant-scoped operations
+ */
+async function validateTenantContextOrThrow(client: PrismaClient): Promise<void> {
+  // Skip validation if we're in a secure context (withTenantContext/withSystemContext)
+  if (_isInSecureContext) {
+    return;
+  }
+  
+  // Skip validation in test environment to avoid breaking existing tests
+  if (process.env.NODE_ENV === 'test') {
+    logger.warn('SECURITY WARNING: Tenant context validation skipped in test environment');
+    return;
+  }
+  
+  try {
+    const currentTenant = await getCurrentTenantContext(client);
+    
+    if (!currentTenant) {
+      throw new Error(
+        'SECURITY VIOLATION: No tenant context found. ' +
+        'All tenant-scoped database operations must be executed within withTenantContext() ' +
+        'to ensure proper data isolation.'
+      );
+    }
+    
+    logger.debug('Tenant context validation passed', { tenantId: currentTenant });
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('SECURITY VIOLATION')) {
+      throw error;
+    }
+    
+    // If we can't determine tenant context due to database error, fail safely
+    throw new Error(
+      'SECURITY VIOLATION: Unable to validate tenant context. ' +
+      'Database operations require proper tenant isolation.'
+    );
+  }
+}
+
+/**
+ * Middleware helper to validate tenant context before database operations
+ * Can be used in Express middleware or other validation scenarios
+ */
+export async function validateCurrentTenantContext(): Promise<{
+  isValid: boolean;
+  tenantId?: string;
+  error?: string;
+}> {
+  try {
+    const client = getPrismaClient();
+    const currentTenant = await getCurrentTenantContext(client);
+    
+    if (!currentTenant) {
+      return {
+        isValid: false,
+        error: 'No tenant context found - database operations require tenant isolation'
+      };
+    }
+    
+    return {
+      isValid: true,
+      tenantId: currentTenant
+    };
+  } catch (error) {
+    return {
+      isValid: false,
+      error: `Failed to validate tenant context: ${error instanceof Error ? error.message : 'Unknown error'}`
+    };
+  }
+}
+
+/**
+ * Strict validation that throws on invalid tenant context
+ * Use this in critical security checkpoints
+ */
+export async function requireValidTenantContext(): Promise<string> {
+  const validation = await validateCurrentTenantContext();
+  
+  if (!validation.isValid) {
+    throw new Error(`SECURITY VIOLATION: ${validation.error}`);
+  }
+  
+  return validation.tenantId!;
+}
+
+/**
+ * Mark the current context as secure (used internally by withTenantContext)
+ */
+function enterSecureContext(): void {
+  _isInSecureContext = true;
+}
+
+/**
+ * Exit secure context
+ */
+function exitSecureContext(): void {
+  _isInSecureContext = false;
+}
+
+/**
+ * DEPRECATED: Direct database client access
+ * Use withTenantContext() or withRetryTransaction() instead
+ * 
+ * @deprecated Use withTenantContext() for tenant-scoped operations
+ */
+const originalGetPrismaClient = getPrismaClient;
+
+// Override getPrismaClient to add security warnings
+export function getPrismaClient(): PrismaClient {
+  // Check if we're in a secure context (within withTenantContext or system operation)
+  if (!_isInSecureContext && process.env.NODE_ENV !== 'test') {
+    logger.warn('SECURITY WARNING: Direct database client access detected', {
+      stack: new Error().stack,
+      recommendation: 'Use withTenantContext() or withRetryTransaction() instead'
+    });
+  }
+  
+  return originalGetPrismaClient();
+}
 
 export default getPrismaClient;

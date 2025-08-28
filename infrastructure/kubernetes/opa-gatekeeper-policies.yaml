@@ -1,0 +1,612 @@
+# OPA Gatekeeper Policies for SMM Architect Production Readiness
+# This file contains comprehensive policy enforcement for budget limits, model constraints, and tenant isolation
+
+---
+# Budget Limit Enforcement Policy
+apiVersion: templates.gatekeeper.sh/v1beta1
+kind: ConstraintTemplate
+metadata:
+  name: budgetlimitenforcement
+  annotations:
+    description: "Enforces budget limits for workspaces and tenants"
+spec:
+  crd:
+    spec:
+      names:
+        kind: BudgetLimitEnforcement
+      validation:
+        type: object
+        properties:
+          maxMonthlyCost:
+            type: number
+            description: "Maximum monthly cost in USD"
+          maxDailyCost:
+            type: number
+            description: "Maximum daily cost in USD"
+          maxTokensPerRequest:
+            type: number
+            description: "Maximum tokens per request"
+          maxRequestsPerHour:
+            type: number
+            description: "Maximum requests per hour"
+          alertThresholds:
+            type: array
+            items:
+              type: number
+            description: "Budget alert thresholds (percentages)"
+          exemptWorkspaces:
+            type: array
+            items:
+              type: string
+            description: "Workspaces exempt from budget limits"
+  targets:
+    - target: admission.k8s.gatekeeper.sh
+      rego: |
+        package budgetlimitenforcement
+        
+        import rego.v1
+        
+        # Extract budget annotations from the resource
+        budget_config := input.review.object.metadata.annotations["smm-architect.io/budget-config"]
+        tenant_id := input.review.object.metadata.labels["smm-architect.io/tenant-id"]
+        workspace_id := input.review.object.metadata.labels["smm-architect.io/workspace-id"]
+        
+        # Parse budget configuration
+        budget := json.unmarshal(budget_config)
+        
+        # Check if workspace is exempt
+        is_exempt {
+          workspace_id in input.parameters.exemptWorkspaces
+        }
+        
+        # Violation: Monthly budget exceeded
+        violation[{"msg": msg}] {
+          not is_exempt
+          budget.monthlySpent > input.parameters.maxMonthlyCost
+          msg := sprintf("Workspace %v has exceeded monthly budget limit. Spent: $%v, Limit: $%v", 
+            [workspace_id, budget.monthlySpent, input.parameters.maxMonthlyCost])
+        }
+        
+        # Violation: Daily budget exceeded
+        violation[{"msg": msg}] {
+          not is_exempt
+          budget.dailySpent > input.parameters.maxDailyCost
+          msg := sprintf("Workspace %v has exceeded daily budget limit. Spent: $%v, Limit: $%v", 
+            [workspace_id, budget.dailySpent, input.parameters.maxDailyCost])
+        }
+        
+        # Violation: Too many tokens requested
+        violation[{"msg": msg}] {
+          not is_exempt
+          request_config := input.review.object.spec.template.spec.containers[_].env[_]
+          request_config.name == "MAX_TOKENS"
+          to_number(request_config.value) > input.parameters.maxTokensPerRequest
+          msg := sprintf("Request exceeds maximum tokens per request. Requested: %v, Limit: %v", 
+            [request_config.value, input.parameters.maxTokensPerRequest])
+        }
+        
+        # Violation: Rate limit exceeded
+        violation[{"msg": msg}] {
+          not is_exempt
+          budget.hourlyRequestCount > input.parameters.maxRequestsPerHour
+          msg := sprintf("Workspace %v has exceeded hourly request limit. Requests: %v, Limit: %v", 
+            [workspace_id, budget.hourlyRequestCount, input.parameters.maxRequestsPerHour])
+        }
+
+---
+# Budget Limit Constraint Instance
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: BudgetLimitEnforcement
+metadata:
+  name: smm-budget-limits
+spec:
+  match:
+    kinds:
+      - apiGroups: ["apps"]
+        kinds: ["Deployment"]
+      - apiGroups: ["batch"]
+        kinds: ["Job", "CronJob"]
+    namespaces: ["smm-architect"]
+    labelSelector:
+      matchLabels:
+        "smm-architect.io/component": "model-router"
+  parameters:
+    maxMonthlyCost: 10000.0  # $10,000 monthly limit
+    maxDailyCost: 500.0      # $500 daily limit
+    maxTokensPerRequest: 8192 # GPT-4 Turbo limit
+    maxRequestsPerHour: 1000  # 1000 requests per hour
+    alertThresholds: [50, 75, 90, 95] # Alert at 50%, 75%, 90%, 95%
+    exemptWorkspaces: ["admin-workspace", "monitoring-workspace"]
+
+---
+# Model Access Control Policy
+apiVersion: templates.gatekeeper.sh/v1beta1
+kind: ConstraintTemplate
+metadata:
+  name: modelaccesscontrol
+  annotations:
+    description: "Enforces model access controls based on tenant tier and workspace permissions"
+spec:
+  crd:
+    spec:
+      names:
+        kind: ModelAccessControl
+      validation:
+        type: object
+        properties:
+          tierModels:
+            type: object
+            description: "Models available per tenant tier"
+          restrictedModels:
+            type: array
+            items:
+              type: string
+            description: "Models with special restrictions"
+          workspaceModelQuotas:
+            type: object
+            description: "Model usage quotas per workspace"
+          complianceRequiredModels:
+            type: array
+            items:
+              type: string
+            description: "Models requiring compliance verification"
+  targets:
+    - target: admission.k8s.gatekeeper.sh
+      rego: |
+        package modelaccesscontrol
+        
+        import rego.v1
+        
+        # Extract metadata
+        tenant_tier := input.review.object.metadata.labels["smm-architect.io/tenant-tier"]
+        tenant_id := input.review.object.metadata.labels["smm-architect.io/tenant-id"]
+        workspace_id := input.review.object.metadata.labels["smm-architect.io/workspace-id"]
+        requested_model := input.review.object.metadata.annotations["smm-architect.io/model-id"]
+        compliance_verified := input.review.object.metadata.annotations["smm-architect.io/compliance-verified"]
+        
+        # Get allowed models for tenant tier
+        allowed_models := input.parameters.tierModels[tenant_tier]
+        
+        # Violation: Model not allowed for tenant tier
+        violation[{"msg": msg}] {
+          count(allowed_models) > 0
+          not requested_model in allowed_models
+          msg := sprintf("Model %v is not allowed for tenant tier %v. Allowed models: %v", 
+            [requested_model, tenant_tier, allowed_models])
+        }
+        
+        # Violation: Restricted model without proper authorization
+        violation[{"msg": msg}] {
+          requested_model in input.parameters.restrictedModels
+          not input.review.object.metadata.annotations["smm-architect.io/special-authorization"]
+          msg := sprintf("Model %v is restricted and requires special authorization", [requested_model])
+        }
+        
+        # Violation: Compliance required but not verified
+        violation[{"msg": msg}] {
+          requested_model in input.parameters.complianceRequiredModels
+          compliance_verified != "true"
+          msg := sprintf("Model %v requires compliance verification but tenant %v is not verified", 
+            [requested_model, tenant_id])
+        }
+        
+        # Violation: Workspace quota exceeded
+        violation[{"msg": msg}] {
+          workspace_quota := input.parameters.workspaceModelQuotas[workspace_id]
+          workspace_quota
+          current_usage := to_number(input.review.object.metadata.annotations["smm-architect.io/model-usage-count"])
+          current_usage >= workspace_quota.maxRequests
+          msg := sprintf("Workspace %v has exceeded model usage quota. Usage: %v, Limit: %v", 
+            [workspace_id, current_usage, workspace_quota.maxRequests])
+        }
+
+---
+# Model Access Control Constraint Instance
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: ModelAccessControl
+metadata:
+  name: smm-model-access
+spec:
+  match:
+    kinds:
+      - apiGroups: ["apps"]
+        kinds: ["Deployment"]
+      - apiGroups: ["batch"]
+        kinds: ["Job"]
+    namespaces: ["smm-architect"]
+    labelSelector:
+      matchExpressions:
+        - key: "smm-architect.io/component"
+          operator: In
+          values: ["model-router", "agents"]
+  parameters:
+    tierModels:
+      basic:
+        - "gpt-3.5-turbo"
+        - "text-embedding-ada-002"
+      standard:
+        - "gpt-3.5-turbo"
+        - "gpt-4"
+        - "text-embedding-ada-002"
+        - "claude-3-haiku"
+      premium:
+        - "gpt-3.5-turbo"
+        - "gpt-4"
+        - "gpt-4-turbo"
+        - "claude-3-sonnet"
+        - "claude-3-opus"
+        - "text-embedding-ada-002"
+        - "text-embedding-3-large"
+      enterprise:
+        - "*"  # All models available
+    restrictedModels:
+      - "gpt-4-turbo"
+      - "claude-3-opus"
+      - "dall-e-3"
+    complianceRequiredModels:
+      - "gpt-4-turbo"
+      - "claude-3-opus"
+    workspaceModelQuotas:
+      "test-workspace":
+        maxRequests: 100
+      "demo-workspace":
+        maxRequests: 500
+
+---
+# Tenant Isolation Policy
+apiVersion: templates.gatekeeper.sh/v1beta1
+kind: ConstraintTemplate
+metadata:
+  name: tenantisolation
+  annotations:
+    description: "Enforces strict tenant isolation and data segregation"
+spec:
+  crd:
+    spec:
+      names:
+        kind: TenantIsolation
+      validation:
+        type: object
+        properties:
+          requiredLabels:
+            type: array
+            items:
+              type: string
+            description: "Required labels for tenant isolation"
+          allowedCrossTenantsAccess:
+            type: array
+            items:
+              type: string
+            description: "Services allowed to access multiple tenants"
+          dataClassificationLevels:
+            type: array
+            items:
+              type: string
+            description: "Valid data classification levels"
+          networkPolicyRequired:
+            type: boolean
+            description: "Whether network policies are required"
+  targets:
+    - target: admission.k8s.gatekeeper.sh
+      rego: |
+        package tenantisolation
+        
+        import rego.v1
+        
+        # Extract tenant information
+        tenant_id := input.review.object.metadata.labels["smm-architect.io/tenant-id"]
+        workspace_id := input.review.object.metadata.labels["smm-architect.io/workspace-id"]
+        component := input.review.object.metadata.labels["smm-architect.io/component"]
+        data_classification := input.review.object.metadata.labels["smm-architect.io/data-classification"]
+        
+        # Check if service is allowed cross-tenant access
+        is_cross_tenant_allowed {
+          component in input.parameters.allowedCrossTenantsAccess
+        }
+        
+        # Violation: Missing required tenant labels
+        violation[{"msg": msg}] {
+          required_label := input.parameters.requiredLabels[_]
+          not input.review.object.metadata.labels[required_label]
+          msg := sprintf("Missing required tenant isolation label: %v", [required_label])
+        }
+        
+        # Violation: Invalid data classification
+        violation[{"msg": msg}] {
+          data_classification
+          not data_classification in input.parameters.dataClassificationLevels
+          msg := sprintf("Invalid data classification %v. Allowed: %v", 
+            [data_classification, input.parameters.dataClassificationLevels])
+        }
+        
+        # Violation: Cross-tenant access without permission
+        violation[{"msg": msg}] {
+          not is_cross_tenant_allowed
+          # Check if trying to access multiple tenants
+          env_vars := input.review.object.spec.template.spec.containers[_].env
+          tenant_env := [var | var := env_vars[_]; var.name == "TENANT_ID"]
+          count(tenant_env) > 1
+          msg := sprintf("Component %v is not allowed cross-tenant access but multiple tenant IDs found", [component])
+        }
+        
+        # Violation: Network policy required but missing
+        violation[{"msg": msg}] {
+          input.parameters.networkPolicyRequired == true
+          not input.review.object.metadata.annotations["smm-architect.io/network-policy"]
+          msg := "Network policy annotation required for tenant isolation but not found"
+        }
+        
+        # Violation: High classification data without proper security context
+        violation[{"msg": msg}] {
+          data_classification in ["restricted", "confidential"]
+          container := input.review.object.spec.template.spec.containers[_]
+          not container.securityContext.readOnlyRootFilesystem == true
+          msg := sprintf("High classification data requires read-only root filesystem. Classification: %v", 
+            [data_classification])
+        }
+        
+        # Violation: Sensitive workload without resource limits
+        violation[{"msg": msg}] {
+          data_classification in ["restricted", "confidential"] 
+          container := input.review.object.spec.template.spec.containers[_]
+          not container.resources.limits
+          msg := "Sensitive workloads must have resource limits defined"
+        }
+
+---
+# Tenant Isolation Constraint Instance
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: TenantIsolation
+metadata:
+  name: smm-tenant-isolation
+spec:
+  match:
+    kinds:
+      - apiGroups: ["apps"]
+        kinds: ["Deployment", "StatefulSet", "DaemonSet"]
+      - apiGroups: ["batch"]
+        kinds: ["Job", "CronJob"]
+    namespaces: ["smm-architect"]
+  parameters:
+    requiredLabels:
+      - "smm-architect.io/tenant-id"
+      - "smm-architect.io/workspace-id"
+      - "smm-architect.io/component"
+    allowedCrossTenantsAccess:
+      - "monitoring"
+      - "logging"
+      - "audit"
+      - "metrics-collector"
+    dataClassificationLevels:
+      - "public"
+      - "internal"
+      - "confidential"
+      - "restricted"
+    networkPolicyRequired: true
+
+---
+# Resource Quota and Limits Policy
+apiVersion: templates.gatekeeper.sh/v1beta1
+kind: ConstraintTemplate
+metadata:
+  name: resourcequotalimits
+  annotations:
+    description: "Enforces resource quotas and limits per tenant and workspace"
+spec:
+  crd:
+    spec:
+      names:
+        kind: ResourceQuotaLimits
+      validation:
+        type: object
+        properties:
+          tenantResourceLimits:
+            type: object
+            description: "Resource limits per tenant tier"
+          workspaceQuotas:
+            type: object
+            description: "Resource quotas per workspace"
+          maxPodsPerWorkspace:
+            type: number
+            description: "Maximum pods per workspace"
+          requireResourceRequests:
+            type: boolean
+            description: "Whether resource requests are required"
+  targets:
+    - target: admission.k8s.gatekeeper.sh
+      rego: |
+        package resourcequotalimits
+        
+        import rego.v1
+        
+        # Extract metadata
+        tenant_tier := input.review.object.metadata.labels["smm-architect.io/tenant-tier"]
+        workspace_id := input.review.object.metadata.labels["smm-architect.io/workspace-id"]
+        
+        # Get tenant limits
+        tier_limits := input.parameters.tenantResourceLimits[tenant_tier]
+        workspace_quota := input.parameters.workspaceQuotas[workspace_id]
+        
+        # Violation: CPU limit exceeds tenant tier limit
+        violation[{"msg": msg}] {
+          tier_limits
+          container := input.review.object.spec.template.spec.containers[_]
+          cpu_limit := container.resources.limits.cpu
+          cpu_limit_value := units.parse_bytes(cpu_limit)
+          tier_cpu_limit := units.parse_bytes(tier_limits.cpu)
+          cpu_limit_value > tier_cpu_limit
+          msg := sprintf("CPU limit %v exceeds tenant tier %v limit %v", 
+            [cpu_limit, tenant_tier, tier_limits.cpu])
+        }
+        
+        # Violation: Memory limit exceeds tenant tier limit
+        violation[{"msg": msg}] {
+          tier_limits
+          container := input.review.object.spec.template.spec.containers[_]
+          memory_limit := container.resources.limits.memory
+          memory_limit_value := units.parse_bytes(memory_limit)
+          tier_memory_limit := units.parse_bytes(tier_limits.memory)
+          memory_limit_value > tier_memory_limit
+          msg := sprintf("Memory limit %v exceeds tenant tier %v limit %v", 
+            [memory_limit, tenant_tier, tier_limits.memory])
+        }
+        
+        # Violation: Missing resource requests when required
+        violation[{"msg": msg}] {
+          input.parameters.requireResourceRequests == true
+          container := input.review.object.spec.template.spec.containers[_]
+          not container.resources.requests
+          msg := sprintf("Container %v must specify resource requests", [container.name])
+        }
+        
+        # Violation: Workspace pod count exceeded
+        violation[{"msg": msg}] {
+          workspace_quota
+          current_pod_count := to_number(input.review.object.metadata.annotations["smm-architect.io/workspace-pod-count"])
+          current_pod_count >= input.parameters.maxPodsPerWorkspace
+          msg := sprintf("Workspace %v has reached maximum pod limit %v", 
+            [workspace_id, input.parameters.maxPodsPerWorkspace])
+        }
+
+---
+# Resource Quota Limits Constraint Instance
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: ResourceQuotaLimits
+metadata:
+  name: smm-resource-limits
+spec:
+  match:
+    kinds:
+      - apiGroups: ["apps"]
+        kinds: ["Deployment", "StatefulSet"]
+    namespaces: ["smm-architect"]
+  parameters:
+    tenantResourceLimits:
+      basic:
+        cpu: "2"
+        memory: "4Gi"
+        storage: "10Gi"
+      standard:
+        cpu: "8"
+        memory: "16Gi" 
+        storage: "50Gi"
+      premium:
+        cpu: "32"
+        memory: "64Gi"
+        storage: "200Gi"
+      enterprise:
+        cpu: "128"
+        memory: "256Gi"
+        storage: "1Ti"
+    maxPodsPerWorkspace: 50
+    requireResourceRequests: true
+
+---
+# Data Residency and Compliance Policy
+apiVersion: templates.gatekeeper.sh/v1beta1
+kind: ConstraintTemplate
+metadata:
+  name: dataresidencycompliance
+  annotations:
+    description: "Enforces data residency and compliance requirements"
+spec:
+  crd:
+    spec:
+      names:
+        kind: DataResidencyCompliance
+      validation:
+        type: object
+        properties:
+          allowedRegions:
+            type: array
+            items:
+              type: string
+            description: "Allowed regions for data processing"
+          gdprRequired:
+            type: array
+            items:
+              type: string
+            description: "Tenant IDs requiring GDPR compliance"
+          hipaaRequired:
+            type: array
+            items:
+              type: string
+            description: "Tenant IDs requiring HIPAA compliance"
+          pciDssRequired:
+            type: array
+            items:
+              type: string
+            description: "Tenant IDs requiring PCI DSS compliance"
+  targets:
+    - target: admission.k8s.gatekeeper.sh
+      rego: |
+        package dataresidencycompliance
+        
+        import rego.v1
+        
+        # Extract compliance requirements
+        tenant_id := input.review.object.metadata.labels["smm-architect.io/tenant-id"]
+        data_region := input.review.object.metadata.labels["smm-architect.io/data-region"]
+        gdpr_enabled := input.review.object.metadata.annotations["smm-architect.io/gdpr-enabled"]
+        hipaa_enabled := input.review.object.metadata.annotations["smm-architect.io/hipaa-enabled"]
+        pci_dss_enabled := input.review.object.metadata.annotations["smm-architect.io/pci-dss-enabled"]
+        
+        # Violation: Data region not allowed
+        violation[{"msg": msg}] {
+          data_region
+          not data_region in input.parameters.allowedRegions
+          msg := sprintf("Data region %v is not in allowed regions: %v", 
+            [data_region, input.parameters.allowedRegions])
+        }
+        
+        # Violation: GDPR required but not enabled
+        violation[{"msg": msg}] {
+          tenant_id in input.parameters.gdprRequired
+          gdpr_enabled != "true"
+          msg := sprintf("Tenant %v requires GDPR compliance but it's not enabled", [tenant_id])
+        }
+        
+        # Violation: HIPAA required but not enabled  
+        violation[{"msg": msg}] {
+          tenant_id in input.parameters.hipaaRequired
+          hipaa_enabled != "true"
+          msg := sprintf("Tenant %v requires HIPAA compliance but it's not enabled", [tenant_id])
+        }
+        
+        # Violation: PCI DSS required but not enabled
+        violation[{"msg": msg}] {
+          tenant_id in input.parameters.pciDssRequired
+          pci_dss_enabled != "true"
+          msg := sprintf("Tenant %v requires PCI DSS compliance but it's not enabled", [tenant_id])
+        }
+
+---
+# Data Residency Compliance Constraint Instance
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: DataResidencyCompliance
+metadata:
+  name: smm-data-compliance
+spec:
+  match:
+    kinds:
+      - apiGroups: ["apps"]
+        kinds: ["Deployment", "StatefulSet"]
+    namespaces: ["smm-architect"]
+    labelSelector:
+      matchLabels:
+        "smm-architect.io/data-processing": "true"
+  parameters:
+    allowedRegions:
+      - "us-east-1"
+      - "us-west-2" 
+      - "eu-west-1"
+      - "eu-central-1"
+    gdprRequired:
+      - "eu-tenant-001"
+      - "eu-tenant-002"
+    hipaaRequired:
+      - "healthcare-tenant-001"
+      - "medical-tenant-001"
+    pciDssRequired:
+      - "payment-tenant-001"
+      - "fintech-tenant-001"

@@ -1,6 +1,9 @@
 -- Migration: Create simulation_reports table for persisting Monte Carlo simulation results
 -- This migration creates the table for storing deterministic simulation results with full reproducibility metadata
 
+-- Enable pgcrypto extension for gen_random_uuid()
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
 CREATE TABLE simulation_reports (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     simulation_id VARCHAR(255) UNIQUE NOT NULL,
@@ -109,6 +112,31 @@ CREATE INDEX idx_simulation_reports_correlation_id ON simulation_reports (correl
 CREATE INDEX idx_simulation_reports_workspace_created ON simulation_reports (workspace_id, created_at DESC);
 CREATE INDEX idx_simulation_reports_baseline_lookup ON simulation_reports (workspace_id, random_seed, engine_version);
 
+-- Agent runs indexes for performance
+CREATE INDEX idx_agent_runs_workspace_id ON agent_runs (workspace_id);
+CREATE INDEX idx_agent_runs_tenant_id ON agent_runs (tenant_id);
+CREATE INDEX idx_agent_runs_created_at ON agent_runs (created_at);
+CREATE INDEX idx_agent_runs_status ON agent_runs (status);
+CREATE INDEX idx_agent_runs_agent_type ON agent_runs (agent_type);
+CREATE INDEX idx_agent_runs_correlation_id ON agent_runs (correlation_id) WHERE correlation_id IS NOT NULL;
+
+-- Composite indexes for tenant filtering (RLS performance)
+CREATE INDEX idx_agent_runs_tenant_created ON agent_runs (tenant_id, created_at DESC);
+CREATE INDEX idx_simulation_reports_tenant_created ON simulation_reports (tenant_id, created_at DESC);
+
+-- Partial indexes for common filters
+CREATE INDEX idx_agent_runs_active ON agent_runs (tenant_id, workspace_id) WHERE status IN ('pending', 'running');
+CREATE INDEX idx_simulation_reports_recent ON simulation_reports (tenant_id, workspace_id, created_at) WHERE created_at > NOW() - INTERVAL '30 days';
+
+-- Foreign key constraints (add after data if needed)
+ALTER TABLE agent_runs ADD CONSTRAINT fk_agent_runs_workspace 
+    FOREIGN KEY (workspace_id) REFERENCES workspaces(workspace_id) ON DELETE CASCADE;
+
+-- Optional: Link agent runs to simulation reports if desired
+-- ALTER TABLE agent_runs ADD COLUMN simulation_report_id UUID;
+-- ALTER TABLE agent_runs ADD CONSTRAINT fk_agent_runs_simulation 
+--     FOREIGN KEY (simulation_report_id) REFERENCES simulation_reports(id) ON DELETE SET NULL;
+
 -- Add trigger for updated_at
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$
@@ -123,8 +151,71 @@ CREATE TRIGGER update_simulation_reports_updated_at
     FOR EACH ROW 
     EXECUTE FUNCTION update_updated_at_column();
 
+CREATE TRIGGER update_agent_runs_updated_at 
+    BEFORE UPDATE ON agent_runs 
+    FOR EACH ROW 
+    EXECUTE FUNCTION update_updated_at_column();
+
+-- =============================================================================
+-- STEP 2: Enable Row Level Security (RLS) for multi-tenant data isolation
+-- =============================================================================
+
+-- Enable RLS on simulation_reports table
+ALTER TABLE simulation_reports ENABLE ROW LEVEL SECURITY;
+ALTER TABLE simulation_reports FORCE ROW LEVEL SECURITY;
+
+-- Enable RLS on agent_runs table
+ALTER TABLE agent_runs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE agent_runs FORCE ROW LEVEL SECURITY;
+
+-- =============================================================================
+-- STEP 3: Create tenant isolation policies for each table
+-- =============================================================================
+
+-- Simulation reports table - direct tenant isolation
+CREATE POLICY tenant_isolation_simulation_reports ON simulation_reports
+    FOR ALL TO smm_authenticated
+    USING (tenant_id = current_setting('app.current_tenant_id', true))
+    WITH CHECK (tenant_id = current_setting('app.current_tenant_id', true));
+
+-- Agent runs table - direct tenant isolation
+CREATE POLICY tenant_isolation_agent_runs ON agent_runs
+    FOR ALL TO smm_authenticated
+    USING (tenant_id = current_setting('app.current_tenant_id', true))
+    WITH CHECK (tenant_id = current_setting('app.current_tenant_id', true));
+
+-- =============================================================================
+-- STEP 4: Add indexes to optimize RLS policy performance
+-- =============================================================================
+
+-- Optimize tenant_id lookups on simulation_reports table
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_simulation_reports_tenant_id_rls 
+ON simulation_reports (tenant_id) WHERE tenant_id IS NOT NULL;
+
+-- Optimize tenant_id lookups on agent_runs table
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_agent_runs_tenant_id_rls 
+ON agent_runs (tenant_id) WHERE tenant_id IS NOT NULL;
+
+-- =============================================================================
+-- STEP 5: Verify RLS configuration
+-- =============================================================================
+
+-- Verify tables have RLS enabled
+SELECT tablename, rowsecurity 
+FROM pg_tables 
+WHERE schemaname = 'public' 
+AND tablename IN ('simulation_reports', 'agent_runs');
+
+-- Verify policies are created
+SELECT schemaname, tablename, policyname, permissive, cmd
+FROM pg_policies 
+WHERE schemaname = 'public'
+AND tablename IN ('simulation_reports', 'agent_runs')
+ORDER BY tablename, policyname;
+
 -- Add comments for documentation
-COMMENT ON TABLE simulation_reports IS 'Stores Monte Carlo simulation results with full reproducibility metadata for campaign readiness assessment';
+COMMENT ON TABLE simulation_reports IS 'Stores Monte Carlo simulation results with full reproducibility metadata for campaign readiness assessment - RLS enabled for tenant isolation';
+COMMENT ON TABLE agent_runs IS 'Tracks agent execution with model usage and quality metrics - RLS enabled for tenant isolation';
 COMMENT ON COLUMN simulation_reports.random_seed IS 'Seed used for deterministic pseudo-random number generation';
 COMMENT ON COLUMN simulation_reports.rng_algorithm IS 'Algorithm used for random number generation (e.g., seedrandom, mersenne-twister)';
 COMMENT ON COLUMN simulation_reports.readiness_score IS 'Overall campaign readiness score (0-1)';

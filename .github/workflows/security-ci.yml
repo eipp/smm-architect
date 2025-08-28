@@ -1,0 +1,345 @@
+name: Secure CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    # Run security scans daily at 2 AM UTC
+    - cron: '0 2 * * *'
+
+# OIDC permissions for AWS deployment
+permissions:
+  id-token: write   # Required for OIDC
+  contents: read    # Required for checkout
+  security-events: write  # Required for SARIF upload
+
+env:
+  # Non-sensitive environment variables
+  NODE_VERSION: '18'
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  # =============================================================================
+  # Task 21: Secret Scanning with Gitleaks
+  # =============================================================================
+  
+  secret-scan:
+    name: Secret Scanning
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
+        with:
+          fetch-depth: 0  # Full history for comprehensive scanning
+
+      - name: Run Gitleaks
+        uses: gitleaks/gitleaks-action@cb7149a23c3d63b1d9623c8aaf01933f7da88cc4 # v2.3.6
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+
+      - name: Run TruffleHog
+        uses: trufflesecurity/trufflehog@48a2d0e742e6cc444f64eef5f8a654f3d70bf3f5 # v3.81.10
+        with:
+          path: ./
+          base: main
+          head: HEAD
+          extra_args: --debug --only-verified
+
+  # =============================================================================
+  # Task 24: Dependency Management and SCA
+  # =============================================================================
+  
+  dependency-check:
+    name: Dependency Security Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@1e60f620b9541d16bece96c5465dc8ee9832be0b # v4.0.3
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Verify package-lock.json is up to date
+        run: |
+          npm ci --frozen-lockfile
+          if [ -n "$(git status --porcelain package-lock.json)" ]; then
+            echo "Error: package-lock.json is not up to date"
+            exit 1
+          fi
+
+      - name: Audit dependencies
+        run: |
+          npm audit --audit-level=high
+          npm audit --output=json > audit-results.json
+          
+      - name: Run Snyk security scan
+        uses: snyk/actions/node@b98d498629f1c368650479b9f9e6efed3d9ab4cd # master (pinned commit)
+        continue-on-error: true
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          args: --severity-threshold=high --file=package.json
+
+      - name: Upload Snyk results to GitHub Code Scanning
+        uses: github/codeql-action/upload-sarif@afb54ba388a7dca6ecae48f608c4ff05ff4cc77a # v3.25.15
+        if: always()
+        with:
+          sarif_file: snyk.sarif
+
+  # =============================================================================
+  # Task 22: Static Analysis with CodeQL
+  # =============================================================================
+  
+  static-analysis:
+    name: Static Analysis
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [ 'javascript', 'typescript' ]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@afb54ba388a7dca6ecae48f608c4ff05ff4cc77a # v3.25.15
+        with:
+          languages: ${{ matrix.language }}
+          queries: security-extended,security-and-quality
+
+      - name: Setup Node.js
+        uses: actions/setup-node@1e60f620b9541d16bece96c5465dc8ee9832be0b # v4.0.3
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci --frozen-lockfile
+
+      - name: Build project
+        run: npm run build
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@afb54ba388a7dca6ecae48f608c4ff05ff4cc77a # v3.25.15
+        with:
+          category: "/language:${{matrix.language}}"
+
+  # =============================================================================
+  # Security Testing
+  # =============================================================================
+  
+  security-tests:
+    name: Security Tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: smm_architect_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@1e60f620b9541d16bece96c5465dc8ee9832be0b # v4.0.3
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci --frozen-lockfile
+
+      - name: Run RLS security tests
+        run: npm run test:security
+        env:
+          DATABASE_URL: postgres://postgres:postgres@localhost:5432/smm_architect_test
+          REDIS_URL: redis://localhost:6379
+
+      - name: Run evil tenant tests
+        run: npm run test -- tests/security/evil-tenant-write-tests.test.ts
+        env:
+          DATABASE_URL: postgres://postgres:postgres@localhost:5432/smm_architect_test
+
+      - name: Validate RLS policies
+        run: node tools/migration-rls-linter.js services/smm-architect/migrations/
+
+  # =============================================================================
+  # Task 25: Dynamic Application Security Testing (DAST)
+  # =============================================================================
+  
+  dast-scan:
+    name: DAST Security Scan
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@1e60f620b9541d16bece96c5465dc8ee9832be0b # v4.0.3
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies and start application
+        run: |
+          npm ci --frozen-lockfile
+          npm run build
+          npm start &
+          sleep 30  # Wait for application to start
+
+      - name: Wait for application health check
+        run: |
+          timeout 60 bash -c 'until curl -f http://localhost:3000/health; do sleep 2; done'
+
+      - name: Run OWASP ZAP Baseline Scan
+        uses: zaproxy/action-baseline@7065c7a66b8c6adace6a58edcc11d98a81e5ea56 # v0.12.0
+        with:
+          target: 'http://localhost:3000'
+          rules_file_name: '.zap/rules.tsv'
+          cmd_options: '-a'
+
+      - name: Run OWASP ZAP Full Scan with Authentication
+        uses: zaproxy/action-full-scan@c7929cc8b0b9a82b508a8e6b924c7830a56c6d1f # v0.10.0
+        with:
+          target: 'http://localhost:3000'
+          rules_file_name: '.zap/rules.tsv'
+          cmd_options: |
+            -z "-config globalexcludeurl.url_list.url(0).regex=.*logout.*" \
+            -z "-config globalexcludeurl.url_list.url(0).description=Logout URLs" \
+            -z "-config globalexcludeurl.url_list.url(0).enabled=true"
+
+      - name: Upload ZAP results
+        uses: actions/upload-artifact@834a144ee995460fba8ed112a2fc961b36a5ec5a # v4.3.6
+        if: always()
+        with:
+          name: zap-results
+          path: report_html.html
+
+  # =============================================================================
+  # Task 23: OIDC Deployment to AWS
+  # =============================================================================
+  
+  deploy:
+    name: Deploy to AWS
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    needs: [secret-scan, dependency-check, static-analysis, security-tests]
+    environment: production
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
+
+      - name: Configure AWS credentials using OIDC
+        uses: aws-actions/configure-aws-credentials@e3dd6a429d7300a6a4c196c26e071d42e0343502 # v4.0.2
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          role-session-name: GitHubActionsDeployment
+          aws-region: us-east-1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@1e60f620b9541d16bece96c5465dc8ee9832be0b # v4.0.3
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci --frozen-lockfile
+
+      - name: Build application
+        run: npm run build
+
+      - name: Deploy to AWS ECS
+        run: |
+          # Build and push Docker image
+          docker build -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }} .
+          
+          # Push to ECR
+          aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin ${{ env.REGISTRY }}
+          docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+          
+          # Update ECS service
+          aws ecs update-service \
+            --cluster smm-architect-production \
+            --service smm-architect-api \
+            --force-new-deployment
+
+      - name: Verify deployment health
+        run: |
+          # Wait for deployment to complete
+          aws ecs wait services-stable \
+            --cluster smm-architect-production \
+            --services smm-architect-api
+          
+          # Verify application health
+          timeout 300 bash -c 'until curl -f https://api.smm-architect.com/health; do sleep 10; done'
+
+  # =============================================================================
+  # Renovate Configuration for Automated Dependency Updates
+  # =============================================================================
+  
+  dependency-updates:
+    name: Check for Dependency Updates
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@1e60f620b9541d16bece96c5465dc8ee9832be0b # v4.0.3
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Check for outdated dependencies
+        run: |
+          npm outdated --json > outdated.json || true
+          if [ -s outdated.json ]; then
+            echo "Outdated dependencies found. Consider updating:"
+            cat outdated.json
+          fi
+
+      - name: Create issue for outdated dependencies
+        if: always()
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7.0.1
+        with:
+          script: |
+            const fs = require('fs');
+            if (fs.existsSync('outdated.json') && fs.statSync('outdated.json').size > 2) {
+              const outdated = JSON.parse(fs.readFileSync('outdated.json', 'utf8'));
+              if (Object.keys(outdated).length > 0) {
+                github.rest.issues.create({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  title: 'Outdated Dependencies Detected',
+                  body: `Automated scan found outdated dependencies:\n\n\`\`\`json\n${JSON.stringify(outdated, null, 2)}\n\`\`\`\n\nConsider updating these dependencies for security and stability.`,
+                  labels: ['dependencies', 'security']
+                });
+              }
+            }

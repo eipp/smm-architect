@@ -3,6 +3,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import './config/sentry'; // Initialize Sentry
+import { authMiddleware, requirePermissions } from '../../shared/middleware/auth-middleware';
 import { AuditBundleAssembler } from './services/audit-bundle-assembler';
 import { KMSManager } from './kms/kms-manager';
 import { StorageService } from './services/storage-service';
@@ -82,31 +83,13 @@ const kmsManager = new KMSManager({
 const storageService = new StorageService(config.storage.provider, config.storage.config);
 const assembler = new AuditBundleAssembler(kmsManager, storageService, config);
 
-// Authentication middleware
-const authenticate = (req: express.Request, res: express.Response, next: express.NextFunction) => {
-  const token = req.headers.authorization?.replace('Bearer ', '');
-  
-  if (!token) {
-    return res.status(401).json({ error: 'Authentication required' });
-  }
-  
-  // In production, validate JWT token against Vault or your auth service
-  if (token === 'invalid') {
-    return res.status(401).json({ error: 'Invalid token' });
-  }
-  
-  // Add user context to request
-  (req as any).user = {
-    id: 'user-123',
-    email: 'user@example.com',
-    roles: ['audit_user']
-  };
-  
-  next();
-};
+// Apply centralized authentication to all /api routes
+app.use('/api', authMiddleware());
 
-// Apply authentication to all routes except health check
-app.use(['/bundles', '/verify', '/keys'], authenticate);
+// Specific permission requirements for audit operations
+app.use('/api/bundles', requirePermissions('audit:read', 'audit:write'));
+app.use('/api/verify', requirePermissions('audit:verify'));
+app.use('/api/keys', requirePermissions('audit:admin'));
 
 // Health check endpoint
 app.get('/health', (req, res) => {
@@ -122,7 +105,7 @@ app.get('/health', (req, res) => {
 });
 
 // Create audit bundle
-app.post('/bundles', async (req: express.Request, res: express.Response) => {
+app.post('/api/bundles', async (req: express.Request, res: express.Response) => {
   try {
     const request: BundleAssemblyRequest = req.body;
     
@@ -133,13 +116,13 @@ app.post('/bundles', async (req: express.Request, res: express.Response) => {
       });
     }
     
-    // Add user context
+    // Add user context from auth middleware
     const user = (req as any).user;
     const assemblyResult = await assembler.assembleBundle({
       ...request,
       metadata: {
         ...request.metadata,
-        createdBy: user.id,
+        createdBy: user.userId,
         createdByEmail: user.email
       }
     });
@@ -156,7 +139,7 @@ app.post('/bundles', async (req: express.Request, res: express.Response) => {
 });
 
 // Get audit bundle
-app.get('/bundles/:bundleId', async (req: express.Request, res: express.Response) => {
+app.get('/api/bundles/:bundleId', async (req: express.Request, res: express.Response) => {
   try {
     const { bundleId } = req.params;
     const includeEvidence = req.query.includeEvidence === 'true';
@@ -179,7 +162,7 @@ app.get('/bundles/:bundleId', async (req: express.Request, res: express.Response
 });
 
 // List audit bundles
-app.get('/bundles', async (req: express.Request, res: express.Response) => {
+app.get('/api/bundles', async (req: express.Request, res: express.Response) => {
   try {
     const {
       workspaceId,

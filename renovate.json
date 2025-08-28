@@ -1,0 +1,185 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:base",
+    "security:openssf-scorecard",
+    ":dependencyDashboard",
+    ":semanticCommits",
+    ":separateMultipleMajor",
+    ":separatePatchReleases"
+  ],
+  "timezone": "UTC",
+  "schedule": ["before 6am on monday"],
+  "labels": ["dependencies"],
+  "assignees": ["@security-team"],
+  "reviewers": ["@security-team"],
+  "prConcurrentLimit": 3,
+  "branchConcurrentLimit": 10,
+  "prHourlyLimit": 2,
+  
+  // Task 24: Security-focused dependency management
+  "vulnerabilityAlerts": {
+    "enabled": true,
+    "schedule": ["at any time"],
+    "semanticCommits": "disabled",
+    "rangeStrategy": "update-lockfile",
+    "commitMessageSuffix": " [SECURITY]",
+    "reviewers": ["@security-team"],
+    "assignees": ["@security-team"],
+    "labels": ["security", "vulnerability"]
+  },
+  
+  "osvVulnerabilityAlerts": true,
+  "transitiveRemediation": true,
+  
+  // Separate security updates for immediate attention
+  "packageRules": [
+    {
+      "matchPackagePatterns": ["*"],
+      "matchCurrentVersion": "!/^0/",
+      "separateMinorPatch": true
+    },
+    {
+      "description": "Security updates - high priority",
+      "matchPackageNames": ["*"],
+      "matchUpdateTypes": ["patch"],
+      "matchCurrentVersion": "!/^0/",
+      "hasReleaseNotes": true,
+      "schedule": ["at any time"],
+      "prPriority": 10,
+      "labels": ["security", "patch"]
+    },
+    {
+      "description": "Major updates - careful review required",
+      "matchUpdateTypes": ["major"],
+      "schedule": ["before 6am on monday"],
+      "prPriority": 1,
+      "reviewers": ["@security-team", "@tech-lead"],
+      "assignees": ["@tech-lead"],
+      "labels": ["major-update"]
+    },
+    {
+      "description": "Pin GitHub Actions to specific SHAs",
+      "matchManagers": ["github-actions"],
+      "rangeStrategy": "pin",
+      "schedule": ["before 6am on monday"],
+      "prPriority": 5,
+      "labels": ["github-actions", "security"],
+      "commitMessagePrefix": "chore(actions): "
+    },
+    {
+      "description": "Docker base images - security critical",
+      "matchManagers": ["dockerfile"],
+      "schedule": ["at any time"],
+      "prPriority": 8,
+      "labels": ["docker", "security"],
+      "commitMessagePrefix": "security(docker): "
+    },
+    {
+      "description": "Node.js security updates",
+      "matchPackageNames": ["node"],
+      "schedule": ["at any time"],
+      "prPriority": 9,
+      "labels": ["nodejs", "security"]
+    },
+    {
+      "description": "Authentication/Security packages",
+      "matchPackagePatterns": [
+        "jsonwebtoken",
+        "passport",
+        "helmet",
+        "bcrypt",
+        "crypto",
+        "oauth",
+        "auth",
+        "security",
+        "cors",
+        "csrf"
+      ],
+      "schedule": ["at any time"],
+      "prPriority": 9,
+      "labels": ["security", "authentication"],
+      "reviewers": ["@security-team"],
+      "assignees": ["@security-team"]
+    },
+    {
+      "description": "Database and ORM packages",
+      "matchPackagePatterns": [
+        "prisma",
+        "pg",
+        "postgres",
+        "mysql",
+        "redis",
+        "mongodb"
+      ],
+      "schedule": ["before 6am on monday"],
+      "prPriority": 7,
+      "labels": ["database"],
+      "reviewers": ["@backend-team"]
+    }
+  ],
+  
+  // Lock file maintenance
+  "lockFileMaintenance": {
+    "enabled": true,
+    "schedule": ["before 6am on sunday"],
+    "commitMessageAction": "Lock file maintenance",
+    "prPriority": 2
+  },
+  
+  // Security scanning integration
+  "prBodyTemplate": "{{{header}}}{{{table}}}{{{notes}}}{{{changelogs}}}{{{vulnerabilities}}}{{{footer}}}",
+  
+  // Frozen lockfile enforcement
+  "postUpdateOptions": ["npmDedupe"],
+  "rangeStrategy": "bump",
+  
+  // Enable security dashboard
+  "dependencyDashboard": true,
+  "dependencyDashboardTitle": "Security & Dependency Dashboard",
+  "dependencyDashboardHeader": "## Security & Dependency Updates\n\nThis dashboard shows pending security updates and dependency changes.\n\n**🔒 Security updates are prioritized and auto-merged when possible.**",
+  "dependencyDashboardLabels": ["dependencies", "security"],
+  
+  // Auto-merge configuration for security patches
+  "automerge": true,
+  "automergeType": "pr",
+  "automergeStrategy": "squash",
+  "platformAutomerge": false,
+  "ignoreTests": false,
+  
+  // Conditions for auto-merge
+  "automergeSchedule": ["at any time"],
+  "major": {
+    "automerge": false
+  },
+  "minor": {
+    "automerge": false
+  },
+  "patch": {
+    "automerge": true,
+    "automergeType": "pr"
+  },
+  
+  // Custom rules for security packages
+  "customManagers": [
+    {
+      "customType": "regex",
+      "fileMatch": ["(^|/)Dockerfile$"],
+      "matchStrings": [
+        "# renovate: datasource=(?<datasource>.*?) depName=(?<depName>.*?)( versioning=(?<versioning>.*?))?\\s*FROM .*?:(?<currentValue>.*)@(?<currentDigest>sha256:[a-f0-9]+)"
+      ],
+      "datasourceTemplate": "docker"
+    }
+  ],
+  
+  // Ignore certain packages that require manual review
+  "ignoreDeps": [
+    // Add packages that need manual security review
+  ],
+  
+  // Platform configuration
+  "platform": "github",
+  "requireConfig": "required",
+  "onboarding": true,
+  "forkProcessing": "enabled"
+}

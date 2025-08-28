@@ -1,0 +1,60 @@
+# OWASP ZAP Configuration for SMM Architect
+# Task 25: Authenticated DAST Security Testing
+
+# Exclusion rules for URLs that should not be scanned
+# Format: IGNORE_URL_REGEX	<regex>	<description>
+
+# Authentication and logout endpoints
+IGNORE_URL_REGEX	.*/(logout|signout).*	Logout endpoints
+IGNORE_URL_REGEX	.*/auth/callback.*	OAuth callback endpoints  
+IGNORE_URL_REGEX	.*/password/reset.*	Password reset flows
+
+# Administrative endpoints that might cause issues
+IGNORE_URL_REGEX	.*/admin/delete.*	Destructive admin operations
+IGNORE_URL_REGEX	.*/system/shutdown.*	System control endpoints
+
+# File uploads and downloads that might be large
+IGNORE_URL_REGEX	.*/upload.*	File upload endpoints
+IGNORE_URL_REGEX	.*/download/large.*	Large file downloads
+
+# WebSocket endpoints
+IGNORE_URL_REGEX	.*/ws/.*	WebSocket connections
+IGNORE_URL_REGEX	.*/websocket.*	WebSocket connections
+
+# API documentation and development tools
+IGNORE_URL_REGEX	.*/swagger.*	API documentation
+IGNORE_URL_REGEX	.*/docs.*	Documentation endpoints
+IGNORE_URL_REGEX	.*/dev/.*	Development endpoints
+
+# High-risk operations that could affect production data
+IGNORE_URL_REGEX	.*/api/v1/dsr/delete.*	Data deletion endpoints
+IGNORE_URL_REGEX	.*/api/v1/admin/purge.*	Data purging operations
+IGNORE_URL_REGEX	.*/api/v1/system/reset.*	System reset operations
+
+# Rules for authenticated scanning
+# Include endpoints that require authentication
+
+# Authentication required rules
+# Format: INCLUDE_URL_REGEX	<regex>	<description>
+
+INCLUDE_URL_REGEX	.*/api/v1/workspaces.*	Workspace management API
+INCLUDE_URL_REGEX	.*/api/v1/models.*	Model management API  
+INCLUDE_URL_REGEX	.*/api/v1/routing.*	Routing configuration API
+INCLUDE_URL_REGEX	.*/api/v1/canary.*	Canary deployment API
+INCLUDE_URL_REGEX	.*/api/v1/config.*	Configuration API
+INCLUDE_URL_REGEX	.*/api/v1/audit.*	Audit bundle API
+INCLUDE_URL_REGEX	.*/api/v1/dsr/export.*	Data export API (safe operations)
+INCLUDE_URL_REGEX	.*/api/v1/dsr/status.*	DSR status checking
+
+# Test data creation for scanning
+# These endpoints will be used to create test data for comprehensive scanning
+INCLUDE_URL_REGEX	.*/api/v1/test/.*	Test data endpoints
+
+# Performance and monitoring endpoints
+INCLUDE_URL_REGEX	.*/health.*	Health check endpoints
+INCLUDE_URL_REGEX	.*/metrics.*	Metrics endpoints
+INCLUDE_URL_REGEX	.*/api/v1/resilience.*	Resilience status endpoints
+
+# User management (safe operations)
+INCLUDE_URL_REGEX	.*/api/v1/users/profile.*	User profile (read-only)
+INCLUDE_URL_REGEX	.*/api/v1/tenants/info.*	Tenant information (read-only)

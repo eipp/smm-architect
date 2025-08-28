@@ -8,30 +8,39 @@
 
 -- Enable RLS on workspaces table
 ALTER TABLE workspaces ENABLE ROW LEVEL SECURITY;
+ALTER TABLE workspaces FORCE ROW LEVEL SECURITY;
 
 -- Enable RLS on workspace_runs table
 ALTER TABLE workspace_runs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE workspace_runs FORCE ROW LEVEL SECURITY;
 
 -- Enable RLS on audit_bundles table  
 ALTER TABLE audit_bundles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE audit_bundles FORCE ROW LEVEL SECURITY;
 
 -- Enable RLS on connectors table
 ALTER TABLE connectors ENABLE ROW LEVEL SECURITY;
+ALTER TABLE connectors FORCE ROW LEVEL SECURITY;
 
 -- Enable RLS on consent_records table
 ALTER TABLE consent_records ENABLE ROW LEVEL SECURITY;
+ALTER TABLE consent_records FORCE ROW LEVEL SECURITY;
 
 -- Enable RLS on brand_twins table
 ALTER TABLE brand_twins ENABLE ROW LEVEL SECURITY;
+ALTER TABLE brand_twins FORCE ROW LEVEL SECURITY;
 
 -- Enable RLS on decision_cards table
 ALTER TABLE decision_cards ENABLE ROW LEVEL SECURITY;
+ALTER TABLE decision_cards FORCE ROW LEVEL SECURITY;
 
 -- Enable RLS on simulation_results table
 ALTER TABLE simulation_results ENABLE ROW LEVEL SECURITY;
+ALTER TABLE simulation_results FORCE ROW LEVEL SECURITY;
 
 -- Enable RLS on asset_fingerprints table
 ALTER TABLE asset_fingerprints ENABLE ROW LEVEL SECURITY;
+ALTER TABLE asset_fingerprints FORCE ROW LEVEL SECURITY;
 
 -- =============================================================================
 -- STEP 2: Create tenant isolation policies for each table
@@ -39,13 +48,21 @@ ALTER TABLE asset_fingerprints ENABLE ROW LEVEL SECURITY;
 
 -- Workspaces table - core tenant isolation
 CREATE POLICY tenant_isolation_workspaces ON workspaces
-    FOR ALL TO authenticated
-    USING (tenant_id = current_setting('app.current_tenant_id', true));
+    FOR ALL TO smm_authenticated
+    USING (tenant_id = current_setting('app.current_tenant_id', true))
+    WITH CHECK (tenant_id = current_setting('app.current_tenant_id', true));
 
 -- Workspace runs table - inherits from workspace tenant_id via FK
 CREATE POLICY tenant_isolation_workspace_runs ON workspace_runs
-    FOR ALL TO authenticated
+    FOR ALL TO smm_authenticated
     USING (
+        EXISTS (
+            SELECT 1 FROM workspaces w 
+            WHERE w.workspace_id = workspace_runs.workspace_id 
+            AND w.tenant_id = current_setting('app.current_tenant_id', true)
+        )
+    )
+    WITH CHECK (
         EXISTS (
             SELECT 1 FROM workspaces w 
             WHERE w.workspace_id = workspace_runs.workspace_id 
@@ -55,8 +72,15 @@ CREATE POLICY tenant_isolation_workspace_runs ON workspace_runs
 
 -- Audit bundles table - inherits from workspace tenant_id via FK
 CREATE POLICY tenant_isolation_audit_bundles ON audit_bundles
-    FOR ALL TO authenticated
+    FOR ALL TO smm_authenticated
     USING (
+        EXISTS (
+            SELECT 1 FROM workspaces w 
+            WHERE w.workspace_id = audit_bundles.workspace_id 
+            AND w.tenant_id = current_setting('app.current_tenant_id', true)
+        )
+    )
+    WITH CHECK (
         EXISTS (
             SELECT 1 FROM workspaces w 
             WHERE w.workspace_id = audit_bundles.workspace_id 
@@ -66,8 +90,15 @@ CREATE POLICY tenant_isolation_audit_bundles ON audit_bundles
 
 -- Connectors table - inherits from workspace tenant_id via FK
 CREATE POLICY tenant_isolation_connectors ON connectors
-    FOR ALL TO authenticated
+    FOR ALL TO smm_authenticated
     USING (
+        EXISTS (
+            SELECT 1 FROM workspaces w 
+            WHERE w.workspace_id = connectors.workspace_id 
+            AND w.tenant_id = current_setting('app.current_tenant_id', true)
+        )
+    )
+    WITH CHECK (
         EXISTS (
             SELECT 1 FROM workspaces w 
             WHERE w.workspace_id = connectors.workspace_id 
@@ -77,8 +108,15 @@ CREATE POLICY tenant_isolation_connectors ON connectors
 
 -- Consent records table - inherits from workspace tenant_id via FK
 CREATE POLICY tenant_isolation_consent_records ON consent_records
-    FOR ALL TO authenticated
+    FOR ALL TO smm_authenticated
     USING (
+        EXISTS (
+            SELECT 1 FROM workspaces w 
+            WHERE w.workspace_id = consent_records.workspace_id 
+            AND w.tenant_id = current_setting('app.current_tenant_id', true)
+        )
+    )
+    WITH CHECK (
         EXISTS (
             SELECT 1 FROM workspaces w 
             WHERE w.workspace_id = consent_records.workspace_id 
@@ -88,8 +126,15 @@ CREATE POLICY tenant_isolation_consent_records ON consent_records
 
 -- Brand twins table - inherits from workspace tenant_id via FK
 CREATE POLICY tenant_isolation_brand_twins ON brand_twins
-    FOR ALL TO authenticated
+    FOR ALL TO smm_authenticated
     USING (
+        EXISTS (
+            SELECT 1 FROM workspaces w 
+            WHERE w.workspace_id = brand_twins.workspace_id 
+            AND w.tenant_id = current_setting('app.current_tenant_id', true)
+        )
+    )
+    WITH CHECK (
         EXISTS (
             SELECT 1 FROM workspaces w 
             WHERE w.workspace_id = brand_twins.workspace_id 
@@ -99,8 +144,15 @@ CREATE POLICY tenant_isolation_brand_twins ON brand_twins
 
 -- Decision cards table - inherits from workspace tenant_id via FK
 CREATE POLICY tenant_isolation_decision_cards ON decision_cards
-    FOR ALL TO authenticated
+    FOR ALL TO smm_authenticated
     USING (
+        EXISTS (
+            SELECT 1 FROM workspaces w 
+            WHERE w.workspace_id = decision_cards.workspace_id 
+            AND w.tenant_id = current_setting('app.current_tenant_id', true)
+        )
+    )
+    WITH CHECK (
         EXISTS (
             SELECT 1 FROM workspaces w 
             WHERE w.workspace_id = decision_cards.workspace_id 
@@ -110,8 +162,15 @@ CREATE POLICY tenant_isolation_decision_cards ON decision_cards
 
 -- Simulation results table - inherits from workspace tenant_id via FK
 CREATE POLICY tenant_isolation_simulation_results ON simulation_results
-    FOR ALL TO authenticated
+    FOR ALL TO smm_authenticated
     USING (
+        EXISTS (
+            SELECT 1 FROM workspaces w 
+            WHERE w.workspace_id = simulation_results.workspace_id 
+            AND w.tenant_id = current_setting('app.current_tenant_id', true)
+        )
+    )
+    WITH CHECK (
         EXISTS (
             SELECT 1 FROM workspaces w 
             WHERE w.workspace_id = simulation_results.workspace_id 
@@ -121,8 +180,15 @@ CREATE POLICY tenant_isolation_simulation_results ON simulation_results
 
 -- Asset fingerprints table - inherits from workspace tenant_id via FK
 CREATE POLICY tenant_isolation_asset_fingerprints ON asset_fingerprints
-    FOR ALL TO authenticated
+    FOR ALL TO smm_authenticated
     USING (
+        EXISTS (
+            SELECT 1 FROM workspaces w 
+            WHERE w.workspace_id = asset_fingerprints.workspace_id 
+            AND w.tenant_id = current_setting('app.current_tenant_id', true)
+        )
+    )
+    WITH CHECK (
         EXISTS (
             SELECT 1 FROM workspaces w 
             WHERE w.workspace_id = asset_fingerprints.workspace_id 
@@ -237,6 +303,82 @@ SELECT
 -- =============================================================================
 -- VERIFICATION QUERIES
 -- =============================================================================
+
+-- =============================================================================
+-- STEP 7: Create RLS policy status view for CI validation
+-- =============================================================================
+
+-- Create view to check RLS status and policy count for all tenant tables
+CREATE OR REPLACE VIEW rls_policy_status AS
+SELECT 
+    t.tablename,
+    t.rowsecurity as rls_enabled,
+    CASE WHEN t.rowsecurity THEN 'FORCE' ELSE 'DISABLED' END as force_status,
+    COALESCE(p.policy_count, 0) as policy_count,
+    CASE 
+        WHEN t.rowsecurity AND COALESCE(p.policy_count, 0) >= 1 THEN 'SECURE'
+        WHEN t.rowsecurity AND COALESCE(p.policy_count, 0) = 0 THEN 'RLS_NO_POLICIES'
+        WHEN NOT t.rowsecurity THEN 'NO_RLS'
+        ELSE 'UNKNOWN'
+    END as security_status
+FROM (
+    SELECT tablename, rowsecurity 
+    FROM pg_tables 
+    WHERE schemaname = 'public' 
+    AND tablename IN (
+        'workspaces', 'workspace_runs', 'audit_bundles', 'connectors',
+        'consent_records', 'brand_twins', 'decision_cards', 
+        'simulation_results', 'asset_fingerprints'
+    )
+) t
+LEFT JOIN (
+    SELECT tablename, COUNT(*) as policy_count
+    FROM pg_policies 
+    WHERE schemaname = 'public'
+    GROUP BY tablename
+) p ON t.tablename = p.tablename
+ORDER BY t.tablename;
+
+-- Function to validate all tables have RLS enabled with policies
+CREATE OR REPLACE FUNCTION validate_rls_configuration()
+RETURNS TABLE(
+    validation_passed BOOLEAN,
+    failing_tables TEXT[],
+    total_tables INTEGER,
+    secure_tables INTEGER
+) AS $$
+DECLARE
+    failing_table_names TEXT[];
+    secure_count INTEGER;
+    total_count INTEGER;
+BEGIN
+    -- Get tables that don't have secure RLS configuration
+    SELECT array_agg(tablename) INTO failing_table_names
+    FROM rls_policy_status 
+    WHERE security_status != 'SECURE';
+    
+    -- Get counts
+    SELECT COUNT(*) INTO total_count FROM rls_policy_status;
+    SELECT COUNT(*) INTO secure_count FROM rls_policy_status WHERE security_status = 'SECURE';
+    
+    RETURN QUERY SELECT 
+        (failing_table_names IS NULL OR array_length(failing_table_names, 1) = 0) as validation_passed,
+        COALESCE(failing_table_names, '{}') as failing_tables,
+        total_count,
+        secure_count;
+END;
+$$ LANGUAGE plpgsql;
+
+-- =============================================================================
+-- STEP 8: CI Validation Commands
+-- =============================================================================
+
+-- Command for CI to validate RLS configuration
+-- This should be run in CI and MUST return validation_passed = true
+-- Usage in CI: psql $DATABASE_URL -c "SELECT * FROM validate_rls_configuration();"
+
+-- Quick check command for CI
+-- Usage: psql $DATABASE_URL -c "SELECT security_status, COUNT(*) FROM rls_policy_status GROUP BY security_status;"
 
 -- Verify all tables have RLS enabled
 SELECT tablename, rowsecurity 

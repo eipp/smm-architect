@@ -1,0 +1,35 @@
+{
+  "name": "smm-architect-infrastructure",
+  "description": "SMM Architect Infrastructure as Code with Pulumi",
+  "version": "1.0.0",
+  "main": "main.ts",
+  "runtime": {
+    "name": "nodejs",
+    "options": {
+      "typescript": true,
+      "nodeargs": "--max-old-space-size=4096"
+    }
+  },
+  "dependencies": {
+    "@pulumi/pulumi": "^3.90.0",
+    "@pulumi/aws": "^6.10.0",
+    "@pulumi/awsx": "^2.5.0",
+    "@pulumi/eks": "^2.5.0",
+    "@pulumi/kubernetes": "^4.5.0"
+  },
+  "devDependencies": {
+    "@types/node": "^18.0.0",
+    "typescript": "^5.0.0"
+  },
+  "config": {
+    "environment": {
+      "type": "string",
+      "description": "Environment to deploy (development, staging, production)"
+    },
+    "region": {
+      "type": "string",
+      "description": "AWS region for deployment",
+      "default": "us-west-2"
+    }
+  }
+}

@@ -247,7 +247,11 @@ router.get('/optimization/:platform',
         throw new ApiError(403, 'WORKSPACE_ACCESS_DENIED', 'Access denied to workspace');
       }
 
-      // Ensure workspaceId is a string
+      // Ensure platform is defined (validated by express-validator)
+      if (!platform) {
+        throw new ApiError(400, 'INVALID_PLATFORM', 'Platform parameter is required');
+      }
+
       const optimization = await publisherService.getContentOptimization(platform, workspaceId);
 
       res.json({

@@ -1,0 +1,94 @@
+# Pre-commit hooks configuration
+# Install with: pip install pre-commit && pre-commit install
+
+repos:
+  # Task 21: Gitleaks secret scanning
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.18.4  # Pin to specific version
+    hooks:
+      - id: gitleaks
+
+  # Task 21: TruffleHog secret scanning
+  - repo: https://github.com/trufflesecurity/trufflehog
+    rev: v3.81.10  # Pin to specific version
+    hooks:
+      - id: trufflehog
+        args: ['--since-commit', 'HEAD~1']
+
+  # General code quality
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0  # Pin to specific version
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-json
+      - id: check-merge-conflict
+      - id: check-case-conflict
+      - id: check-executables-have-shebangs
+      - id: check-symlinks
+      - id: destroyed-symlinks
+
+  # TypeScript/JavaScript linting
+  - repo: https://github.com/pre-commit/mirrors-eslint
+    rev: v9.9.1  # Pin to specific version
+    hooks:
+      - id: eslint
+        files: \.(js|ts|tsx?)$
+        types: [file]
+        additional_dependencies:
+          - '@typescript-eslint/eslint-plugin@7.18.0'
+          - '@typescript-eslint/parser@7.18.0'
+          - 'eslint-config-security@1.7.1'
+
+  # Security linting for JavaScript/TypeScript
+  - repo: https://github.com/ajinabraham/njsscan
+    rev: v0.3.2  # Pin to specific version
+    hooks:
+      - id: njsscan
+        files: \.(js|ts)$
+
+  # SQL injection detection
+  - repo: https://github.com/sqlfluff/sqlfluff
+    rev: 3.1.1  # Pin to specific version
+    hooks:
+      - id: sqlfluff-lint
+        files: \.sql$
+        args: ['--dialect', 'postgres']
+
+  # Dockerfile security
+  - repo: https://github.com/hadolint/hadolint
+    rev: v2.12.0  # Pin to specific version
+    hooks:
+      - id: hadolint
+        files: Dockerfile.*
+
+  # YAML security
+  - repo: https://github.com/adrienverge/yamllint
+    rev: v1.35.1  # Pin to specific version
+    hooks:
+      - id: yamllint
+        args: [-c=.yamllint.yml]
+
+  # Infrastructure as Code security
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.5.0  # Pin to specific version
+    hooks:
+      - id: detect-secrets
+        args: ['--baseline', '.secrets.baseline']
+
+# Hook configuration
+default_install_hook_types: [pre-commit, commit-msg, pre-push]
+default_stages: [commit, push]
+
+ci:
+  autofix_commit_msg: |
+    [pre-commit.ci] auto fixes from pre-commit hooks
+
+    for more information, see https://pre-commit.ci
+  autofix_prs: true
+  autoupdate_branch: ''
+  autoupdate_commit_msg: '[pre-commit.ci] pre-commit autoupdate'
+  autoupdate_schedule: weekly
+  skip: []
+  submodules: false

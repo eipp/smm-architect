@@ -40,6 +40,9 @@ test: ## Run all tests
 
 test-security: ## Run security tests including tenant isolation
 	@echo "$(YELLOW)Running security tests...$(NC)"
+	@echo "🔍 Validating RLS policies in migrations..."
+	node tools/migration-rls-linter.js services/smm-architect/migrations/
+	@echo "🔴 Running evil tenant security tests..."
 	npm run test:security
 	@echo "$(GREEN)Security tests completed$(NC)"
 

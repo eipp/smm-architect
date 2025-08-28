@@ -13,6 +13,14 @@ import {
 } from '../types';
 import { ModelRegistry } from './ModelRegistry';
 import { Logger } from '../utils/logger';
+import { 
+  CircuitBreaker, 
+  RetryExecutor, 
+  HealthBasedEndpointSelector, 
+  BulkheadExecutor,
+  CircuitBreakerConfig,
+  RetryConfig 
+} from '../utils/resilience';
 
 export class ModelRouter extends EventEmitter {
   private registry: ModelRegistry;
@@ -20,11 +28,37 @@ export class ModelRouter extends EventEmitter {
   private routingRules: Map<string, RoutingRule> = new Map();
   private requestMetrics: Map<string, any> = new Map();
   private canarySystem?: any; // Will be injected externally
+  
+  // Resilience components
+  private circuitBreakers: Map<string, CircuitBreaker> = new Map();
+  private retryExecutor: RetryExecutor;
+  private endpointSelector: HealthBasedEndpointSelector;
+  private bulkheadExecutor: BulkheadExecutor;
+  private idempotencyKeys: Set<string> = new Set();
 
   constructor(registry: ModelRegistry) {
     super();
     this.registry = registry;
     this.logger = new Logger('ModelRouter');
+    
+    // Initialize resilience components
+    this.retryExecutor = new RetryExecutor({
+      maxRetries: 3,
+      baseDelay: 1000,
+      maxDelay: 10000,
+      backoffMultiplier: 2,
+      jitter: true
+    });
+    
+    this.endpointSelector = new HealthBasedEndpointSelector();
+    this.bulkheadExecutor = new BulkheadExecutor();
+    
+    // Create bulkhead pools for different types of operations
+    this.bulkheadExecutor.createPool('openai', 10);
+    this.bulkheadExecutor.createPool('anthropic', 8);
+    this.bulkheadExecutor.createPool('azure', 12);
+    this.bulkheadExecutor.createPool('default', 5);
+    
     this.initializeDefaultRules();
   }
 
@@ -309,26 +343,41 @@ export class ModelRouter extends EventEmitter {
   }
 
   /**
-   * Execute request with selected model
+   * Execute request with selected model using resilience patterns
    */
   private async executeRequest(request: ModelRequest, model: ModelMetadata): Promise<ModelResponse> {
     const startTime = Date.now();
     
     try {
-      // Get model endpoints
-      const endpoints = await this.registry.getModelEndpoints(model.id);
-      if (endpoints.length === 0) {
-        throw new Error(`No endpoints available for model: ${model.id}`);
+      // Check for idempotency
+      const idempotencyKey = `${request.id}-${model.id}`;
+      if (this.idempotencyKeys.has(idempotencyKey)) {
+        this.logger.warn('Duplicate request detected, rejecting', { requestId: request.id, modelId: model.id });
+        throw new Error('Duplicate request detected');
       }
-
-      // Select endpoint (simple round-robin for now)
-      const endpoint = endpoints[0];
-
-      // Simulate API call (in real implementation, this would call the actual model API)
-      const response = await this.callModelAPI(endpoint, request, model);
+      this.idempotencyKeys.add(idempotencyKey);
+      
+      // Clean up old idempotency keys (keep last hour)
+      setTimeout(() => this.idempotencyKeys.delete(idempotencyKey), 60 * 60 * 1000);
+      
+      // Get or create circuit breaker for this model
+      const circuitBreaker = this.getOrCreateCircuitBreaker(model.id);
+      
+      // Determine bulkhead pool based on model provider
+      const poolName = this.getBulkheadPool(model.provider);
+      
+      // Execute with resilience patterns
+      const response = await this.bulkheadExecutor.execute(poolName, async () => {
+        return await circuitBreaker.execute(async () => {
+          return await this.retryExecutor.execute(
+            () => this.executeModelCall(request, model),
+            (error) => this.isRetriableError(error)
+          );
+        });
+      });
       
       const latency = Date.now() - startTime;
-
+      
       const modelResponse: ModelResponse = {
         id: `response-${Date.now()}`,
         requestId: request.id,
@@ -339,12 +388,150 @@ export class ModelRouter extends EventEmitter {
         status: 'success',
         timestamp: new Date()
       };
-
+      
       return modelResponse;
       
     } catch (error) {
+      this.logger.error('Model execution failed with all resilience patterns', error, {
+        requestId: request.id,
+        modelId: model.id,
+        duration: Date.now() - startTime
+      });
       throw new Error(`Model execution failed: ${error instanceof Error ? error.message : String(error)}`);
     }
+  }
+  
+  /**
+   * Execute the actual model call with endpoint selection
+   */
+  private async executeModelCall(request: ModelRequest, model: ModelMetadata): Promise<any> {
+    // Get model endpoints
+    const endpoints = await this.registry.getModelEndpoints(model.id);
+    if (endpoints.length === 0) {
+      throw new Error(`No endpoints available for model: ${model.id}`);
+    }
+    
+    // Add endpoints to health selector if not already present
+    for (const endpoint of endpoints) {
+      if (!this.endpointSelector.getEndpointHealth().find(h => h.endpoint === endpoint.url)) {
+        this.endpointSelector.addEndpoint(endpoint.url, endpoint.weight || 1);
+      }
+    }
+    
+    // Select healthy endpoint
+    const selectedEndpointUrl = this.endpointSelector.selectEndpoint();
+    if (!selectedEndpointUrl) {
+      throw new Error('No healthy endpoints available');
+    }
+    
+    const selectedEndpoint = endpoints.find(e => e.url === selectedEndpointUrl);
+    if (!selectedEndpoint) {
+      throw new Error('Selected endpoint not found in registry');
+    }
+    
+    // Execute API call with timeout and record result
+    const callStartTime = Date.now();
+    let success = false;
+    
+    try {
+      const response = await this.callModelAPI(selectedEndpoint, request, model);
+      success = true;
+      
+      const callLatency = Date.now() - callStartTime;
+      await this.endpointSelector.recordResult(selectedEndpointUrl, callLatency, true);
+      
+      return response;
+    } catch (error) {
+      const callLatency = Date.now() - callStartTime;
+      await this.endpointSelector.recordResult(selectedEndpointUrl, callLatency, false);
+      throw error;
+    }
+  }
+  
+  /**
+   * Get or create circuit breaker for a model
+   */
+  private getOrCreateCircuitBreaker(modelId: string): CircuitBreaker {
+    if (!this.circuitBreakers.has(modelId)) {
+      const config: CircuitBreakerConfig = {
+        name: `model-${modelId}`,
+        failureThreshold: 0.5, // 50% failure rate
+        recoveryTimeout: 60000, // 1 minute
+        monitoringInterval: 10000, // 10 seconds
+        minimumRequests: 10,
+        timeout: 30000, // 30 seconds
+        halfOpenMaxCalls: 3
+      };
+      
+      const circuitBreaker = new CircuitBreaker(config);
+      
+      // Set up event listeners for monitoring
+      circuitBreaker.on('stateChange', (event) => {
+        this.logger.info(`Circuit breaker state change for model ${modelId}`, event);
+        this.emit('circuitBreakerStateChange', { modelId, ...event });
+      });
+      
+      circuitBreaker.on('failure', (event) => {
+        this.logger.warn(`Circuit breaker failure for model ${modelId}`, event);
+      });
+      
+      this.circuitBreakers.set(modelId, circuitBreaker);
+    }
+    
+    return this.circuitBreakers.get(modelId)!;
+  }
+  
+  /**
+   * Determine which bulkhead pool to use based on provider
+   */
+  private getBulkheadPool(provider: string): string {
+    switch (provider.toLowerCase()) {
+      case 'openai':
+        return 'openai';
+      case 'anthropic':
+        return 'anthropic';
+      case 'azure':
+        return 'azure';
+      default:
+        return 'default';
+    }
+  }
+  
+  /**
+   * Determine if an error is retriable
+   */
+  private isRetriableError(error: any): boolean {
+    if (!error) return false;
+    
+    const message = error.message || error.toString();
+    
+    // Don't retry on authentication errors
+    if (message.includes('401') || message.includes('403') || message.includes('authentication')) {
+      return false;
+    }
+    
+    // Don't retry on validation errors
+    if (message.includes('400') || message.includes('validation')) {
+      return false;
+    }
+    
+    // Don't retry on rate limit errors (let circuit breaker handle)
+    if (message.includes('429') || message.includes('rate limit')) {
+      return false;
+    }
+    
+    // Retry on temporary failures
+    if (message.includes('timeout') || 
+        message.includes('502') || 
+        message.includes('503') || 
+        message.includes('504') ||
+        message.includes('connection') ||
+        message.includes('network')) {
+      return true;
+    }
+    
+    // Default to not retriable for safety
+    return false;
   }
 
   /**
@@ -613,8 +800,47 @@ export class ModelRouter extends EventEmitter {
   }
 
   /**
-   * Get system health overview
+   * Get resilience status and metrics
    */
+  getResilienceStatus(): any {
+    const circuitBreakerStatus = Array.from(this.circuitBreakers.entries()).map(([modelId, cb]) => ({
+      modelId,
+      state: cb.getState(),
+      isOpen: cb.isOpen()
+    }));
+    
+    const endpointHealth = this.endpointSelector.getEndpointHealth();
+    const bulkheadStats = this.bulkheadExecutor.getPoolStats();
+    
+    return {
+      circuitBreakers: circuitBreakerStatus,
+      endpointHealth,
+      bulkheadPools: bulkheadStats,
+      idempotencyKeysCount: this.idempotencyKeys.size
+    };
+  }
+  
+  /**
+   * Reset circuit breaker for a specific model
+   */
+  resetCircuitBreaker(modelId: string): boolean {
+    const circuitBreaker = this.circuitBreakers.get(modelId);
+    if (circuitBreaker) {
+      circuitBreaker.reset();
+      this.logger.info(`Circuit breaker reset for model: ${modelId}`);
+      return true;
+    }
+    return false;
+  }
+  
+  /**
+   * Cleanup resources
+   */
+  destroy(): void {
+    this.endpointSelector.destroy();
+    this.circuitBreakers.clear();
+    this.idempotencyKeys.clear();
+  }
   async getSystemHealthOverview(): Promise<any> {
     const allModels = await this.registry.getModelsByCriteria({});
     const activeModels = allModels.filter(m => m.status === 'active');

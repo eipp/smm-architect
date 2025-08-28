@@ -1,0 +1,573 @@
+---
+# Default deny-all network policy
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: smm-architect
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  - Egress
+  egress:
+  - to: []
+    ports:
+    - protocol: UDP
+      port: 53  # Allow DNS
+    - protocol: TCP
+      port: 53  # Allow DNS
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: kube-system
+    ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
+
+---
+# Frontend network policy
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: frontend-network-policy
+  namespace: smm-architect
+spec:
+  podSelector:
+    matchLabels:
+      app: frontend
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: ingress-nginx
+    ports:
+    - protocol: TCP
+      port: 3000
+  - from: [] # Allow any for health checks
+    ports:
+    - protocol: TCP
+      port: 3000
+      # Only for /health endpoint - enforced at application level
+  egress:
+  - to:
+    - podSelector:
+        matchLabels:
+          app: smm-architect-service
+    ports:
+    - protocol: TCP
+      port: 4000
+  - to:
+    - podSelector:
+        matchLabels:
+          app: toolhub
+    ports:
+    - protocol: TCP
+      port: 3001
+  - to:
+    - podSelector:
+        matchLabels:
+          app: model-router
+    ports:
+    - protocol: TCP
+      port: 3003
+  # Allow external API calls
+  - to: []
+    ports:
+    - protocol: TCP
+      port: 443
+    - protocol: TCP
+      port: 80
+
+---
+# Core service network policy
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: core-service-network-policy
+  namespace: smm-architect
+spec:
+  podSelector:
+    matchLabels:
+      app: smm-architect-service
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: frontend
+    ports:
+    - protocol: TCP
+      port: 4000
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: ingress-nginx
+    ports:
+    - protocol: TCP
+      port: 4000
+  - from: [] # Health checks
+    ports:
+    - protocol: TCP
+      port: 4000
+  egress:
+  - to:
+    - podSelector:
+        matchLabels:
+          app: toolhub
+    ports:
+    - protocol: TCP
+      port: 3001
+  - to:
+    - podSelector:
+        matchLabels:
+          app: model-router
+    ports:
+    - protocol: TCP
+      port: 3003
+  - to:
+    - podSelector:
+        matchLabels:
+          app: publisher
+    ports:
+    - protocol: TCP
+      port: 3004
+  - to:
+    - podSelector:
+        matchLabels:
+          app: agents
+    ports:
+    - protocol: TCP
+      port: 3005
+  - to:
+    - podSelector:
+        matchLabels:
+          app: postgresql
+    ports:
+    - protocol: TCP
+      port: 5432
+  - to:
+    - podSelector:
+        matchLabels:
+          app: redis
+    ports:
+    - protocol: TCP
+      port: 6379
+  # External services (Vault, monitoring, etc.)
+  - to: []
+    ports:
+    - protocol: TCP
+      port: 443
+    - protocol: TCP
+      port: 8200  # Vault
+
+---
+# Model Router network policy
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: model-router-network-policy
+  namespace: smm-architect
+spec:
+  podSelector:
+    matchLabels:
+      app: model-router
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: smm-architect-service
+    ports:
+    - protocol: TCP
+      port: 3003
+  - from:
+    - podSelector:
+        matchLabels:
+          app: frontend
+    ports:
+    - protocol: TCP
+      port: 3003
+  - from:
+    - podSelector:
+        matchLabels:
+          app: agents
+    ports:
+    - protocol: TCP
+      port: 3003
+  - from: [] # Health checks and metrics
+    ports:
+    - protocol: TCP
+      port: 3003
+  egress:
+  - to:
+    - podSelector:
+        matchLabels:
+          app: redis
+    ports:
+    - protocol: TCP
+      port: 6379
+  # External AI model APIs
+  - to: []
+    ports:
+    - protocol: TCP
+      port: 443
+    - protocol: TCP
+      port: 80
+
+---
+# ToolHub network policy
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: toolhub-network-policy
+  namespace: smm-architect
+spec:
+  podSelector:
+    matchLabels:
+      app: toolhub
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: smm-architect-service
+    ports:
+    - protocol: TCP
+      port: 3001
+  - from:
+    - podSelector:
+        matchLabels:
+          app: frontend
+    ports:
+    - protocol: TCP
+      port: 3001
+  - from:
+    - podSelector:
+        matchLabels:
+          app: agents
+    ports:
+    - protocol: TCP
+      port: 3001
+  - from: [] # Health checks
+    ports:
+    - protocol: TCP
+      port: 3001
+  egress:
+  - to:
+    - podSelector:
+        matchLabels:
+          app: postgresql
+    ports:
+    - protocol: TCP
+      port: 5432
+  - to:
+    - podSelector:
+        matchLabels:
+          app: redis
+    ports:
+    - protocol: TCP
+      port: 6379
+  # External tool APIs and services
+  - to: []
+    ports:
+    - protocol: TCP
+      port: 443
+    - protocol: TCP
+      port: 80
+
+---
+# Publisher network policy
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: publisher-network-policy
+  namespace: smm-architect
+spec:
+  podSelector:
+    matchLabels:
+      app: publisher
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: smm-architect-service
+    ports:
+    - protocol: TCP
+      port: 3004
+  - from:
+    - podSelector:
+        matchLabels:
+          app: agents
+    ports:
+    - protocol: TCP
+      port: 3004
+  - from: [] # Health checks
+    ports:
+    - protocol: TCP
+      port: 3004
+  egress:
+  - to:
+    - podSelector:
+        matchLabels:
+          app: postgresql
+    ports:
+    - protocol: TCP
+      port: 5432
+  - to:
+    - podSelector:
+        matchLabels:
+          app: redis
+    ports:
+    - protocol: TCP
+      port: 6379
+  # Social media platform APIs
+  - to: []
+    ports:
+    - protocol: TCP
+      port: 443
+    - protocol: TCP
+      port: 80
+
+---
+# Agents network policy
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: agents-network-policy
+  namespace: smm-architect
+spec:
+  podSelector:
+    matchLabels:
+      app: agents
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: smm-architect-service
+    ports:
+    - protocol: TCP
+      port: 3005
+  - from: [] # Health checks
+    ports:
+    - protocol: TCP
+      port: 3005
+  egress:
+  - to:
+    - podSelector:
+        matchLabels:
+          app: toolhub
+    ports:
+    - protocol: TCP
+      port: 3001
+  - to:
+    - podSelector:
+        matchLabels:
+          app: model-router
+    ports:
+    - protocol: TCP
+      port: 3003
+  - to:
+    - podSelector:
+        matchLabels:
+          app: publisher
+    ports:
+    - protocol: TCP
+      port: 3004
+  - to:
+    - podSelector:
+        matchLabels:
+          app: postgresql
+    ports:
+    - protocol: TCP
+      port: 5432
+  - to:
+    - podSelector:
+        matchLabels:
+          app: redis
+    ports:
+    - protocol: TCP
+      port: 6379
+  # External APIs for research and content generation
+  - to: []
+    ports:
+    - protocol: TCP
+      port: 443
+    - protocol: TCP
+      port: 80
+
+---
+# Database network policy
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: postgresql-network-policy
+  namespace: smm-architect
+spec:
+  podSelector:
+    matchLabels:
+      app: postgresql
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: smm-architect-service
+    ports:
+    - protocol: TCP
+      port: 5432
+  - from:
+    - podSelector:
+        matchLabels:
+          app: toolhub
+    ports:
+    - protocol: TCP
+      port: 5432
+  - from:
+    - podSelector:
+        matchLabels:
+          app: publisher
+    ports:
+    - protocol: TCP
+      port: 5432
+  - from:
+    - podSelector:
+        matchLabels:
+          app: agents
+    ports:
+    - protocol: TCP
+      port: 5432
+  # Allow monitoring
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: monitoring
+    ports:
+    - protocol: TCP
+      port: 5432
+
+---
+# Redis network policy
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: redis-network-policy
+  namespace: smm-architect
+spec:
+  podSelector:
+    matchLabels:
+      app: redis
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: smm-architect-service
+    ports:
+    - protocol: TCP
+      port: 6379
+  - from:
+    - podSelector:
+        matchLabels:
+          app: toolhub
+    ports:
+    - protocol: TCP
+      port: 6379
+  - from:
+    - podSelector:
+        matchLabels:
+          app: model-router
+    ports:
+    - protocol: TCP
+      port: 6379
+  - from:
+    - podSelector:
+        matchLabels:
+          app: publisher
+    ports:
+    - protocol: TCP
+      port: 6379
+  - from:
+    - podSelector:
+        matchLabels:
+          app: agents
+    ports:
+    - protocol: TCP
+      port: 6379
+  # Allow monitoring
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: monitoring
+    ports:
+    - protocol: TCP
+      port: 6379
+
+---
+# Monitoring access policy
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: monitoring-access-policy
+  namespace: smm-architect
+spec:
+  podSelector: {} # Apply to all pods
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: monitoring
+    ports:
+    - protocol: TCP
+      port: 8080  # Metrics port
+    - protocol: TCP
+      port: 3000  # Application metrics
+    - protocol: TCP
+      port: 3001
+    - protocol: TCP
+      port: 3003
+    - protocol: TCP
+      port: 3004
+    - protocol: TCP
+      port: 3005
+    - protocol: TCP
+      port: 4000
+
+---
+# Emergency break-glass policy (disabled by default)
+# Uncomment in emergency situations only
+# apiVersion: networking.k8s.io/v1
+# kind: NetworkPolicy
+# metadata:
+#   name: emergency-allow-all
+#   namespace: smm-architect
+# spec:
+#   podSelector: {}
+#   policyTypes:
+#   - Ingress
+#   - Egress
+#   ingress:
+#   - {}
+#   egress:
+#   - {}

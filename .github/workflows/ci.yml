@@ -49,10 +49,12 @@ jobs:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/smm_architect_test
         run: |
           cd services/smm-architect
-          # Apply initial schema
-          psql $DATABASE_URL -f migrations/001_initial_schema.sql
+          # Apply postgres-specific initial schema
+          psql $DATABASE_URL -f migrations/001_initial_schema_postgres.sql
           # Apply RLS migration
           psql $DATABASE_URL -f migrations/002_enable_rls.sql
+          # Apply simulation reports migration
+          psql $DATABASE_URL -f migrations/003_create_simulation_reports.sql
           echo "✅ Database migrations applied"
 
       - name: Validate RLS Configuration

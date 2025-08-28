@@ -6,13 +6,15 @@ import rateLimit from 'express-rate-limit';
 import { body, param, query, validationResult } from 'express-validator';
 import dotenv from 'dotenv';
 import './config/sentry'; // Initialize Sentry
+import { authMiddleware, ScopeMiddleware } from '../../shared/middleware/auth-middleware';
 import { ModelRegistry } from './services/ModelRegistry';
 import { ModelRouter } from './services/ModelRouter';
 import { ModelEvaluationFramework } from './services/ModelEvaluationFramework';
 import { CanaryDeploymentSystem } from './services/CanaryDeploymentSystem';
-import { Logger } from './utils/logger';
+import { MetricsService } from './monitoring/metrics';
+import { createLogger, requestLoggingMiddleware, StructuredLogger } from '../../shared/src/logging/structured-logger';
+import { sentryRequestHandler, sentryTracingHandler, sentryErrorHandler } from './config/sentry';
 import { ModelRequest, ModelMetadata, RoutingRule } from './types';
-import { authMiddleware } from './middleware/auth';
 import { errorHandler } from './middleware/error-handler';
 import { contentRoutes } from './routes/content';
 
@@ -20,7 +22,12 @@ import { contentRoutes } from './routes/content';
 dotenv.config();
 
 const app = express();
-const logger = new Logger('ModelRouterAPI');
+const logger = createLogger('ModelRouterAPI', {
+  environment: process.env.NODE_ENV,
+  version: process.env.npm_package_version,
+  enableSentry: process.env.SENTRY_DSN ? true : false,
+  logLevel: process.env.LOG_LEVEL || 'info'
+});
 const port = process.env.PORT || 3003;
 const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
 
@@ -29,14 +36,86 @@ const registry = new ModelRegistry(redisUrl);
 const router = new ModelRouter(registry);
 const evaluationFramework = new ModelEvaluationFramework(registry);
 const canarySystem = new CanaryDeploymentSystem(registry, evaluationFramework);
+const metricsService = new MetricsService();
 
 // Wire dependencies
 router.setCanarySystem(canarySystem);
 
-// Middleware
-app.use(helmet());
-app.use(cors());
-app.use(compression());
+// Set up circuit breaker event listeners for metrics
+router.on('circuitBreakerStateChange', (event) => {
+  metricsService.recordCircuitBreakerState(event.modelId, event.newState, event.newState);
+});
+
+router.on('requestRouted', (event) => {
+  // Additional metrics for successful routing (already handled in endpoint)
+});
+
+router.on('requestFailed', (event) => {
+  // Additional metrics for failed routing (already handled in endpoint)
+});
+
+// Periodic metrics update job (every 30 seconds)
+setInterval(() => {
+  try {
+    const resilienceStatus = router.getResilienceStatus();
+    metricsService.updateResilienceMetrics(resilienceStatus);
+  } catch (error) {
+    logger.error('Failed to update resilience metrics', error as Error);
+  }
+}, 30000);
+
+// Sentry middleware (must be first)
+app.use(sentryRequestHandler);
+app.use(sentryTracingHandler);
+
+// Request logging and metrics middleware (moved to top)
+app.use(requestLoggingMiddleware(logger));
+app.use((req: express.Request, res: express.Response, next: express.NextFunction) => {
+  const startTime = Date.now();
+  const originalSend = res.send;
+  
+  // Override res.send to capture metrics
+  res.send = function(data: any) {
+    const duration = Date.now() - startTime;
+    const tenantId = (req as any).tenantId; // Set by auth middleware
+    
+    // Record metrics
+    metricsService.recordRequest(req.method, req.route?.path || req.path, res.statusCode, duration, tenantId);
+    
+    if (res.statusCode >= 400) {
+      const errorType = res.statusCode >= 500 ? 'server_error' : 'client_error';
+      metricsService.recordError(req.method, req.route?.path || req.path, errorType, tenantId);
+    }
+    
+    return originalSend.call(this, data);
+  };
+  
+  next();
+});
+
+// Security and performance middleware
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      imgSrc: ["'self'", "data:", "https:"],
+      connectSrc: ["'self'"],
+      fontSrc: ["'self'"],
+      objectSrc: ["'none'"],
+      mediaSrc: ["'self'"],
+      frameSrc: ["'none'"]
+    }
+  },
+  crossOriginEmbedderPolicy: false
+}));
+app.use(cors({
+  origin: process.env.CORS_ORIGINS?.split(',') || ['http://localhost:3000'],
+  credentials: true,
+  optionsSuccessStatus: 200
+}));
+app.use(compression({ level: 6, threshold: 1024 }));
 app.use(express.json({ limit: '10mb' }));
 
 // Rate limiting
@@ -46,6 +125,15 @@ const limiter = rateLimit({
   message: 'Too many requests from this IP'
 });
 app.use(limiter);
+
+// Apply authentication to all /api routes
+app.use('/api', authMiddleware());
+
+// Apply scope-based middleware for different resource types
+app.use('/api/models', ScopeMiddleware.models.method);
+app.use('/api/routing', ScopeMiddleware.routing.method);
+app.use('/api/canary', ScopeMiddleware.canary.method);
+app.use('/api/config', ScopeMiddleware.config.method);
 
 // Validation middleware
 const handleValidationErrors = (req: express.Request, res: express.Response, next: express.NextFunction): void | express.Response => {
@@ -67,6 +155,36 @@ app.get('/health', (req: express.Request, res: express.Response) => {
     service: 'model-router',
     version: process.env.npm_package_version || '1.0.0'
   });
+});
+
+// Prometheus metrics endpoint
+app.get('/metrics', async (req: express.Request, res: express.Response) => {
+  try {
+    // Update resilience metrics before serving
+    const resilienceStatus = router.getResilienceStatus();
+    metricsService.updateResilienceMetrics(resilienceStatus);
+    
+    const metrics = await metricsService.getMetrics();
+    res.set('Content-Type', 'text/plain');
+    res.send(metrics);
+  } catch (error) {
+    logger.error('Failed to get metrics', error as Error);
+    res.status(500).json({ error: 'Failed to get metrics' });
+  }
+});
+
+// Resilience status endpoint for monitoring
+app.get('/api/resilience/status', async (req: express.Request, res: express.Response) => {
+  try {
+    const status = router.getResilienceStatus();
+    res.json({
+      timestamp: new Date().toISOString(),
+      ...status
+    });
+  } catch (error) {
+    logger.error('Failed to get resilience status', error as Error);
+    res.status(500).json({ error: 'Failed to get resilience status' });
+  }
 });
 
 // Model Management Routes
@@ -206,6 +324,9 @@ app.post('/api/route',
   ],
   handleValidationErrors,
   async (req: express.Request, res: express.Response) => {
+    const routeStartTime = Date.now();
+    const tenantId = (req as any).tenantId;
+    
     try {
       const request: ModelRequest = {
         ...req.body,
@@ -213,15 +334,51 @@ app.post('/api/route',
       };
 
       const response = await router.routeRequest(request);
+      
+      // Record detailed model metrics
+      const model = await registry.getModel(response.modelId);
+      if (model) {
+        metricsService.recordModelRequest(
+          response.modelId,
+          model.provider,
+          request.agentType,
+          response.latency,
+          tenantId
+        );
+        
+        // Record token usage if available
+        if (response.usage) {
+          metricsService.recordTokenUsage(
+            response.modelId,
+            response.usage.promptTokens,
+            response.usage.completionTokens,
+            response.usage.totalTokens,
+            tenantId
+          );
+          
+          // Record cost if available
+          if (response.usage.cost) {
+            metricsService.recordCost(
+              response.modelId,
+              model.provider,
+              response.usage.cost,
+              tenantId
+            );
+          }
+        }
+      }
+      
       logger.info(`Request routed successfully: ${request.id}`, { 
         modelId: response.modelId,
         status: response.status,
-        latency: response.latency
+        latency: response.latency,
+        totalLatency: Date.now() - routeStartTime
       });
       
       res.json(response);
     } catch (error) {
       logger.error('Failed to route request', error as Error, { requestId: req.body.id });
+      metricsService.recordError('POST', '/api/route', 'routing_failure', tenantId);
       res.status(500).json({ error: 'Failed to route request' });
     }
   }
@@ -1166,9 +1323,20 @@ app.use('/api/content', authMiddleware);
 // Content generation routes
 app.use('/api/content', contentRoutes);
 
+// Sentry error handler (must be before other error handlers)
+app.use(sentryErrorHandler);
+
 // Error handling middleware
 app.use(errorHandler);
 app.use((error: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  // Log with structured logger
+  StructuredLogger.setContext({
+    requestId: req.headers['x-request-id'] as string,
+    correlationId: req.headers['x-correlation-id'] as string,
+    tenantId: (req as any).tenantId,
+    userId: (req as any).userId
+  });
+  
   logger.error('Unhandled error', error, { 
     method: req.method,
     url: req.url,
@@ -1177,7 +1345,8 @@ app.use((error: Error, req: express.Request, res: express.Response, next: expres
   
   res.status(500).json({
     error: 'Internal server error',
-    message: process.env.NODE_ENV === 'development' ? error.message : 'Something went wrong'
+    message: process.env.NODE_ENV === 'development' ? error.message : 'Something went wrong',
+    requestId: req.headers['x-request-id']
   });
 });
 
@@ -1191,7 +1360,23 @@ app.use((req: express.Request, res: express.Response) => {
 
 // Start server
 const server = app.listen(port, () => {
-  logger.info(`Model Router Service started on port ${port}`);
+  logger.info(`Model Router Service started on port ${port}`, {
+    environment: process.env.NODE_ENV,
+    version: process.env.npm_package_version,
+    port,
+    redisUrl
+  });
+});
+
+// Global error handlers
+process.on('uncaughtException', (error) => {
+  logger.fatal('Uncaught Exception', error);
+  process.exit(1);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  logger.fatal('Unhandled Rejection', new Error(String(reason)), { promise });
+  process.exit(1);
 });
 
 // Graceful shutdown
@@ -1202,6 +1387,7 @@ process.on('SIGTERM', async () => {
       registry.disconnect(),
       canarySystem.cleanup()
     ]).then(() => {
+      router.destroy(); // Cleanup circuit breakers and health checks
       logger.info('Model Router Service stopped');
       process.exit(0);
     }).catch((error) => {
@@ -1218,6 +1404,7 @@ process.on('SIGINT', async () => {
       registry.disconnect(),
       canarySystem.cleanup()
     ]).then(() => {
+      router.destroy(); // Cleanup circuit breakers and health checks
       logger.info('Model Router Service stopped');
       process.exit(0);
     }).catch((error) => {
@@ -1225,25 +1412,6 @@ process.on('SIGINT', async () => {
       process.exit(1);
     });
   });
-});
-
-// Middleware for request logging
-app.use((req, res, next) => {
-  const start = Date.now();
-  const originalSend = res.send;
-  
-  res.send = function(body) {
-    const duration = Date.now() - start;
-    logger.info(`${req.method} ${req.path}`, {
-      statusCode: res.statusCode,
-      duration,
-      userAgent: req.get('User-Agent'),
-      ip: req.ip
-    });
-    return originalSend.call(this, body);
-  };
-  
-  next();
 });
 
 export { app, registry, router, evaluationFramework, canarySystem };

@@ -11,8 +11,9 @@
 import express, { Request, Response } from 'express';
 import { body, param, validationResult } from 'express-validator';
 import rateLimit from 'express-rate-limit';
+import { authMiddleware, requirePermissions } from '../../shared/middleware/auth-middleware';
 import { DataSubjectRightsService, DSRRequest } from './data-subject-rights-service';
-import { getPrismaClient } from '../../shared/database/client';
+import { withTenantContext, withRetryTransaction } from '../../shared/database/client';
 import { VaultClient } from '../../shared/vault-client';
 import winston from 'winston';
 import crypto from 'crypto';
@@ -34,6 +35,15 @@ const logger = winston.createLogger({
 
 const app = express();
 
+// Apply authentication to all DSR endpoints
+app.use('/api', authMiddleware());
+app.use('/api/dsr', requirePermissions('dsr:access'));
+
+// Additional permission requirements for specific operations
+app.use('/api/dsr/delete', requirePermissions('dsr:delete'));
+app.use('/api/dsr/export', requirePermissions('dsr:export'));
+app.use('/api/dsr/rectify', requirePermissions('dsr:rectify'));
+
 // Middleware
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
@@ -51,22 +61,23 @@ const dsrRateLimit = rateLimit({
 });
 
 // Initialize services
-const prisma = getPrismaClient();
+// Database client is accessed securely via withTenantContext()
 const vaultClient = new VaultClient({
   address: process.env.VAULT_ADDR || 'http://localhost:8200',
   token: process.env.VAULT_TOKEN
 });
 
-const dsrService = new DataSubjectRightsService(prisma, vaultClient);
+// DSR service will be instantiated per request with proper tenant context
+// const dsrService = new DataSubjectRightsService(prisma, vaultClient);
 
 // Request storage (in production, use Redis or database)
 const requestStore = new Map<string, DSRRequest & { status: string; result?: any }>();
 
 /**
- * POST /dsr/export
+ * POST /api/dsr/export
  * Generate data export for data subject (Right to Access - GDPR Article 15)
  */
-app.post('/dsr/export',
+app.post('/api/dsr/export',
   dsrRateLimit,
   [
     body('userId').isString().isLength({ min: 1, max: 255 }).trim(),
@@ -159,10 +170,10 @@ app.post('/dsr/export',
 );
 
 /**
- * POST /dsr/delete
+ * POST /api/dsr/delete
  * Process deletion request (Right to Erasure - GDPR Article 17)
  */
-app.post('/dsr/delete',
+app.post('/api/dsr/delete',
   dsrRateLimit,
   [
     body('userId').isString().isLength({ min: 1, max: 255 }).trim(),
@@ -281,10 +292,10 @@ app.post('/dsr/delete',
 );
 
 /**
- * POST /dsr/rectify
+ * POST /api/dsr/rectify
  * Process rectification request (Right to Rectification - GDPR Article 16)
  */
-app.post('/dsr/rectify',
+app.post('/api/dsr/rectify',
   dsrRateLimit,
   [
     body('userId').isString().isLength({ min: 1, max: 255 }).trim(),
@@ -375,10 +386,10 @@ app.post('/dsr/rectify',
 );
 
 /**
- * GET /dsr/status/:requestId
+ * GET /api/dsr/status/:requestId
  * Check the status of a DSR request
  */
-app.get('/dsr/status/:requestId',
+app.get('/api/dsr/status/:requestId',
   [
     param('requestId').isString().matches(/^(export|delete|rectify)_[a-f0-9-]{36}$/)
   ],
@@ -411,7 +422,7 @@ app.get('/dsr/status/:requestId',
       // Add result details based on status
       if (stored.status === 'completed' && stored.result) {
         if (stored.requestType === 'access') {
-          response.downloadUrl = `/dsr/download/${requestId}`;
+          response.downloadUrl = `/api/dsr/download/${requestId}`;
           response.dataSize = stored.result.metadata?.exportSize;
           response.recordCount = stored.result.metadata?.totalRecords;
         } else if (stored.requestType === 'deletion') {
@@ -442,10 +453,10 @@ app.get('/dsr/status/:requestId',
 );
 
 /**
- * GET /dsr/download/:requestId
+ * GET /api/dsr/download/:requestId
  * Download exported data (for completed export requests)
  */
-app.get('/dsr/download/:requestId',
+app.get('/api/dsr/download/:requestId',
   [
     param('requestId').isString().matches(/^export_[a-f0-9-]{36}$/)
   ],
@@ -534,10 +545,14 @@ async function processExportRequest(requestId: string, dsrRequest: DSRRequest): 
   try {
     logger.info('Processing export request', { requestId });
     
-    const exportData = await dsrService.generateDataExport(
-      dsrRequest.userId,
-      dsrRequest.tenantId
-    );
+    // Create DSR service with proper tenant context
+    const exportData = await withTenantContext(dsrRequest.tenantId, async (client) => {
+      const dsrService = new DataSubjectRightsService(client, vaultClient);
+      return await dsrService.generateDataExport(
+        dsrRequest.userId,
+        dsrRequest.tenantId
+      );
+    });
 
     const stored = requestStore.get(requestId);
     if (stored) {
@@ -564,12 +579,16 @@ async function processDeletionRequest(
   try {
     logger.info('Processing deletion request', { requestId });
     
-    const deletionReport = await dsrService.processErasureRequest(
-      requestId,
-      dsrRequest.userId,
-      dsrRequest.tenantId,
-      options
-    );
+    // Create DSR service with proper tenant context
+    const deletionReport = await withTenantContext(dsrRequest.tenantId, async (client) => {
+      const dsrService = new DataSubjectRightsService(client, vaultClient);
+      return await dsrService.processErasureRequest(
+        requestId,
+        dsrRequest.userId,
+        dsrRequest.tenantId,
+        options
+      );
+    });
 
     const stored = requestStore.get(requestId);
     if (stored) {
@@ -598,11 +617,15 @@ async function processRectificationRequest(
   try {
     logger.info('Processing rectification request', { requestId });
     
-    const result = await dsrService.processRectificationRequest(
-      dsrRequest.userId,
-      dsrRequest.tenantId,
-      corrections
-    );
+    // Create DSR service with proper tenant context
+    const result = await withTenantContext(dsrRequest.tenantId, async (client) => {
+      const dsrService = new DataSubjectRightsService(client, vaultClient);
+      return await dsrService.processRectificationRequest(
+        dsrRequest.userId,
+        dsrRequest.tenantId,
+        corrections
+      );
+    });
 
     const stored = requestStore.get(requestId);
     if (stored) {
@@ -637,11 +660,37 @@ async function verifyUserToken(userId: string, token: string): Promise<boolean> 
 
 async function verifyAdminPermission(requestedBy: string, tenantId: string): Promise<boolean> {
   try {
-    // Mock admin verification - in production, check against user permissions
-    return true; // Placeholder
+    // Check if user has admin role in the tenant
+    const userRole = await getUserTenantRole(requestedBy, tenantId);
+    const adminRoles = ['admin', 'owner', 'compliance_officer'];
+    
+    if (!adminRoles.includes(userRole)) {
+      logger.warn('Insufficient permissions for DSR operation', {
+        requestedBy,
+        tenantId,
+        userRole,
+        requiredRoles: adminRoles
+      });
+      return false;
+    }
+    
+    return true;
   } catch (error) {
     logger.error('Admin permission verification failed', { requestedBy, tenantId, error });
     return false;
+  }
+}
+
+async function getUserTenantRole(userId: string, tenantId: string): Promise<string> {
+  // Implementation would query user roles from database
+  // This is a simplified implementation
+  try {
+    // Mock role checking - in production would query database
+    const isAdmin = userId.includes('admin') || userId.includes('owner');
+    return isAdmin ? 'admin' : 'user';
+  } catch (error) {
+    logger.error('Failed to get user tenant role', { userId, tenantId, error });
+    return 'user';
   }
 }
 

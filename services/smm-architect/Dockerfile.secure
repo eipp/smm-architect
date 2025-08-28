@@ -1,0 +1,130 @@
+# Multi-stage Dockerfile for SMM Architect Core Service
+# Security-hardened with distroless base image
+
+# Build stage
+FROM node:18-alpine AS builder
+
+# Set build arguments for multi-platform builds
+ARG BUILDPLATFORM
+ARG TARGETPLATFORM
+ARG BUILDOS
+ARG TARGETARCH
+
+# Install build dependencies with specific versions for reproducibility
+RUN apk add --no-cache \
+    python3=3.10.* \
+    make=4.3-* \
+    g++=11.2.* \
+    git=2.36.* \
+    ca-certificates
+
+# Set up build environment
+WORKDIR /app
+ENV NODE_ENV=production
+
+# Copy workspace configuration first (better layer caching)
+COPY package*.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json ./
+
+# Install pnpm with specific version for security and reproducibility
+RUN npm install -g pnpm@8.15.0 --no-audit --no-fund
+
+# Copy shared packages and build config
+COPY packages/shared ./packages/shared
+COPY packages/build-config ./packages/build-config
+
+# Copy service package file
+COPY services/smm-architect/package.json ./services/smm-architect/
+
+# Install dependencies with frozen lockfile for security
+RUN pnpm install --frozen-lockfile --prefer-offline
+
+# Copy service source code
+COPY services/smm-architect/src ./services/smm-architect/src
+COPY services/smm-architect/tsconfig.json ./services/smm-architect/
+
+# Build the service
+WORKDIR /app/services/smm-architect
+RUN pnpm build && \
+    # Remove source maps for security in production
+    find dist -name "*.map" -delete && \
+    # Verify build output
+    ls -la dist/ && \
+    # Test that main entry point exists
+    test -f dist/main.js
+
+# Dependency pruning stage
+FROM node:18-alpine AS deps
+
+WORKDIR /app
+
+# Copy package files for production dependency installation
+COPY package*.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY services/smm-architect/package.json ./services/smm-architect/
+COPY packages/shared/package.json ./packages/shared/
+
+# Install production dependencies only
+RUN npm install -g pnpm@8.15.0 --no-audit --no-fund && \
+    pnpm install --prod --frozen-lockfile --prefer-offline && \
+    # Clean up package manager caches
+    npm cache clean --force && \
+    rm -rf ~/.local/share/pnpm && \
+    rm -rf /tmp/*
+
+# Final production stage using distroless
+FROM gcr.io/distroless/nodejs18-debian11:nonroot AS production
+
+# Add comprehensive labels for container management and security
+LABEL maintainer="SMM Architect Team" \
+      org.opencontainers.image.title="SMM Architect Core Service" \
+      org.opencontainers.image.description="Core orchestration service for autonomous social media marketing" \
+      org.opencontainers.image.version="1.0.0" \
+      org.opencontainers.image.source="https://github.com/smm-architect/smm-architect" \
+      org.opencontainers.image.vendor="SMM Architect" \
+      org.opencontainers.image.licenses="MIT" \
+      org.opencontainers.image.documentation="https://docs.smm-architect.com" \
+      security.scan="enabled" \
+      security.distroless="true" \
+      security.user="nonroot" \
+      compliance.gdpr="enabled" \
+      compliance.ccpa="enabled"
+
+# Set production environment variables
+ENV NODE_ENV=production \
+    NODE_OPTIONS="--enable-source-maps --max-old-space-size=2048 --unhandled-rejections=strict" \
+    PORT=4000 \
+    LOG_LEVEL=info \
+    METRICS_ENABLED=true
+
+WORKDIR /app
+
+# Copy production dependencies with proper ownership
+COPY --from=deps --chown=nonroot:nonroot /app/node_modules ./node_modules
+COPY --from=deps --chown=nonroot:nonroot /app/packages/shared ./packages/shared
+
+# Copy built application
+COPY --from=builder --chown=nonroot:nonroot /app/services/smm-architect/dist ./dist
+
+# Copy database migrations
+COPY --chown=nonroot:nonroot services/smm-architect/migrations ./migrations
+
+# Create minimal package.json for runtime
+COPY --chown=nonroot:nonroot <<EOF ./package.json
+{
+  "name": "smm-architect-service",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "dist/main.js",
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
+EOF
+
+# Expose port (documentation only in distroless)
+EXPOSE 4000
+
+# Health check is handled at Kubernetes level for distroless images
+# User is already 'nonroot' (uid 65532, gid 65532) in distroless
+
+# Start the service
+CMD ["dist/main.js"]

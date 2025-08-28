@@ -1,0 +1,224 @@
+# Docker ignore file for SMM Architect
+# Exclude files and directories that shouldn't be in the build context
+
+# Version control
+.git
+.gitignore
+.gitattributes
+.gitmodules
+
+# Node.js
+node_modules
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.npm
+.yarn
+.pnpm-debug.log
+
+# Build outputs and cache
+dist
+build
+.cache
+.turbo
+*.tsbuildinfo
+.eslintcache
+
+# Environment and configuration files
+.env
+.env.local
+.env.development
+.env.production
+.env.test
+.env.*.local
+*.env
+config/local.json
+config/production.json
+config/development.json
+
+# IDE and editor files
+.vscode
+.idea
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Coverage and test reports
+coverage
+.coverage
+*.lcov
+.nyc_output
+test-results
+junit.xml
+
+# Temporary files
+tmp
+temp
+.tmp
+*.tmp
+*.temp
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Security and credentials
+*.pem
+*.key
+*.crt
+*.csr
+.ssh
+credentials
+secrets
+.secrets
+vault
+.vault
+
+# Database files
+*.sqlite
+*.sqlite3
+*.db
+
+# Backup files
+*.backup
+*.bak
+*.old
+
+# Documentation
+*.md
+docs/
+documentation/
+README*
+CHANGELOG*
+LICENSE*
+CONTRIBUTING*
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+.travis.yml
+.circleci/
+Jenkinsfile
+azure-pipelines.yml
+
+# Testing
+.jest
+jest.config.*
+playwright.config.*
+cypress.config.*
+__tests__
+*.test.*
+*.spec.*
+test/
+tests/
+e2e/
+
+# Monitoring and analysis
+.storybook
+storybook-static
+.lighthouse
+lighthouse-results
+
+# Package manager locks (except the one we need)
+# Keep pnpm-lock.yaml but exclude others
+yarn.lock
+package-lock.json
+
+# Development tools
+.eslintrc*
+.prettierrc*
+.editorconfig
+.stylelintrc*
+.commitlintrc*
+tsconfig*.json
+!tsconfig.json
+
+# Kubernetes and infrastructure
+kubernetes/
+k8s/
+helm/
+terraform/
+infrastructure/
+deploy/
+deployment/
+
+# Docker files themselves
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+
+# SBOM and security scanning
+sbom/
+*.sbom
+security/
+vulnerability-reports/
+
+# Examples and samples
+examples/
+samples/
+
+# Monitoring configuration
+monitoring/
+grafana/
+prometheus/
+
+# Build tools
+Makefile
+turbo.json
+lerna.json
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Desktop.ini
+
+# Archives
+*.7z
+*.dmg
+*.gz
+*.iso
+*.jar
+*.rar
+*.tar
+*.zip
+
+# Certificates and keys
+*.p12
+*.pfx
+*.pem
+*.key
+*.crt
+*.cer
+*.der
+
+# Large files that shouldn't be in containers
+*.mp4
+*.avi
+*.mov
+*.wmv
+*.mkv
+*.flv
+*.webm
+
+# Include specific files that might be accidentally ignored
+!.dockerignore
+!package.json
+!pnpm-lock.yaml

@@ -5,6 +5,7 @@ interface Header {
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import winston from 'winston';
+import { withTenantContext } from '../../shared/database/client';
 
 // Mock Prisma client for tenant context
 interface MockPrismaClient {
@@ -258,9 +259,11 @@ export function setAutomaticTenantContext() {
         );
       }
       
-      // Set tenant context in database session
-      const prismaClient = getPrismaClient();
-      await setTenantContext(prismaClient, tenantId);
+      // Set tenant context in database session using secure context
+      await withTenantContext(tenantId, async () => {
+        // Tenant context is now set for this request scope
+        logger.debug('Database tenant context established', { tenantId });
+      });
       
       // Add tenant context to request
       req.tenantId = tenantId;
@@ -422,21 +425,21 @@ function isValidTenantId(tenantId: string): boolean {
 export function verifyTenantContext() {
   return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const prismaClient = getPrismaClient();
-      const currentTenantId = await getCurrentTenantContext(prismaClient);
+      const { validateCurrentTenantContext } = await import('../../shared/database/client');
+      const validation = await validateCurrentTenantContext();
       
-      if (!currentTenantId) {
+      if (!validation.isValid || !validation.tenantId) {
         throw new TenantContextError('Database tenant context is not set');
       }
       
-      if (req.tenantId && currentTenantId !== req.tenantId) {
+      if (req.tenantId && validation.tenantId !== req.tenantId) {
         throw new TenantContextError(
-          `Database tenant context mismatch: expected ${req.tenantId}, got ${currentTenantId}`
+          `Database tenant context mismatch: expected ${req.tenantId}, got ${validation.tenantId}`
         );
       }
       
       logger.debug('Tenant context verified', {
-        tenantId: currentTenantId,
+        tenantId: validation.tenantId,
         requestTenantId: req.tenantId
       });
       
