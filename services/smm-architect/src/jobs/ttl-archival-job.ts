@@ -1,6 +1,8 @@
 import { DatabaseClient } from '../../shared/database/client';
 import { logger } from '../utils/logger';
 import { createHash } from 'crypto';
+import { S3Client, PutObjectCommand, HeadObjectCommand } from '@aws-sdk/client-s3';
+import { gzipSync } from 'zlib';
 
 export interface TTLArchivalConfig {
   dryRun: boolean;
@@ -8,6 +10,9 @@ export interface TTLArchivalConfig {
   maxConcurrency: number;
   archiveToS3: boolean;
   s3Bucket?: string;
+  awsRegion?: string;
+  awsAccessKeyId?: string;
+  awsSecretAccessKey?: string;
   retentionDays: number;
 }
 
@@ -22,15 +27,27 @@ export interface ArchivedWorkspace {
 export class TTLArchivalJob {
   private db: DatabaseClient;
   private config: TTLArchivalConfig;
+  private s3Client?: S3Client;
 
   constructor(db: DatabaseClient, config: TTLArchivalConfig) {
     this.db = db;
     this.config = config;
+
+     if (config.archiveToS3) {
+       this.s3Client = new S3Client({
+         region: config.awsRegion || process.env.AWS_REGION,
+         credentials: config.awsAccessKeyId && config.awsSecretAccessKey ? {
+           accessKeyId: config.awsAccessKeyId,
+           secretAccessKey: config.awsSecretAccessKey
+         } : undefined
+       });
+     }
   }
 
   async execute(): Promise<void> {
     const startTime = Date.now();
-    logger.info('Starting TTL archival job', { config: this.config });
+    const safeConfig = { ...this.config, awsSecretAccessKey: this.config.awsSecretAccessKey ? '***' : undefined };
+    logger.info('Starting TTL archival job', { config: safeConfig });
 
     try {
       // Find expired workspaces based on ttl_hours
@@ -202,13 +219,31 @@ export class TTLArchivalJob {
     if (!this.config.s3Bucket) {
       throw new Error('S3 bucket not configured for archival');
     }
+    if (!this.s3Client) {
+       throw new Error('S3 client not initialized');
+    }
 
-    // TODO: Implement S3 archival
-    // This would use AWS SDK to upload compressed JSON data
     const archivePath = `archived-workspaces/${workspace_id}/${Date.now()}.json.gz`;
-    
-    logger.info('Archiving to S3', { workspace_id, archivePath });
-    
+    const body = gzipSync(Buffer.from(JSON.stringify(data)));
+
+    const putCommand = new PutObjectCommand({
+      Bucket: this.config.s3Bucket,
+      Key: archivePath,
+      Body: body,
+      ContentType: 'application/json',
+      ContentEncoding: 'gzip'
+    });
+
+    await this.s3Client.send(putCommand);
+    await this.s3Client.send(new HeadObjectCommand({ Bucket: this.config.s3Bucket, Key: archivePath }));
+
+    logger.info('Archived to S3', {
+      workspace_id,
+      bucket: this.config.s3Bucket,
+      key: archivePath,
+      size: body.length
+    });
+
     return `s3://${this.config.s3Bucket}/${archivePath}`;
   }
 
@@ -279,6 +314,9 @@ export async function runTTLArchivalJob(config?: Partial<TTLArchivalConfig>): Pr
     maxConcurrency: 3,
     archiveToS3: true,
     s3Bucket: process.env.ARCHIVE_S3_BUCKET,
+    awsRegion: process.env.AWS_REGION,
+    awsAccessKeyId: process.env.AWS_ACCESS_KEY_ID,
+    awsSecretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
     retentionDays: 2555 // 7 years for compliance
   };
 
