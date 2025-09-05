@@ -36,10 +36,25 @@ class APIClient {
 
   private async request<T>(
     endpoint: string,
-    options: RequestInit & { timeout?: number } = {}
+    options: RequestInit & { timeout?: number } = {},
   ): Promise<T> {
-    const { timeout = this.config.timeout, ...requestOptions } = options
-    
+    const { timeout = this.config.timeout, ...restOptions } = options
+    const requestOptions: RequestInit = { ...restOptions }
+
+    const isStateChanging =
+      ['POST', 'PUT', 'PATCH', 'DELETE'].includes(
+        (requestOptions.method || 'GET').toUpperCase(),
+      )
+
+    if (isStateChanging) {
+      const csrfToken = this.getCsrfToken()
+      requestOptions.headers = {
+        ...(requestOptions.headers || {}),
+        ...(csrfToken ? { 'X-CSRF-Token': csrfToken } : {}),
+      }
+      requestOptions.credentials = 'include'
+    }
+
     const controller = new AbortController()
     const timeoutId = setTimeout(() => controller.abort(), timeout)
 
@@ -71,20 +86,20 @@ class APIClient {
       if (contentType && contentType.includes('application/json')) {
         return response.json()
       }
-      
+
       return response.text() as T
     } catch (error) {
       clearTimeout(timeoutId)
-      
+
       if (error instanceof APIError) {
         throw error
       }
-      
-      if (error.name === 'AbortError') {
+
+      if ((error as Error).name === 'AbortError') {
         throw new APIError(408, 'Request timeout')
       }
-      
-      throw new APIError(0, error.message || 'Network error')
+
+      throw new APIError(0, (error as Error).message || 'Network error')
     }
   }
 
@@ -122,6 +137,21 @@ class APIClient {
 
   private generateTraceId(): string {
     return `frontend-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+  }
+
+  private getCsrfToken(): string | null {
+    try {
+      if (typeof document === 'undefined') {
+        return null
+      }
+      const match = document.cookie.match(/(^|;)\s*__csrf=([^;]+)/)
+      return match ? decodeURIComponent(match[2]) : null
+    } catch (error) {
+      if (error instanceof Error) {
+        console.warn('Failed to read CSRF token', error)
+      }
+      return null
+    }
   }
 }
 
