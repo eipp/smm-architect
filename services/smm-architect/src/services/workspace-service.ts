@@ -11,18 +11,26 @@ const log = {
   warn: (message: string, data?: any) => console.warn('[WARN]', message, data)
 };
 import { v4 as uuidv4 } from "uuid";
-import { 
-  WorkspaceContract, 
-  CreateWorkspaceRequest,
+import { getTenantId } from "../../../shared/request-context";
+import {
+  WorkspaceContract,
   ApprovalRequest,
-  ApprovalResponse 
+  ApprovalResponse
 } from "../types";
 
 export class WorkspaceService {
   constructor(private db: SQLDatabase) {}
 
   async createWorkspace(contract: Omit<WorkspaceContract, 'workspaceId' | 'createdAt' | 'lifecycle'>): Promise<WorkspaceContract> {
-    const workspaceId = `ws-${contract.tenantId}-${uuidv4().substring(0, 8)}`;
+    const tenantId = getTenantId();
+    if (!tenantId) {
+      throw new Error('Tenant context not set');
+    }
+    if (contract.tenantId !== tenantId) {
+      throw new Error('Tenant mismatch');
+    }
+
+    const workspaceId = `ws-${tenantId}-${uuidv4().substring(0, 8)}`;
     const now = new Date().toISOString();
 
     const workspace: WorkspaceContract = {
@@ -57,9 +65,14 @@ export class WorkspaceService {
   }
 
   async getWorkspace(workspaceId: string): Promise<WorkspaceContract | null> {
+    const tenantId = getTenantId();
+    if (!tenantId) {
+      throw new Error('Tenant context not set');
+    }
+
     const result = await this.db.query(
-      "SELECT contract_data FROM workspaces WHERE workspace_id = ?",
-      [workspaceId]
+      "SELECT contract_data FROM workspaces WHERE workspace_id = ? AND tenant_id = ?",
+      [workspaceId, tenantId]
     );
 
     if (result.length === 0) {
@@ -70,6 +83,11 @@ export class WorkspaceService {
   }
 
   async updateWorkspace(workspaceId: string, updates: Partial<WorkspaceContract>): Promise<boolean> {
+    const tenantId = getTenantId();
+    if (!tenantId) {
+      throw new Error('Tenant context not set');
+    }
+
     const existing = await this.getWorkspace(workspaceId);
     if (!existing) {
       throw new Error("Workspace not found");
@@ -78,21 +96,23 @@ export class WorkspaceService {
     const updated = { ...existing, ...updates };
     
     await this.db.exec(
-      `UPDATE workspaces 
-      SET 
+      `UPDATE workspaces
+      SET
         contract_data = ?,
         updated_at = ?
-      WHERE workspace_id = ?`,
-      [JSON.stringify(updated), new Date().toISOString(), workspaceId]
+      WHERE workspace_id = ? AND tenant_id = ?`,
+      [JSON.stringify(updated), new Date().toISOString(), workspaceId, tenantId]
     );
 
     return true;
   }
 
-  async listWorkspaces(tenantId?: string): Promise<WorkspaceContract[]> {
-    const query = tenantId 
-      ? await this.db.query("SELECT contract_data FROM workspaces WHERE tenant_id = ?", [tenantId])
-      : await this.db.query("SELECT contract_data FROM workspaces", []);
+  async listWorkspaces(): Promise<WorkspaceContract[]> {
+    const tenantId = getTenantId();
+    if (!tenantId) {
+      throw new Error('Tenant context not set');
+    }
+    const query = await this.db.query("SELECT contract_data FROM workspaces WHERE tenant_id = ?", [tenantId]);
     return query.map((row: any) => JSON.parse(row.contract_data));
   }
 
@@ -145,15 +165,19 @@ export class WorkspaceService {
 
   async getWorkspaceMetrics(workspaceId: string): Promise<any> {
     // Get metrics from database
+    const tenantId = getTenantId();
+    if (!tenantId) {
+      throw new Error('Tenant context not set');
+    }
     const result = await this.db.query(
-      `SELECT 
+      `SELECT
         COUNT(*) as total_runs,
         AVG(CASE WHEN status = 'completed' THEN 1.0 ELSE 0.0 END) as success_rate,
         AVG(cost_usd) as average_cost,
         MAX(created_at) as last_activity
-      FROM workspace_runs 
-      WHERE workspace_id = ?`,
-      [workspaceId]
+      FROM workspace_runs
+      WHERE workspace_id = ? AND tenant_id = ?`,
+      [workspaceId, tenantId]
     );
 
     if (result.length === 0) {

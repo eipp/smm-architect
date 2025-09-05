@@ -51,6 +51,7 @@ import { WorkspaceService } from "./services/workspace-service";
 import { SimulationService } from "./services/simulation-service";
 import { AuditService } from "./services/audit-service";
 import { validateWorkspaceContract } from "./utils/validation";
+import { getTenantId } from "../../shared/request-context";
 
 // Database connection
 const db = new SQLDatabase("smm_architect", {
@@ -69,7 +70,12 @@ export const createWorkspace = api(
   { method: "POST", path: "/workspaces", auth: true },
   async (req: CreateWorkspaceRequest): Promise<CreateWorkspaceResponse> => {
     try {
-      log.info("Creating new workspace", { tenantId: req.contract.tenantId });
+      const tenantId = getTenantId();
+      if (!tenantId || req.contract.tenantId !== tenantId) {
+        throw new Error('Invalid tenant context');
+      }
+
+      log.info("Creating new workspace", { tenantId });
 
       // Validate the contract schema
       const validationResult = await validateWorkspaceContract({
@@ -104,7 +110,7 @@ export const createWorkspace = api(
       log.error("Failed to create workspace", { error: error instanceof Error ? error.message : String(error) });
       captureException(error, { 
         endpoint: "createWorkspace",
-        tenantId: req.contract.tenantId 
+        tenantId
       });
       throw new Error(`Failed to create workspace: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
@@ -289,20 +295,21 @@ export const health = api(
  */
 export const listWorkspaces = api(
   { method: "GET", path: "/workspaces", auth: true },
-  async ({ tenantId }: { tenantId?: string }): Promise<{ workspaces: WorkspaceContract[] }> => {
+  async (): Promise<{ workspaces: WorkspaceContract[] }> => {
     try {
+      const tenantId = getTenantId();
       log.info("Listing workspaces", { tenantId });
 
-      const workspaces = await workspaceService.listWorkspaces(tenantId);
+      const workspaces = await workspaceService.listWorkspaces();
 
       return { workspaces };
 
     } catch (error) {
       log.error("Failed to list workspaces", { 
-        tenantId, 
-        error: error instanceof Error ? error.message : String(error) 
+        tenantId,
+        error: error instanceof Error ? error.message : String(error)
       });
-      captureException(error, { 
+      captureException(error, {
         endpoint: "listWorkspaces",
         tenantId: tenantId
       });
