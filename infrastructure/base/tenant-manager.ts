@@ -498,30 +498,33 @@ export class TenantManager {
   }
 
   private async getActiveUserCount(tenantId: string): Promise<number> {
-    // Implementation would query database for active users
+    // TODO: Query user service for active user metrics
+    // Development-only fallback: return 0 when no data is available
     const tenant = this.tenants.get(tenantId);
-    return tenant?.metadata.activeUsers || Math.floor(Math.random() * 100) + 10;
+    return tenant?.metadata.activeUsers ?? 0;
   }
 
   private async getMonthlyRevenue(tenantId: string): Promise<number> {
-    // Implementation would query billing/subscription data
+    // TODO: Integrate with billing service to fetch real revenue
+    // Development-only placeholder: returns 0 when data is missing
     const tenant = this.tenants.get(tenantId);
-    return tenant?.metadata.monthlyRevenue || Math.floor(Math.random() * 10000) + 1000;
+    return tenant?.metadata.monthlyRevenue ?? 0;
   }
 
   private async getStorageUsage(tenantId: string): Promise<number> {
-    // Implementation would query storage metrics
-    return Math.floor(Math.random() * 1000000) + 50000; // Bytes
+    // Query Prometheus for storage usage metrics
+    return await this.queryPrometheus(`sum(kubelet_volume_stats_used_bytes{namespace="smm-tenant-${tenantId}"})`);
   }
 
   private async getApiCallCount(tenantId: string): Promise<number> {
-    // Implementation would query API usage metrics
-    return Math.floor(Math.random() * 100000) + 5000;
+    // Query Prometheus for API call counts
+    return await this.queryPrometheus(`sum(increase(http_requests_total{namespace="smm-tenant-${tenantId}"}[5m]))`);
   }
 
   private async calculateUptime(tenantId: string, startTime: string, endTime: string): Promise<number> {
-    // Calculate uptime percentage based on monitoring data
-    return 99.5; // Placeholder
+    // TODO: Calculate uptime percentage using monitoring data
+    // Development-only placeholder value
+    return 99.5;
   }
 
   private getPricingModel(tenantId: string): any {
