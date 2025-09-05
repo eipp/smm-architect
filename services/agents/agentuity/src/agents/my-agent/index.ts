@@ -1,6 +1,7 @@
 import type { AgentContext, AgentRequest, AgentResponse } from '@agentuity/sdk';
 import Anthropic from '@anthropic-ai/sdk';
 import crypto from 'crypto';
+import { VaultClient } from '../../../../../shared/vault-client';
 
 // Type definitions for requests
 interface AgentRequestData {
@@ -13,21 +14,12 @@ interface AgentRequestData {
 // Initialize Anthropic client
 const client = new Anthropic();
 
-// Simple VaultClient mock for development
-class MockVaultClient {
-  async readKVSecret(path: string): Promise<any> {
-    // Mock implementation - in production this would use real Vault
-    if (path.includes('webhook_key')) {
-      return { key: 'mock-webhook-key' };
-    }
-    if (path.includes('toolhub-api-key')) {
-      return { api_key: 'mock-toolhub-key' };
-    }
-    return null;
-  }
-}
+const vaultClient = new VaultClient({
+  address: process.env.VAULT_ADDR || 'http://localhost:8200',
+  token: process.env.VAULT_TOKEN
+});
 
-const vaultClient = new MockVaultClient();
+let vaultInitialized = false;
 
 // ToolHub endpoints
 const TOOLHUB_ENDPOINT = process.env.TOOLHUB_ENDPOINT || 'http://localhost:8080';
@@ -38,6 +30,11 @@ const AGENT_VERSION = '1.0.0';
  * Get ToolHub API credentials
  */
 async function getToolHubCredentials(tenantId: string): Promise<string> {
+  if (!vaultInitialized) {
+    await vaultClient.initialize();
+    vaultInitialized = true;
+  }
+
   const secret = await vaultClient.readKVSecret(`workspaces/${tenantId}/toolhub-api-key`);
   
   if (!secret) {
