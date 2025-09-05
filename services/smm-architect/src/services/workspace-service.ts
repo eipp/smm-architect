@@ -89,10 +89,18 @@ export class WorkspaceService {
     return true;
   }
 
-  async listWorkspaces(tenantId?: string): Promise<WorkspaceContract[]> {
-    const query = tenantId 
-      ? await this.db.query("SELECT contract_data FROM workspaces WHERE tenant_id = ?", [tenantId])
-      : await this.db.query("SELECT contract_data FROM workspaces", []);
+  async listWorkspaces(tenantId: string): Promise<WorkspaceContract[]> {
+    if (!tenantId) {
+      throw new Error("Tenant context required");
+    }
+
+    // Enforce row-level security by setting tenant context
+    await this.db.exec("SET app.current_tenant_id = ?", [tenantId]);
+
+    const query = await this.db.query(
+      "SELECT contract_data FROM workspaces WHERE tenant_id = ?",
+      [tenantId]
+    );
     return query.map((row: any) => JSON.parse(row.contract_data));
   }
 
