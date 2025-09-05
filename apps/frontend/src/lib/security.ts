@@ -1,4 +1,6 @@
 import DOMPurify from 'isomorphic-dompurify';
+import validator from 'validator';
+import sanitizeFilename from 'sanitize-filename';
 
 // Content Security Policy configuration
 export const cspConfig = {
@@ -67,55 +69,40 @@ export function sanitizeHtml(input: string, options: SanitizeOptions = {}): stri
 
 export function sanitizeUserInput(input: string): string {
   if (!input) return '';
-  
-  return input
-    .replace(/[<>"'&]/g, (match) => {
-      const entities: Record<string, string> = {
-        '<': '&lt;',
-        '>': '&gt;',
-        '"': '&quot;',
-        "'": '&#x27;',
-        '&': '&amp;',
-      };
-      return entities[match];
-    })
-    .trim()
-    .slice(0, 1000); // Limit length
+
+  return validator.escape(validator.trim(input)).slice(0, 1000);
 }
 
 export function sanitizeFileName(filename: string): string {
   if (!filename) return '';
-  
-  return filename
-    .replace(/[^a-zA-Z0-9.-]/g, '_')
-    .replace(/_{2,}/g, '_')
-    .slice(0, 255);
+
+  return sanitizeFilename(filename).slice(0, 255);
 }
 
 export function sanitizeUrl(url: string): string | null {
   if (!url) return null;
-  
+
+  const trimmed = validator.trim(url);
+
+  if (!validator.isURL(trimmed, { require_protocol: true, protocols: ['http', 'https'] })) {
+    return null;
+  }
+
   try {
-    const parsedUrl = new URL(url);
-    
-    // Only allow HTTP and HTTPS protocols
-    if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
-      return null;
-    }
-    
-    // Block local/private network access
-    const hostname = parsedUrl.hostname.toLowerCase();
+    const { hostname } = new URL(trimmed);
+    const lowerHost = hostname.toLowerCase();
     if (
-      hostname === 'localhost' ||
-      hostname.startsWith('127.') ||
-      hostname.startsWith('192.168.') ||
-      hostname.startsWith('10.') ||
-      hostname.endsWith('.local')
+      lowerHost === 'localhost' ||
+      lowerHost.startsWith('127.') ||
+      lowerHost.startsWith('192.168.') ||
+      lowerHost.startsWith('10.') ||
+      lowerHost.endsWith('.local') ||
+      validator.isIP(lowerHost)
     ) {
       return null;
     }
-    
-    return parsedUrl.toString();
+
+    return trimmed;
   } catch {
     return null;
   }
