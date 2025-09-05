@@ -4,6 +4,7 @@ import axios from 'axios';
 import crypto from 'crypto';
 import { AuthenticatedRequest, requireScopes } from '../middleware/auth';
 import { ApiError } from '../middleware/error-handler';
+import { createPrismaClient, setTenantContext } from '../../../shared/database/client';
 
 const router = Router();
 
@@ -249,24 +250,27 @@ router.get('/connections/:workspaceId',
         throw new ApiError(403, 'WORKSPACE_ACCESS_DENIED', 'Access denied to workspace');
       }
 
-      // Database query for OAuth connections will be implemented with production database setup
-      // For now, return mock data
-      const connections = [
-        {
-          connectionId: 'conn-linkedin-001',
-          platform: 'linkedin',
-          profile: {
-            id: '123456789',
-            name: 'John Doe',
-            username: 'johndoe',
-            profileUrl: 'https://linkedin.com/in/johndoe'
-          },
-          scopes: ['r_liteprofile', 'w_member_social'],
-          connectedAt: '2024-01-15T10:30:00Z',
-          expiresAt: '2024-02-15T10:30:00Z',
-          status: 'active'
-        }
-      ];
+      const prisma = createPrismaClient();
+      await setTenantContext(prisma, workspaceId);
+
+      const dbConnections = await (prisma as any).oauthConnection.findMany({
+        where: { workspaceId }
+      });
+
+      const connections = dbConnections.map((conn: any) => ({
+        connectionId: conn.id,
+        platform: conn.platform,
+        profile: {
+          id: conn.profileId,
+          name: conn.profileName,
+          username: conn.profileUsername,
+          profileUrl: conn.profileUrl
+        },
+        scopes: (conn.scopes || '').split(' ').filter(Boolean),
+        connectedAt: conn.connectedAt?.toISOString?.() || conn.connectedAt,
+        expiresAt: conn.expiresAt?.toISOString?.() || conn.expiresAt,
+        status: conn.status
+      }));
 
       res.json({
         success: true,

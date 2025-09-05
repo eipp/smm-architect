@@ -5,6 +5,7 @@ import FormData from 'form-data';
 import multer from 'multer';
 import { AuthenticatedRequest, requireScopes } from '../middleware/auth';
 import { ApiError } from '../middleware/error-handler';
+import { createPrismaClient, setTenantContext } from '../../../shared/database/client';
 
 const router = Router();
 
@@ -699,22 +700,63 @@ async function postToTikTok(connection: any, content: { text?: string, mediaFile
 }
 
 /**
- * Helper function to get OAuth connection from database
+ * Helper function to get OAuth connection from database and refresh token if expired
  */
-async function getOAuthConnection(connectionId: string, workspaceId: string) {
-  // In production, this would query the database
-  // For now, return mock connection data
+export async function getOAuthConnection(connectionId: string, workspaceId: string) {
+  const prisma = createPrismaClient();
+  await setTenantContext(prisma, workspaceId);
+
+  const connection = await (prisma as any).oauthConnection.findFirst({
+    where: { id: connectionId, workspaceId }
+  });
+
+  if (!connection) {
+    return null;
+  }
+
+  if (connection.expiresAt && new Date(connection.expiresAt) < new Date()) {
+    try {
+      const params = new URLSearchParams({
+        grant_type: 'refresh_token',
+        refresh_token: connection.refreshToken,
+        client_id: process.env.LINKEDIN_CLIENT_ID || '',
+        client_secret: process.env.LINKEDIN_CLIENT_SECRET || ''
+      });
+
+      const refreshResponse = await axios.post(
+        'https://www.linkedin.com/oauth/v2/accessToken',
+        params.toString(),
+        { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
+      );
+
+      const { access_token, expires_in } = refreshResponse.data;
+      connection.accessToken = access_token;
+      connection.expiresAt = new Date(Date.now() + (expires_in || 0) * 1000);
+
+      await (prisma as any).oauthConnection.update({
+        where: { id: connectionId },
+        data: {
+          accessToken: connection.accessToken,
+          expiresAt: connection.expiresAt
+        }
+      });
+    } catch (err) {
+      console.error('Token refresh failed', err);
+    }
+  }
+
   return {
-    id: connectionId,
-    platform: 'linkedin', // This would be determined from database
-    workspaceId,
-    accessToken: process.env.LINKEDIN_ACCESS_TOKEN || 'mock_token',
-    refreshToken: 'mock_refresh_token',
-    expiresAt: new Date(Date.now() + 3600000).toISOString(), // 1 hour from now
+    id: connection.id,
+    platform: connection.platform,
+    workspaceId: connection.workspaceId,
+    accessToken: connection.accessToken,
+    refreshToken: connection.refreshToken,
+    expiresAt: connection.expiresAt?.toISOString?.() || connection.expiresAt,
     profile: {
-      id: '123456789',
-      name: 'Test User',
-      username: 'testuser'
+      id: connection.profileId,
+      name: connection.profileName,
+      username: connection.profileUsername,
+      profileUrl: connection.profileUrl
     }
   };
 }
