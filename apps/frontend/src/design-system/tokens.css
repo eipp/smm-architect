@@ -181,3 +181,23 @@
   --modal-max-width: 640px;
   --modal-padding: 24px;
 }
+
+.dark {
+  --color-neutral-50: hsl(210 15% 8%);
+  --color-neutral-100: hsl(210 15% 12%);
+  --color-neutral-200: hsl(210 15% 22%);
+  --color-neutral-300: hsl(210 15% 32%);
+  --color-neutral-400: hsl(210 15% 42%);
+  --color-neutral-500: hsl(210 15% 55%);
+  --color-neutral-600: hsl(210 20% 70%);
+  --color-neutral-700: hsl(210 25% 85%);
+  --color-neutral-800: hsl(210 30% 92%);
+  --color-neutral-900: hsl(210 40% 96%);
+  --color-neutral-950: hsl(210 40% 98%);
+
+  --color-canvas-background: hsl(210 30% 8%);
+  --color-workspace-background: hsl(0 0% 10%);
+  --color-surface-elevated: hsl(210 15% 20%);
+  --color-border-subtle: hsl(210 15% 30%);
+  --color-border-strong: hsl(210 20% 40%);
+}
