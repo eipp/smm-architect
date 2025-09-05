@@ -1,6 +1,7 @@
 import * as pulumi from '@pulumi/pulumi';
 import * as k8s from '@pulumi/kubernetes';
 import * as vault from '@pulumi/vault';
+import axios from 'axios';
 import { TenantConfig, TenantResources } from './types';
 
 export class TenantProvisioner {
@@ -144,6 +145,8 @@ export class TenantProvisioner {
       tokenPolicies: [vaultPolicy.name]
     }, { provider: this.vaultProvider });
 
+    const dbPassword = await this.fetchDbPassword(config.tenantId);
+
     // Database credentials
     const dbSecret = new k8s.core.v1.Secret(`tenant-${config.tenantId}-db`, {
       metadata: {
@@ -160,12 +163,34 @@ export class TenantProvisioner {
         port: '5432',
         database: `smm_tenant_${config.tenantId}`,
         username: `tenant_${config.tenantId}_user`,
-        // Password will be rotated by external-secrets operator
-        password: pulumi.secret('placeholder-rotated-by-vault')
+        // Password fetched from Vault; rotation handled by external-secrets operator
+        password: pulumi.secret(dbPassword)
       }
     }, { provider: this.provider });
 
     return { vaultMount, vaultPolicy, vaultAuthRole, dbSecret };
+  }
+
+  private async fetchDbPassword(tenantId: string): Promise<string> {
+    const vaultAddr = process.env.VAULT_ADDR;
+    const vaultToken = process.env.VAULT_TOKEN;
+    if (!vaultAddr || !vaultToken) {
+      throw new Error('Vault address or token is not configured');
+    }
+
+    const secretPath = `tenant-${tenantId}/database`;
+    try {
+      const response = await axios.get(`${vaultAddr}/v1/${secretPath}`, {
+        headers: { 'X-Vault-Token': vaultToken }
+      });
+      const password = response.data?.data?.data?.password;
+      if (!password) {
+        throw new Error(`Password not found at Vault path ${secretPath}`);
+      }
+      return password;
+    } catch (error: any) {
+      throw new Error(`Failed to fetch database password for tenant ${tenantId}: ${error.message}`);
+    }
   }
 
   private async setupNetworkIsolation(config: TenantConfig, namespace: k8s.core.v1.Namespace): Promise<any> {
