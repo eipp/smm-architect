@@ -516,7 +516,16 @@ export class AnalyticsTracker {
   }
   
   private generateSessionId(): string {
-    return `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+    const cryptoObj = globalThis.crypto as Crypto | undefined
+    if (cryptoObj?.randomUUID) {
+      return `session_${cryptoObj.randomUUID()}`
+    }
+    if (cryptoObj?.getRandomValues) {
+      const array = new Uint8Array(16)
+      cryptoObj.getRandomValues(array)
+      return `session_${Array.from(array, b => b.toString(16).padStart(2, '0')).join('')}`
+    }
+    throw new Error('Secure random number generation is not supported')
   }
   
   private generatePageViewId(): string {
