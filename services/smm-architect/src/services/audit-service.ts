@@ -9,48 +9,17 @@ import { v4 as uuidv4 } from "uuid";
 import crypto from "crypto";
 import { AuditBundleResponse } from "../types";
 
-// Simple KMS interface for audit service
-interface SimpleKMSManager {
-  initialize(): Promise<void>;
-  createKey(keyId: string): Promise<void>;
-  sign(data: Buffer, keyId: string): Promise<string>;
-  verify(data: Buffer, signature: string, keyId: string): Promise<boolean>;
-}
-
-// Mock KMS implementation
-class MockKMSManager implements SimpleKMSManager {
-  async initialize(): Promise<void> {
-    // Mock initialization
-  }
-
-  async createKey(keyId: string): Promise<void> {
-    // Mock key creation
-  }
-
-  async sign(data: Buffer, keyId: string): Promise<string> {
-    // Mock signing with HMAC
-    const secret = process.env.SIGNING_SECRET || 'default-secret';
-    return crypto.createHmac('sha256', secret).update(data).digest('hex');
-  }
-
-  async verify(data: Buffer, signature: string, keyId: string): Promise<boolean> {
-    // Mock verification - recreate signature and compare
-    const secret = process.env.SIGNING_SECRET || 'default-secret';
-    const expectedSignature = crypto.createHmac('sha256', secret).update(data).digest('hex');
-    return signature === expectedSignature;
-  }
-}
+import { KMSManager } from "../../../audit/src/kms/kms-manager";
 
 export class AuditService {
-  private kmsManager: SimpleKMSManager;
+  private kmsManager: KMSManager;
 
-  constructor() {
-    // Use mock KMS manager for simplicity
-    this.kmsManager = new MockKMSManager();
+  constructor(kmsManager?: KMSManager) {
+    this.kmsManager = kmsManager ?? KMSManager.fromEnvironment();
   }
 
   async initialize(): Promise<void> {
-    await this.kmsManager.initialize();
+    // No explicit initialization required
   }
   
   async getAuditBundle(workspaceId: string): Promise<AuditBundleResponse> {
@@ -178,29 +147,21 @@ export class AuditService {
       const bundleData = Buffer.from(bundleString, 'utf8');
 
       // Use real KMS to sign the bundle
-      const keyId = kmsKeyRef || 'workspace-audit-key';
-      
-      // Ensure key exists
-      try {
-        await this.kmsManager.createKey(keyId);
-      } catch (error) {
-        // Key might already exist, continue
-        log.debug('Key creation failed (might already exist)', { keyId, error: error instanceof Error ? error.message : error });
-      }
+      const keyRef = kmsKeyRef || 'workspace-audit-key';
 
       // Sign the bundle data
-      const signature = await this.kmsManager.sign(bundleData, keyId);
-      
-      log.info('Bundle signed successfully', { 
-        bundleId: bundle.bundleId, 
-        keyId, 
-        signatureLength: signature.length 
+      const result = await this.kmsManager.sign(bundleData, keyRef);
+
+      log.info('Bundle signed successfully', {
+        bundleId: bundle.bundleId,
+        keyId: result.keyId,
+        signatureLength: result.signature.length
       });
 
       return {
-        keyId,
-        signature,
-        signedAt: new Date().toISOString()
+        keyId: result.keyId,
+        signature: result.signature,
+        signedAt: result.signedAt
       };
     } catch (error) {
       log.error('Bundle signing failed', { 
@@ -263,12 +224,13 @@ export class AuditService {
         return false;
       }
 
-      // Recreate canonical bundle data
-      const bundleString = JSON.stringify(bundleData, Object.keys(bundleData).sort());
+      // Remove signature before verifying
+      const { signature: sig, ...unsignedBundle } = bundleData;
+      const bundleString = JSON.stringify(unsignedBundle, Object.keys(unsignedBundle).sort());
       const data = Buffer.from(bundleString, 'utf8');
 
       // Extract key ID from bundle or use default
-      const keyId = bundleData.signature?.keyId || 'workspace-audit-key';
+      const keyId = sig?.keyId || 'workspace-audit-key';
 
       // Verify signature using KMS
       const isValid = await this.kmsManager.verify(data, signature, keyId);
