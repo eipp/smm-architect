@@ -289,22 +289,30 @@ export const health = api(
  */
 export const listWorkspaces = api(
   { method: "GET", path: "/workspaces", auth: true },
-  async ({ tenantId }: { tenantId?: string }): Promise<{ workspaces: WorkspaceContract[] }> => {
+  async ({ tenantId }: { tenantId: string }): Promise<{ workspaces: WorkspaceContract[] }> => {
     try {
+      if (!tenantId) {
+        log.warn("Missing tenant context in listWorkspaces");
+        throw new Error("Tenant context required");
+      }
+
       log.info("Listing workspaces", { tenantId });
+
+      // Enforce row-level security for tenant isolation
+      await db.exec("SET app.current_tenant_id = ?", [tenantId]);
 
       const workspaces = await workspaceService.listWorkspaces(tenantId);
 
       return { workspaces };
 
     } catch (error) {
-      log.error("Failed to list workspaces", { 
-        tenantId, 
-        error: error instanceof Error ? error.message : String(error) 
+      log.error("Failed to list workspaces", {
+        tenantId,
+        error: error instanceof Error ? error.message : String(error)
       });
-      captureException(error, { 
+      captureException(error, {
         endpoint: "listWorkspaces",
-        tenantId: tenantId
+        tenantId
       });
       throw new Error(`Failed to list workspaces: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
