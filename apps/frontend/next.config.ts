@@ -11,56 +11,71 @@ const withBundleAnalyzer = (() => {
   }
 })()
 
-const nextConfig: NextConfig = {
-  // React 18 features
-  experimental: {
-    // Server Components
-    serverComponentsExternalPackages: ['@prisma/client'],
-    
-    // Edge Runtime
-    runtime: 'experimental-edge',
-    
-    // Optimized package imports
-    optimizePackageImports: [
-      'framer-motion',
-      'class-variance-authority',
-      '@radix-ui/react-avatar',
-      '@radix-ui/react-dialog',
-      '@radix-ui/react-select',
-      '@radix-ui/react-tabs',
-      '@radix-ui/react-tooltip',
-      '@radix-ui/react-progress',
-      '@radix-ui/react-checkbox',
-      '@radix-ui/react-label',
-      '@radix-ui/react-slot'
-    ],
-    
-    // Font optimization
-    fontLoaders: [
-      {
-        loader: '@next/font/google',
-        options: {
-          subsets: ['latin'],
-          variable: '--font-inter',
-          display: 'swap',
-          preload: true
-        }
-      }
-    ],
-    
-    // Incremental Static Regeneration optimization
-    isrMemoryCacheSize: 100 * 1024 * 1024, // 100MB
-    
-    // Turbo mode for faster builds
-    turbo: {
-      rules: {
-        '*.svg': {
-          loaders: ['@svgr/webpack'],
-          as: '*.js'
-        }
+const isProd = process.env.NODE_ENV === 'production'
+
+// Experimental features are disabled by default in production.
+// Enable via explicit environment flags and document rollout plans.
+const experimental: NextConfig['experimental'] = {
+  // Required for Prisma support in Server Components.
+  serverComponentsExternalPackages: ['@prisma/client'],
+
+  // Font optimization using the built-in loader.
+  // Fallback: browsers will use system fonts if the loader fails.
+  fontLoaders: [
+    {
+      loader: '@next/font/google',
+      options: {
+        subsets: ['latin'],
+        variable: '--font-inter',
+        display: 'swap',
+        preload: true
       }
     }
-  },
+  ]
+}
+
+// Only enable Edge runtime when explicitly requested.
+if (process.env.NEXT_USE_EDGE === 'true') {
+  experimental.runtime = 'experimental-edge' // Fallback to Node.js runtime
+}
+
+// Roll out optimized imports gradually via flag.
+if (process.env.NEXT_OPTIMIZE_IMPORTS === 'true') {
+  experimental.optimizePackageImports = [
+    'framer-motion',
+    'class-variance-authority',
+    '@radix-ui/react-avatar',
+    '@radix-ui/react-dialog',
+    '@radix-ui/react-select',
+    '@radix-ui/react-tabs',
+    '@radix-ui/react-tooltip',
+    '@radix-ui/react-progress',
+    '@radix-ui/react-checkbox',
+    '@radix-ui/react-label',
+    '@radix-ui/react-slot'
+  ] // Plan: monitor bundle size before enabling in production
+}
+
+// Apply ISR cache only in production to avoid dev memory bloat.
+if (isProd) {
+  experimental.isrMemoryCacheSize = 100 * 1024 * 1024 // 100MB
+}
+
+// Turbopack is experimental; gate behind flag.
+if (process.env.NEXT_ENABLE_TURBO === 'true') {
+  experimental.turbo = {
+    rules: {
+      '*.svg': {
+        loaders: ['@svgr/webpack'],
+        as: '*.js'
+      }
+    }
+  } // Fallback: use standard Webpack build when disabled
+}
+
+const nextConfig: NextConfig = {
+  // React 18 features
+  experimental,
   
   // Performance optimizations
   productionBrowserSourceMaps: false, // Disable in production for better performance
