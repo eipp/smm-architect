@@ -16,9 +16,18 @@
  *   2 - Script error
  */
 
-const fs = require('fs');
+const fs = require('fs').promises;
 const path = require('path');
 const process = require('process');
+
+async function pathExists(p) {
+  try {
+    await fs.access(p);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 // Configuration
 const TENANT_TABLES = [
@@ -44,15 +53,15 @@ class MigrationLinter {
   /**
    * Lint a single migration file
    */
-  lintMigrationFile(filePath) {
+  async lintMigrationFile(filePath) {
     console.log(`🔍 Linting migration: ${filePath}`);
-    
-    if (!fs.existsSync(filePath)) {
+
+    if (!(await pathExists(filePath))) {
       this.violations.push(`Migration file not found: ${filePath}`);
       return;
     }
 
-    const content = fs.readFileSync(filePath, 'utf8');
+    const content = await fs.readFile(filePath, 'utf8');
     const filename = path.basename(filePath);
     
     // Extract table names from CREATE TABLE statements
@@ -187,13 +196,13 @@ class MigrationLinter {
   /**
    * Lint all migration files in a directory
    */
-  lintDirectory(dirPath) {
-    if (!fs.existsSync(dirPath)) {
+  async lintDirectory(dirPath) {
+    if (!(await pathExists(dirPath))) {
       this.violations.push(`Migration directory not found: ${dirPath}`);
       return;
     }
 
-    const files = fs.readdirSync(dirPath)
+    const files = (await fs.readdir(dirPath))
       .filter(file => file.endsWith('.sql'))
       .sort();
 
@@ -206,7 +215,7 @@ class MigrationLinter {
 
     for (const file of files) {
       const filePath = path.join(dirPath, file);
-      this.lintMigrationFile(filePath);
+      await this.lintMigrationFile(filePath);
     }
   }
 
@@ -245,9 +254,9 @@ class MigrationLinter {
 }
 
 // CLI Interface
-function main() {
+async function main() {
   const args = process.argv.slice(2);
-  
+
   if (args.length === 0) {
     console.error('Usage: node migration-rls-linter.js <migration-file-or-directory>');
     console.error('');
@@ -261,24 +270,24 @@ function main() {
   const targetPath = args[0];
 
   try {
-    if (!fs.existsSync(targetPath)) {
+    if (!(await pathExists(targetPath))) {
       console.error(`❌ Path not found: ${targetPath}`);
       process.exit(2);
     }
 
-    const stats = fs.statSync(targetPath);
-    
+    const stats = await fs.stat(targetPath);
+
     if (stats.isDirectory()) {
-      linter.lintDirectory(targetPath);
+      await linter.lintDirectory(targetPath);
     } else if (stats.isFile()) {
-      linter.lintMigrationFile(targetPath);
+      await linter.lintMigrationFile(targetPath);
     } else {
       console.error(`❌ Invalid path type: ${targetPath}`);
       process.exit(2);
     }
 
     linter.printSummaryAndExit();
-    
+
   } catch (error) {
     console.error(`❌ Script error: ${error.message}`);
     process.exit(2);
@@ -286,7 +295,10 @@ function main() {
 }
 
 if (require.main === module) {
-  main();
+  main().catch(error => {
+    console.error(`❌ Script error: ${error.message}`);
+    process.exit(2);
+  });
 }
 
 module.exports = { MigrationLinter };
