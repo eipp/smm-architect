@@ -8,7 +8,7 @@ services:
     environment:
       POSTGRES_DB: smm_architect
       POSTGRES_USER: smm_user
-      POSTGRES_PASSWORD: smm_password
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
       POSTGRES_MULTIPLE_DATABASES: smm_architect,smm_test
     ports:
       - "5432:5432"
@@ -26,12 +26,13 @@ services:
   redis:
     image: redis:7-alpine
     container_name: smm-redis
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD}"]
     ports:
       - "6379:6379"
     volumes:
       - redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
       interval: 30s
       timeout: 3s
       retries: 3
@@ -49,8 +50,8 @@ services:
     environment:
       - NODE_ENV=development
       - PORT=4000
-      - DATABASE_URL=postgresql://smm_user:smm_password@postgres:5432/smm_architect
-      - REDIS_URL=redis://redis:6379
+      - DATABASE_URL=postgresql://smm_user:${DB_PASSWORD}@postgres:5432/smm_architect
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379
       - VAULT_URL=http://vault:8200
       - SENTRY_DSN=${SENTRY_DSN}
     depends_on:
@@ -75,8 +76,8 @@ services:
     environment:
       - NODE_ENV=development
       - PORT=3001
-      - DATABASE_URL=postgresql://smm_user:smm_password@postgres:5432/smm_architect
-      - REDIS_URL=redis://redis:6379
+      - DATABASE_URL=postgresql://smm_user:${DB_PASSWORD}@postgres:5432/smm_architect
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379
       - VAULT_URL=http://vault:8200
       - SENTRY_DSN=${SENTRY_DSN}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
@@ -155,7 +156,7 @@ services:
     ports:
       - "3001:3000"
     environment:
-      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD}
     volumes:
       - grafana_data:/var/lib/grafana
       - ./monitoring/dashboards:/etc/grafana/provisioning/dashboards
@@ -180,7 +181,7 @@ services:
     environment:
       POSTGRES_DB: smm_test
       POSTGRES_USER: smm_test
-      POSTGRES_PASSWORD: smm_test
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
     ports:
       - "5433:5432"
     volumes:
