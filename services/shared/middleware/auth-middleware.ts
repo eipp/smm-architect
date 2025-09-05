@@ -9,6 +9,7 @@ import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import winston from 'winston';
 import axios from 'axios';
+import { randomUUID } from 'crypto';
 import { withTenantContext, requireValidTenantContext } from '../database/client';
 import { jwtTokenCache, CachedTokenPayload } from '../jwt-cache';
 import { securityMetrics } from '../security/security-metrics';
@@ -48,7 +49,7 @@ async function sendToSIEM(auditEvent: {
   try {
     const payload = {
       timestamp: auditEvent.timestamp.toISOString(),
-      eventId: `auth_${Date.now()}_${Math.random().toString(36).substring(2)}`,
+      eventId: `auth_${randomUUID()}`,
       source: 'smm-architect-auth',
       ...auditEvent
     };
