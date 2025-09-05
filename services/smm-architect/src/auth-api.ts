@@ -363,6 +363,8 @@ export const refresh = api(
   },
   async (req: RefreshRequest): Promise<RefreshResponse> => {
     await initAuthService();
+    // Rate limiting for token refresh attempts
+    await rateLimit('auth:refresh', req.refreshToken, 10, 60); // 10 attempts per minute
 
     try {
       // For now, implement a simple refresh mechanism
@@ -414,16 +416,19 @@ export const refresh = api(
  * Get current user profile
  */
 export const getCurrentUser = api(
-  { 
-    method: "GET", 
+  {
+    method: "GET",
     path: "/api/auth/me",
     auth: true // Requires authentication
   },
   async (req: { userId: string; tenantId: string }): Promise<User> => {
+    // Rate limiting for profile retrieval
+    await rateLimit('auth:me', req.userId, 60, 60); // 60 requests per minute
+
     try {
-      log.debug("Getting current user profile", { 
-        userId: req.userId, 
-        tenantId: req.tenantId 
+      log.debug("Getting current user profile", {
+        userId: req.userId,
+        tenantId: req.tenantId
       });
 
       const user = await getUserProfile(req.userId, req.tenantId);
@@ -446,16 +451,19 @@ export const getCurrentUser = api(
  * Logout user and invalidate session
  */
 export const logout = api(
-  { 
-    method: "POST", 
+  {
+    method: "POST",
     path: "/api/auth/logout",
     auth: true // Requires authentication
   },
   async (req: { userId: string; tenantId: string }): Promise<{ message: string }> => {
+    // Rate limiting for logout attempts
+    await rateLimit('auth:logout', req.userId, 5, 60); // 5 attempts per minute
+
     try {
-      log.info("User logout", { 
-        userId: req.userId, 
-        tenantId: req.tenantId 
+      log.info("User logout", {
+        userId: req.userId,
+        tenantId: req.tenantId
       });
 
       // Invalidate any refresh tokens
