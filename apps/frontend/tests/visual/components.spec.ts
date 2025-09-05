@@ -40,6 +40,7 @@ const COMPONENT_STORIES = [
   'card--sizes',
   'card--workspace',
   'card--decision',
+  'ui-decisioncard--default',
   
   // Specialized components
   'timeline--default',

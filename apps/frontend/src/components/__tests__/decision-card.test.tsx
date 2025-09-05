@@ -1,7 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-// Note: DecisionCard component not yet created locally, skipping for now
-// import { DecisionCard } from '@/components/ui/decision-card'
+import { DecisionCard } from '@/components/ui/decision-card'
 
 const mockProposal = {
   actionId: 'action-001',
@@ -31,8 +30,6 @@ const mockProposal = {
   expiresAt: new Date(Date.now() + 1000 * 60 * 60 * 48) // 48 hours from now
 }
 
-// TODO: Uncomment when DecisionCard component is available locally
-/*
 describe('DecisionCard', () => {
   it('displays proposal information correctly', () => {
     render(<DecisionCard {...mockProposal} />)
@@ -41,7 +38,7 @@ describe('DecisionCard', () => {
     expect(screen.getByText('Engaging holiday content for professional audience')).toBeInTheDocument()
     expect(screen.getByText('89%')).toBeInTheDocument() // Readiness score
     expect(screen.getByText('95%')).toBeInTheDocument() // Policy pass
-    expect(screen.getByText('$150')).toBeInTheDocument() // Total cost
+    expect(screen.getByText('$150.00')).toBeInTheDocument() // Total cost
   })
   
   it('displays risk indicators correctly', () => {
@@ -70,34 +67,34 @@ describe('DecisionCard', () => {
   
   it('expands to show cost breakdown when clicked', async () => {
     const user = userEvent.setup()
-    
+
     render(<DecisionCard {...mockProposal} />)
-    
+
     // Initially collapsed
     expect(screen.queryByText('Cost Breakdown')).not.toBeInTheDocument()
-    
+
     // Click to expand
-    await user.click(screen.getByText('More details'))
-    
+    await user.click(screen.getByRole('button', { name: /More details/ }))
+
     // Should show cost breakdown
     expect(screen.getByText('Cost Breakdown')).toBeInTheDocument()
     expect(screen.getByText('Paid Ads')).toBeInTheDocument()
-    expect(screen.getByText('$100')).toBeInTheDocument()
+    expect(screen.getByText('$100.00')).toBeInTheDocument()
     expect(screen.getByText('LLM Model Spend')).toBeInTheDocument()
-    expect(screen.getByText('$25')).toBeInTheDocument()
+    expect(screen.getByText('$25.00')).toBeInTheDocument()
   })
   
   it('shows provenance sources when expanded', async () => {
     const user = userEvent.setup()
     
     render(<DecisionCard {...mockProposal} />)
-    
+
     // Expand details first
-    await user.click(screen.getByText('More details'))
-    
+    await user.click(screen.getByRole('button', { name: /More details/ }))
+
     // Then show sources
-    await user.click(screen.getByText('Show Sources'))
-    
+    await user.click(screen.getByRole('button', { name: /Show Sources/ }))
+
     expect(screen.getByText('Industry Report 2024')).toBeInTheDocument()
   })
   
@@ -106,32 +103,35 @@ describe('DecisionCard', () => {
     const onApprove = jest.fn()
     const onReject = jest.fn()
     const onRequestChanges = jest.fn()
-    
+
     render(
-      <DecisionCard 
-        {...mockProposal} 
+      <DecisionCard
+        {...mockProposal}
         onApprove={onApprove}
         onReject={onReject}
         onRequestChanges={onRequestChanges}
       />
     )
-    
+
     // Should have action buttons
     expect(screen.getByText('Approve')).toBeInTheDocument()
     expect(screen.getByText('Reject')).toBeInTheDocument()
     expect(screen.getByText('Request Changes')).toBeInTheDocument()
-    
+
     // Test approve action
     await user.click(screen.getByText('Approve'))
     expect(onApprove).toHaveBeenCalledTimes(1)
-    
+
     // Test reject action
     await user.click(screen.getByText('Reject'))
     expect(onReject).toHaveBeenCalledTimes(1)
-    
-    // Test request changes action
+
+    // Test request changes action requires submitting feedback
     await user.click(screen.getByText('Request Changes'))
-    expect(onRequestChanges).toHaveBeenCalledTimes(1)
+    const textarea = screen.getByPlaceholderText('Describe the changes needed...')
+    await user.type(textarea, 'Needs tweaks')
+    await user.click(screen.getByText('Submit Feedback'))
+    expect(onRequestChanges).toHaveBeenCalledWith('Needs tweaks')
   })
   
   it('applies correct score colors based on thresholds', () => {
@@ -153,7 +153,7 @@ describe('DecisionCard', () => {
   
   it('shows loading state when processing', () => {
     render(<DecisionCard {...mockProposal} loading />)
-    
+
     // Action buttons should be disabled during loading
     expect(screen.getByText('Approve')).toBeDisabled()
     expect(screen.getByText('Reject')).toBeDisabled()
@@ -164,21 +164,20 @@ describe('DecisionCard', () => {
     const onEscalate = jest.fn()
     
     render(<DecisionCard {...mockProposal} onEscalate={onEscalate} />)
-    
+
     await user.click(screen.getByText('Escalate'))
     expect(onEscalate).toHaveBeenCalledTimes(1)
   })
   
   it('has proper accessibility attributes', () => {
     render(<DecisionCard {...mockProposal} />)
-    
+
     // Card should have proper role
-    const card = screen.getByRole('article') || screen.getByRole('region')
+    const card = screen.getByRole('article')
     expect(card).toBeInTheDocument()
-    
+
     // Buttons should be properly labeled
     expect(screen.getByRole('button', { name: /approve/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /reject/i })).toBeInTheDocument()
   })
 })
-*/

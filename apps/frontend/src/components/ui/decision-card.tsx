@@ -125,7 +125,10 @@ const DecisionCard: React.FC<DecisionCardProps> = ({
   }
 
   return (
-    <Card className={cn("decision-card relative", isExpired && "opacity-75", className)}>
+    <Card
+      role="article"
+      className={cn("decision-card relative", isExpired && "opacity-75", className)}
+    >
       {isExpired && (
         <div className="absolute top-2 right-2 z-10">
           <Badge variant="destructive">Expired</Badge>
