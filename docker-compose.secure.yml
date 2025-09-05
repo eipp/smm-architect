@@ -93,7 +93,7 @@ services:
     container_name: smm-architect-service
     restart: unless-stopped
     environment:
-      NODE_ENV: development
+      NODE_ENV: production
       PORT: 4000
       DATABASE_URL_FILE: /run/secrets/database_url
       REDIS_URL_FILE: /run/secrets/redis_url
@@ -149,7 +149,7 @@ services:
     container_name: smm-model-router
     restart: unless-stopped
     environment:
-      NODE_ENV: development
+      NODE_ENV: production
       PORT: 3003
       REDIS_URL_FILE: /run/secrets/redis_url
       LOG_LEVEL: info
@@ -204,7 +204,7 @@ services:
     container_name: smm-toolhub
     restart: unless-stopped
     environment:
-      NODE_ENV: development
+      NODE_ENV: production
       PORT: 3001
       DATABASE_URL_FILE: /run/secrets/database_url
       REDIS_URL_FILE: /run/secrets/redis_url
@@ -251,7 +251,7 @@ services:
     container_name: smm-frontend
     restart: unless-stopped
     environment:
-      NODE_ENV: development
+      NODE_ENV: production
       PORT: 3000
       NEXT_PUBLIC_API_URL: http://smm-architect:4000
       LOG_LEVEL: info
