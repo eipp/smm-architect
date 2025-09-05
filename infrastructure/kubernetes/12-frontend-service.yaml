@@ -36,9 +36,16 @@ spec:
         env:
         - name: PORT
           value: "3000"
+        - name: POSTGRES_HOST
+          valueFrom:
+            secretKeyRef:
+              name: smm-architect-secrets
+              key: RDS_ENDPOINT
         envFrom:
         - configMapRef:
             name: smm-architect-config
+        - secretRef:
+            name: smm-architect-secrets
         resources:
           requests:
             memory: "256Mi"

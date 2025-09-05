@@ -4,6 +4,8 @@
 
 This document provides comprehensive guidance for the SMM Architect QA & Validation framework implementation, covering all aspects from development testing through production deployment validation.
 
+Amazon RDS for PostgreSQL is the authoritative database service for all production environments. In-cluster PostgreSQL components have been deprecated in favor of the managed RDS endpoint exported by Pulumi.
+
 ## Table of Contents
 
 1. [Implementation Summary](#implementation-summary)
