@@ -14,45 +14,37 @@
 const fs = require('fs/promises');
 const path = require('path');
 const process = require('process');
+const ts = require('typescript');
 
 // Configuration
 const SERVICES_DIR = 'services';
-const UNSAFE_PATTERNS = [
-  {
+const RULE_DEFINITIONS = {
+  importGetPrisma: {
     name: 'Direct getPrismaClient import',
-    pattern: /import.*getPrismaClient.*from/g,
     severity: 'high',
     description: 'Direct import of getPrismaClient without tenant context'
   },
-  {
+  directClient: {
     name: 'Direct prisma client usage',
-    pattern: /const\s+\w+\s*=\s*getPrismaClient\(\)/g,
     severity: 'high',
     description: 'Direct instantiation of Prisma client without tenant context'
   },
-  {
+  unsafeModel: {
     name: 'Unsafe model access',
-    pattern: /(?:client|prisma)\.(?:workspace|auditBundle|simulationReport|agentRun)\./g,
     severity: 'critical',
     description: 'Direct model access without tenant context validation'
   },
-  {
+  missingContext: {
     name: 'Missing withTenantContext',
-    pattern: /\.(?:findMany|findFirst|findUnique|create|update|delete|upsert|createMany|updateMany|deleteMany)\(/g,
     severity: 'medium',
     description: 'Database operations that should be wrapped in withTenantContext'
   }
-];
+};
 
-// Safe patterns that are allowed
-const SAFE_PATTERNS = [
-  /withTenantContext\(/,
-  /withRetryTransaction\(/,
-  /withSystemContext\(/,
-  /getSecuredPrismaClient\(/,
-  /validateCurrentTenantContext\(/,
-  /requireValidTenantContext\(/
-];
+const DB_OPERATIONS = ['findMany', 'findFirst', 'findUnique', 'create', 'update', 'delete', 'upsert', 'createMany', 'updateMany', 'deleteMany'];
+const MODEL_NAMES = ['workspace', 'auditBundle', 'simulationReport', 'agentRun'];
+const SAFE_FUNCTIONS = ['withTenantContext', 'withRetryTransaction', 'withSystemContext', 'getSecuredPrismaClient', 'validateCurrentTenantContext', 'requireValidTenantContext'];
+
 
 class ServiceDatabaseAudit {
   constructor() {
@@ -131,76 +123,109 @@ class ServiceDatabaseAudit {
     const content = await fs.readFile(filePath, 'utf8');
     const relativeFilePath = path.relative(process.cwd(), filePath);
 
-    // Skip test files and the shared database client itself
-    if (filePath.includes('.test.') || 
+    if (filePath.includes('.test.') ||
         filePath.includes('database/client.ts') ||
         filePath.includes('database/index.ts')) {
       return;
     }
 
-    const lines = content.split('\n');
     const issues = [];
+    const lines = content.split('\n');
 
-    lines.forEach((line, lineIndex) => {
-      const lineNumber = lineIndex + 1;
-      
-      // Check for unsafe patterns
-      for (const pattern of UNSAFE_PATTERNS) {
-        const matches = line.match(pattern.pattern);
-        if (matches) {
-          // Check if this line is part of a safe context
-          const isSafe = this.isInSafeContext(content, lineIndex);
-          
-          if (!isSafe) {
-            issues.push({
-              file: relativeFilePath,
-              service: serviceName,
-              line: lineNumber,
-              code: line.trim(),
-              pattern: pattern.name,
-              severity: pattern.severity,
-              description: pattern.description,
-              fix: this.generateFix(line, pattern)
-            });
+    const sourceFile = ts.createSourceFile(filePath, content, ts.ScriptTarget.Latest, true);
+
+    const addIssue = (rule, node) => {
+      const { line } = sourceFile.getLineAndCharacterOfPosition(node.getStart());
+      const codeLine = lines[line] || '';
+      issues.push({
+        file: relativeFilePath,
+        service: serviceName,
+        line: line + 1,
+        code: codeLine.trim(),
+        pattern: rule.name,
+        severity: rule.severity,
+        description: rule.description,
+        fix: this.generateFix(codeLine, rule)
+      });
+    };
+
+    const traverse = (node, ancestors = []) => {
+      // Import of getPrismaClient
+      if (ts.isImportDeclaration(node)) {
+        const clause = node.importClause;
+        if (clause && clause.namedBindings && ts.isNamedImports(clause.namedBindings)) {
+          clause.namedBindings.elements.forEach(el => {
+            if (el.name.escapedText === 'getPrismaClient') {
+              addIssue(RULE_DEFINITIONS.importGetPrisma, el);
+            }
+          });
+        }
+      }
+
+      if (ts.isCallExpression(node)) {
+        const expr = node.expression;
+        if (ts.isIdentifier(expr) && expr.escapedText === 'getPrismaClient') {
+          addIssue(RULE_DEFINITIONS.directClient, node);
+        }
+        if (ts.isPropertyAccessExpression(expr)) {
+          const name = expr.name.escapedText;
+          if (DB_OPERATIONS.includes(name) && isPrismaMember(expr.expression)) {
+            if (!isSafeContext(ancestors)) {
+              addIssue(RULE_DEFINITIONS.missingContext, node);
+            }
           }
         }
       }
-    });
+
+      if (ts.isPropertyAccessExpression(node)) {
+        const root = getRootIdentifier(node.expression);
+        const prop = node.name.escapedText;
+        if (root && ['client', 'prisma'].includes(root.escapedText) && MODEL_NAMES.includes(prop)) {
+          if (!isSafeContext(ancestors)) {
+            addIssue(RULE_DEFINITIONS.unsafeModel, node);
+          }
+        }
+      }
+
+      ts.forEachChild(node, child => traverse(child, ancestors.concat(node)));
+    };
+
+    const getRootIdentifier = (expression) => {
+      let expr = expression;
+      while (ts.isPropertyAccessExpression(expr)) {
+        expr = expr.expression;
+      }
+      return ts.isIdentifier(expr) ? expr : null;
+    };
+
+    const isPrismaMember = (expression) => {
+      const root = getRootIdentifier(expression);
+      return root && ['client', 'prisma'].includes(root.escapedText);
+    };
+
+    const isSafeContext = (ancestors) => {
+      return ancestors.some(anc =>
+        ts.isCallExpression(anc) &&
+        ts.isIdentifier(anc.expression) &&
+        SAFE_FUNCTIONS.includes(anc.expression.escapedText)
+      );
+    };
+
+    traverse(sourceFile, []);
 
     if (issues.length > 0) {
       console.log(`  ⚠️  ${issues.length} issue(s) found in ${path.basename(filePath)}`);
-      
       issues.forEach(issue => {
         if (issue.severity === 'critical') {
           this.violations.push(issue);
         } else {
           this.warnings.push(issue);
         }
-
         if (issue.fix) {
           this.fixes.push(issue);
         }
       });
     }
-  }
-
-  /**
-   * Check if a line is within a safe context (e.g., inside withTenantContext)
-   */
-  isInSafeContext(content, lineIndex) {
-    const lines = content.split('\n');
-    
-    // Look backward from current line to find safe context
-    for (let i = lineIndex; i >= Math.max(0, lineIndex - 20); i--) {
-      const line = lines[i];
-      for (const safePattern of SAFE_PATTERNS) {
-        if (safePattern.test(line)) {
-          return true;
-        }
-      }
-    }
-
-    return false;
   }
 
   /**
