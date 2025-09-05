@@ -13,7 +13,7 @@ import {
 } from '../types';
 import { KMSManager } from '../kms/kms-manager';
 import { StorageService } from './storage-service';
-import { ContractSnapshotter, ContractSnapshot } from './contract-snapshotter';
+import { ContractSnapshotter } from './contract-snapshotter';
 
 export class AuditBundleAssembler {
   private kmsManager: KMSManager;
@@ -249,9 +249,9 @@ export class AuditBundleAssembler {
   /**
    * Count non-null components in the bundle
    */
-  private countComponents(components: any): number {
-    let count = 0;
-    for (const [key, value] of Object.entries(components)) {
+    private countComponents(components: any): number {
+      let count = 0;
+      for (const [, value] of Object.entries(components)) {
       if (value !== null && value !== undefined) {
         if (Array.isArray(value)) {
           count += value.length;
@@ -323,8 +323,8 @@ export class AuditBundleAssembler {
     };
   }
 
-  private async getLatestDecisionCard(workspaceId: string): Promise<any> {
-    return {
+    private async getLatestDecisionCard(_workspaceId: string): Promise<any> {
+      return {
       actionId: `action-${uuidv4()}`,
       title: '4-week LinkedIn+X Campaign',
       readiness_score: 0.91,
@@ -360,8 +360,8 @@ export class AuditBundleAssembler {
     };
   }
 
-  private async getAssetFingerprints(workspaceId: string): Promise<any[]> {
-    return [
+    private async getAssetFingerprints(_workspaceId: string): Promise<any[]> {
+      return [
       {
         assetId: 'logo-primary',
         type: 'image',
@@ -389,7 +389,7 @@ export class AuditBundleAssembler {
     ];
   }
 
-  private async getPolicyResults(workspaceId: string): Promise<PolicyResults> {
+    private async getPolicyResults(_workspaceId: string): Promise<PolicyResults> {
     return {
       policyVersion: '1.0.0',
       evaluatedAt: new Date().toISOString(),
@@ -448,7 +448,7 @@ export class AuditBundleAssembler {
     ];
   }
 
-  private async getComplianceChecks(workspaceId: string): Promise<ComplianceCheck[]> {
+    private async getComplianceChecks(_workspaceId: string): Promise<ComplianceCheck[]> {
     return [
       {
         checkId: `gdpr-${uuidv4()}`,

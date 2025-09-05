@@ -271,7 +271,7 @@ export class KMSService implements KMSProvider {
     return keyId;
   }
 
-  private getOrCreateLocalKeyPair(keyId: string): { privateKey: string; publicKey: string } {
+  private getOrCreateLocalKeyPair(_keyId: string): { privateKey: string; publicKey: string } {
     // In a real implementation, this would persist keys securely
     // For testing, we'll generate ephemeral keys
     

@@ -303,7 +303,7 @@ app.get('/status', async (req, res) => {
 });
 
 // Error handling
-app.use((error: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
+app.use((error: Error, req: express.Request, res: express.Response, _next: express.NextFunction) => {
   logger.error('Unhandled error', {
     error: error.message,
     stack: error.stack,

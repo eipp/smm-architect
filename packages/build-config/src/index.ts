@@ -233,11 +233,11 @@ export function generateEslintConfig(options: {
 
   const baseExtends = [
     'eslint:recommended',
-    '@typescript-eslint/recommended'
+    'plugin:@typescript-eslint/recommended'
   ];
 
   if (strict) {
-    baseExtends.push('@typescript-eslint/recommended-requiring-type-checking');
+    baseExtends.push('plugin:@typescript-eslint/recommended-requiring-type-checking');
   }
 
   if (target === 'react') {

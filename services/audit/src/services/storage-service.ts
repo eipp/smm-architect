@@ -162,12 +162,12 @@ export class StorageService implements StorageProvider {
     console.log(`Mock S3 delete: ${key}`);
   }
 
-  private async existsInS3(bundleId: string): Promise<boolean> {
+  private async existsInS3(_bundleId: string): Promise<boolean> {
     // Mock implementation
     return true;
   }
 
-  private async listFromS3(prefix?: string): Promise<string[]> {
+  private async listFromS3(_prefix?: string): Promise<string[]> {
     // Mock implementation
     return [`bundle-1`, `bundle-2`, `bundle-3`];
   }
@@ -197,11 +197,11 @@ export class StorageService implements StorageProvider {
     console.log(`Mock GCS delete: ${filename}`);
   }
 
-  private async existsInGCS(bundleId: string): Promise<boolean> {
+  private async existsInGCS(_bundleId: string): Promise<boolean> {
     return true;
   }
 
-  private async listFromGCS(prefix?: string): Promise<string[]> {
+  private async listFromGCS(_prefix?: string): Promise<string[]> {
     return [`bundle-1`, `bundle-2`, `bundle-3`];
   }
 
@@ -312,12 +312,11 @@ export class StorageService implements StorageProvider {
     }
 
     const algorithm = 'aes-256-gcm';
-    const iv = encryptedData.subarray(0, 16);
-    const authTag = encryptedData.subarray(16, 32);
-    const encrypted = encryptedData.subarray(32);
-    
-    const decipher = crypto.createDecipher(algorithm, this.encryptionKey);
-    decipher.setAuthTag(authTag);
+      const authTag = encryptedData.subarray(16, 32);
+      const encrypted = encryptedData.subarray(32);
+
+      const decipher = crypto.createDecipher(algorithm, this.encryptionKey);
+      decipher.setAuthTag(authTag);
     
     const decrypted = Buffer.concat([decipher.update(encrypted), decipher.final()]);
     return decrypted;
