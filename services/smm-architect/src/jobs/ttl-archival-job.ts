@@ -1,6 +1,9 @@
+import { createHash } from 'crypto';
+import { gzipSync } from 'zlib';
+import { S3Client, PutObjectCommand, HeadObjectCommand } from '@aws-sdk/client-s3';
+
 import { DatabaseClient } from '../../shared/database/client';
 import { logger } from '../utils/logger';
-import { createHash } from 'crypto';
 
 export interface TTLArchivalConfig {
   dryRun: boolean;
@@ -202,14 +205,39 @@ export class TTLArchivalJob {
     if (!this.config.s3Bucket) {
       throw new Error('S3 bucket not configured for archival');
     }
-
-    // TODO: Implement S3 archival
-    // This would use AWS SDK to upload compressed JSON data
     const archivePath = `archived-workspaces/${workspace_id}/${Date.now()}.json.gz`;
-    
-    logger.info('Archiving to S3', { workspace_id, archivePath });
-    
-    return `s3://${this.config.s3Bucket}/${archivePath}`;
+    const s3 = new S3Client({ region: process.env.AWS_REGION || 'us-east-1' });
+
+    try {
+      const serialized = JSON.stringify(data);
+      const compressed = gzipSync(Buffer.from(serialized, 'utf8'));
+      const md5 = createHash('md5').update(compressed).digest();
+
+      await s3.send(new PutObjectCommand({
+        Bucket: this.config.s3Bucket,
+        Key: archivePath,
+        Body: compressed,
+        ContentType: 'application/json',
+        ContentEncoding: 'gzip',
+        ContentMD5: md5.toString('base64')
+      }));
+
+      const head = await s3.send(new HeadObjectCommand({
+        Bucket: this.config.s3Bucket,
+        Key: archivePath
+      }));
+
+      const etag = head.ETag?.replace(/"/g, '');
+      if (etag !== md5.toString('hex')) {
+        throw new Error('S3 upload verification failed');
+      }
+
+      logger.info('Archived workspace to S3', { workspace_id, archivePath });
+      return `s3://${this.config.s3Bucket}/${archivePath}`;
+    } catch (error: any) {
+      logger.error('Failed to archive workspace to S3', { workspace_id, error: error.message });
+      throw error;
+    }
   }
 
   private async anonymizeWorkspaceData(tx: any, workspace_id: string): Promise<void> {
