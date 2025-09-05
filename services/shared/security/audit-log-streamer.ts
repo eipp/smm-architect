@@ -8,6 +8,8 @@
 
 import { EventEmitter } from 'events';
 import crypto from 'crypto';
+import { CloudWatchLogsClient, PutLogEventsCommand } from '@aws-sdk/client-cloudwatch-logs';
+import { Logging } from '@google-cloud/logging';
 import { logger } from '../utils/logger';
 
 export interface AuditEvent {
@@ -66,6 +68,7 @@ class AuditLogStreamer extends EventEmitter {
   private eventBuffer: AuditEvent[] = [];
   private flushTimer?: NodeJS.Timeout;
   private destinations: Map<string, SIEMDestination> = new Map();
+  private deadLetterQueue: Map<string, AuditEvent[]> = new Map();
 
   constructor(config: SIEMConfig) {
     super();
@@ -366,27 +369,84 @@ class AuditLogStreamer extends EventEmitter {
    * Send events to AWS CloudWatch
    */
   private async sendToCloudWatch(events: AuditEvent[], destination: SIEMDestination): Promise<void> {
-    // This would require AWS SDK integration
-    // For now, log that it's not implemented
-    logger.warn('CloudWatch integration not yet implemented');
+    const {
+      region,
+      logGroupName,
+      logStreamName,
+      accessKeyId,
+      secretAccessKey,
+      sessionToken
+    } = destination.config;
+
+    const client = new CloudWatchLogsClient({
+      region,
+      credentials: accessKeyId && secretAccessKey ? { accessKeyId, secretAccessKey, sessionToken } : undefined
+    });
+
+    const logEvents = events.map(event => ({
+      message: JSON.stringify(event),
+      timestamp: new Date(event.timestamp).getTime()
+    }));
+
+    await client.send(
+      new PutLogEventsCommand({
+        logGroupName,
+        logStreamName,
+        logEvents
+      })
+    );
+
+    logger.debug(`Sent ${events.length} events to CloudWatch: ${destination.name}`);
   }
 
   /**
    * Send events to GCP Cloud Logging
    */
   private async sendToGCPLogging(events: AuditEvent[], destination: SIEMDestination): Promise<void> {
-    // This would require Google Cloud SDK integration
-    // For now, log that it's not implemented
-    logger.warn('GCP Logging integration not yet implemented');
+    const { projectId, logName, keyFilename, credentials } = destination.config;
+
+    const logging = new Logging({ projectId, keyFilename, credentials });
+    const log = logging.log(logName);
+
+    const entries = events.map(event =>
+      log.entry({ resource: { type: 'global' } }, event)
+    );
+
+    await log.write(entries);
+
+    logger.debug(`Sent ${events.length} events to GCP Logging: ${destination.name}`);
   }
 
   /**
    * Retry failed events
    */
   private async retryFailedEvents(events: AuditEvent[], destination: SIEMDestination): Promise<void> {
-    // Implement retry logic with exponential backoff
-    // For now, just log the failure
-    logger.warn(`Retrying failed events for ${destination.name} - ${events.length} events`);
+    let attempt = 0;
+    let delay = this.config.retry_delay_ms;
+
+    while (attempt < this.config.retry_attempts) {
+      try {
+        await new Promise(resolve => setTimeout(resolve, delay));
+        await this.sendToDestination(events, destination);
+        logger.info(`Retry succeeded for ${destination.name} after ${attempt + 1} attempt(s)`);
+        return;
+      } catch (error) {
+        attempt++;
+        logger.error(`Retry ${attempt} failed for ${destination.name}`, {
+          error: error instanceof Error ? error.message : String(error)
+        });
+        delay *= 2;
+      }
+    }
+
+    logger.error(`All retries failed for ${destination.name}. Moving events to dead-letter queue`, {
+      destination: destination.name,
+      eventCount: events.length
+    });
+
+    const existing = this.deadLetterQueue.get(destination.name) || [];
+    this.deadLetterQueue.set(destination.name, existing.concat(events));
+    this.emit('dead_letter', { destination: destination.name, events });
   }
 
   /**
@@ -416,6 +476,13 @@ class AuditLogStreamer extends EventEmitter {
       destinations_count: this.destinations.size,
       events_buffered: this.eventBuffer.length
     };
+  }
+
+  /**
+   * Retrieve dead-letter queue
+   */
+  getDeadLetterQueue(): Map<string, AuditEvent[]> {
+    return this.deadLetterQueue;
   }
 
   /**
