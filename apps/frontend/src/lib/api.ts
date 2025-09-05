@@ -121,7 +121,15 @@ class APIClient {
   }
 
   private generateTraceId(): string {
-    return `frontend-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+      return `frontend-${crypto.randomUUID()}`
+    }
+    const array = new Uint8Array(16)
+    if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
+      crypto.getRandomValues(array)
+      return `frontend-${Array.from(array, (b) => b.toString(16).padStart(2, '0')).join('')}`
+    }
+    throw new Error('Crypto API not available for trace ID generation')
   }
 }
 
