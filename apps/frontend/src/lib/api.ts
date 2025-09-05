@@ -39,53 +39,80 @@ class APIClient {
     options: RequestInit & { timeout?: number } = {}
   ): Promise<T> {
     const { timeout = this.config.timeout, ...requestOptions } = options
-    
-    const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), timeout)
 
-    try {
-      const response = await fetch(`${this.config.baseURL}${endpoint}`, {
-        ...requestOptions,
-        signal: controller.signal,
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Trace-ID': this.generateTraceId(),
-          ...requestOptions.headers,
-        },
-      })
+    for (let attempt = 0; attempt <= this.config.retries; attempt++) {
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), timeout)
 
-      clearTimeout(timeoutId)
+      try {
+        const response = await fetch(`${this.config.baseURL}${endpoint}`, {
+          ...requestOptions,
+          signal: controller.signal,
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Trace-ID': this.generateTraceId(),
+            ...requestOptions.headers,
+          },
+        })
 
-      if (!response.ok) {
-        let errorDetails
-        try {
-          errorDetails = await response.json()
-        } catch {
-          errorDetails = await response.text()
+        clearTimeout(timeoutId)
+
+        if (!response.ok) {
+          let errorDetails
+          try {
+            errorDetails = await response.json()
+          } catch {
+            errorDetails = await response.text()
+          }
+
+          if (response.status >= 500 && attempt < this.config.retries) {
+            await this.wait(attempt)
+            continue
+          }
+
+          throw new APIError(
+            response.status,
+            errorDetails.message || 'Request failed',
+            errorDetails,
+          )
         }
-        throw new APIError(response.status, errorDetails.message || 'Request failed', errorDetails)
-      }
 
-      // Handle empty responses
-      const contentType = response.headers.get('content-type')
-      if (contentType && contentType.includes('application/json')) {
-        return response.json()
+        const contentType = response.headers.get('content-type')
+        if (contentType && contentType.includes('application/json')) {
+          return response.json()
+        }
+
+        return response.text() as T
+      } catch (error: unknown) {
+        clearTimeout(timeoutId)
+
+        if (
+          attempt < this.config.retries &&
+          !(error instanceof APIError) &&
+          (error as { name?: string }).name !== 'AbortError'
+        ) {
+          await this.wait(attempt)
+          continue
+        }
+
+        if (error instanceof APIError) {
+          throw error
+        }
+
+        if ((error as { name?: string }).name === 'AbortError') {
+          throw new APIError(408, 'Request timeout')
+        }
+
+        throw new APIError(0, (error as Error).message || 'Network error')
       }
-      
-      return response.text() as T
-    } catch (error) {
-      clearTimeout(timeoutId)
-      
-      if (error instanceof APIError) {
-        throw error
-      }
-      
-      if (error.name === 'AbortError') {
-        throw new APIError(408, 'Request timeout')
-      }
-      
-      throw new APIError(0, error.message || 'Network error')
     }
+
+    throw new APIError(0, 'Request failed after retries')
+  }
+
+  private async wait(attempt: number): Promise<void> {
+    const delay = Math.pow(2, attempt) * 100
+    return new Promise(resolve => setTimeout(resolve, delay))
   }
 
   async get<T>(endpoint: string, options?: RequestInit): Promise<T> {
