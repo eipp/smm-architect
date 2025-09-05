@@ -129,7 +129,7 @@ check_security() {
     log_info "=== Running Security Checks ==="
     
     # Check for sensitive data in code
-    run_check "No hardcoded secrets in code" "! grep -r -E '(password|secret|key).*=.*[\"'\"'][^\"'\"']{8,}' '$PROJECT_ROOT/src' '$PROJECT_ROOT/services' 2>/dev/null || true"
+    run_check "No hardcoded secrets in code" "! grep -r -E '(password|secret|key).*=.*[\"'\"'][^\"'\"']{8,}' '$PROJECT_ROOT/apps' '$PROJECT_ROOT/packages' '$PROJECT_ROOT/services' 2>/dev/null || true"
     
     # Check RBAC configurations
     run_check "RBAC configurations exist" "find '$PROJECT_ROOT' -name '*.yaml' -exec grep -l 'rbac.authorization.k8s.io' {} \\; | wc -l | grep -v '^0$' >/dev/null"
@@ -158,7 +158,7 @@ check_code_quality() {
     run_check "Unit tests pass" "cd '$PROJECT_ROOT' && npm test >/dev/null 2>&1" false
     
     # Check for TODO/FIXME comments
-    run_check "No critical TODOs in production code" "! grep -r -E '(TODO|FIXME|HACK).*CRITICAL' '$PROJECT_ROOT/src' '$PROJECT_ROOT/services' 2>/dev/null || true"
+    run_check "No critical TODOs in production code" "! grep -r -E '(TODO|FIXME|HACK).*CRITICAL' '$PROJECT_ROOT/apps' '$PROJECT_ROOT/packages' '$PROJECT_ROOT/services' 2>/dev/null || true"
 }
 
 # Validate database migrations and schema
