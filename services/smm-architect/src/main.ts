@@ -9,19 +9,6 @@ function api(config: ApiConfig, handler: (req: any) => Promise<any>) {
   return handler;
 }
 
-// Mock SQLDatabase implementation
-class SQLDatabase {
-  constructor(public name: string, public options: any) {}
-  
-  async query(sql: string, params?: any[]): Promise<any[]> {
-    // Mock implementation
-    return [];
-  }
-  
-  async exec(sql: string, params?: any[]): Promise<void> {
-    // Mock implementation
-  }
-}
 
 const log = {
   info: (message: string, data?: any) => console.log('[INFO]', message, data),
@@ -52,13 +39,8 @@ import { SimulationService } from "./services/simulation-service";
 import { AuditService } from "./services/audit-service";
 import { validateWorkspaceContract } from "./utils/validation";
 
-// Database connection
-const db = new SQLDatabase("smm_architect", {
-  migrations: "./migrations",
-});
-
 // Service instances
-const workspaceService = new WorkspaceService(db);
+const workspaceService = new WorkspaceService();
 const simulationService = new SimulationService();
 const auditService = new AuditService();
 
