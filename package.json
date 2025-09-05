@@ -44,28 +44,28 @@
     "validate:all": "npm run lint && npm run test:critical"
   },
   "devDependencies": {
-    "@jest/globals": "^29.7.0",
-    "@types/jest": "^29.5.0",
-    "@types/node": "^20.10.0",
-    "@typescript-eslint/eslint-plugin": "^6.13.0",
-    "@typescript-eslint/parser": "^6.13.0",
-    "eslint": "^8.57.0",
-    "jest": "^29.7.0",
-    "rimraf": "^5.0.0",
-    "ts-jest": "^29.1.1",
-    "turbo": "^2.5.6",
-    "typescript": "^5.3.0"
+    "@jest/globals": "29.7.0",
+    "@types/jest": "29.5.0",
+    "@types/node": "20.10.0",
+    "@typescript-eslint/eslint-plugin": "6.13.0",
+    "@typescript-eslint/parser": "6.13.0",
+    "eslint": "8.57.0",
+    "jest": "29.7.0",
+    "rimraf": "5.0.0",
+    "ts-jest": "29.1.1",
+    "turbo": "2.5.6",
+    "typescript": "5.3.0"
   },
   "dependencies": {
-    "@genkit-ai/mcp": "^1.17.1",
-    "@sentry/node": "^7.99.0",
-    "@sentry/profiling-node": "^7.99.0",
-    "@types/js-yaml": "^4.0.9",
-    "artillery": "^2.0.4",
-    "axios": "^1.6.2",
-    "fast-check": "^3.15.0",
-    "js-yaml": "^4.1.0",
-    "prom-client": "^15.1.0"
+    "@genkit-ai/mcp": "1.17.1",
+    "@sentry/node": "7.99.0",
+    "@sentry/profiling-node": "7.99.0",
+    "@types/js-yaml": "4.0.9",
+    "artillery": "2.0.4",
+    "axios": "1.6.2",
+    "fast-check": "3.15.0",
+    "js-yaml": "4.1.0",
+    "prom-client": "15.1.0"
   },
   "pnpm": {
     "overrides": {
