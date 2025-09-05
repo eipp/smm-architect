@@ -1,17 +1,22 @@
 import DOMPurify from 'isomorphic-dompurify';
 
+export function generateNonce(length = 16): string {
+  const array = new Uint8Array(length);
+  globalThis.crypto.getRandomValues(array);
+  return Array.from(array, (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
 // Content Security Policy configuration
-export const cspConfig = {
+export const cspConfig = (nonce: string) => ({
   'default-src': ["'self'"],
   'script-src': [
     "'self'",
-    "'unsafe-eval'", // Required for Next.js
-    "'unsafe-inline'", // Consider removing in production
+    `'nonce-${nonce}'`,
     'https://js.sentry-cdn.com',
   ],
   'style-src': [
     "'self'",
-    "'unsafe-inline'", // Required for Tailwind CSS
+    `'nonce-${nonce}'`,
     'https://fonts.googleapis.com',
   ],
   'img-src': [
@@ -35,10 +40,10 @@ export const cspConfig = {
   'form-action': ["'self'"],
   'object-src': ["'none'"],
   'frame-src': ["'none'"],
-};
+});
 
-export function generateCSP(): string {
-  return Object.entries(cspConfig)
+export function generateCSP(nonce: string): string {
+  return Object.entries(cspConfig(nonce))
     .map(([directive, sources]) => `${directive} ${sources.join(' ')}`)
     .join('; ');
 }
