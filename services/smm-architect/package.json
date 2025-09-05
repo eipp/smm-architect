@@ -29,7 +29,9 @@
     "winston": "^3.11.0",
     "uuid": "^9.0.0",
     "date-fns": "^2.30.0",
-    "@sentry/node": "^7.99.0",
+    "@sentry/node": "^7.99.0"
+  },
+  "optionalDependencies": {
     "@sentry/profiling-node": "^7.99.0"
   },
   "devDependencies": {
