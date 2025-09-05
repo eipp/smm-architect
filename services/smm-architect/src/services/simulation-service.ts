@@ -1,11 +1,5 @@
-// Mock log implementation
-const log = {
-  info: (message: string, data?: any) => console.log('[INFO]', message, data),
-  error: (message: string, data?: any) => console.error('[ERROR]', message, data),
-  debug: (message: string, data?: any) => console.log('[DEBUG]', message, data),
-  warn: (message: string, data?: any) => console.warn('[WARN]', message, data)
-};
 import { v4 as uuidv4 } from "uuid";
+import logger from "../config/logger";
 import { 
   WorkspaceContract, 
   SimulationRequest, 
@@ -19,7 +13,7 @@ export class SimulationService {
     const simulationId = `sim-${uuidv4()}`;
     const startTime = Date.now();
 
-    log.info("Starting simulation", { 
+    logger.info("Starting simulation", { 
       simulationId, 
       workspaceId: workspace.workspaceId,
       iterations: workspace.simulationConfig?.iterations || 1000
@@ -39,7 +33,7 @@ export class SimulationService {
       const decisionCard = await this.createDecisionCard(workspace, monteCarloResults, readinessScore);
 
       const endTime = Date.now();
-      log.info("Simulation completed", { 
+      logger.info("Simulation completed", { 
         simulationId, 
         durationMs: endTime - startTime,
         readinessScore 
@@ -57,7 +51,7 @@ export class SimulationService {
       };
 
     } catch (error) {
-      log.error("Simulation failed", { simulationId, error: error instanceof Error ? error.message : String(error) });
+      logger.error("Simulation failed", { simulationId, error: error instanceof Error ? error.message : String(error) });
       throw error;
     }
   }

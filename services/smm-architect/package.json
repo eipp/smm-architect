@@ -30,7 +30,9 @@
     "uuid": "^9.0.0",
     "date-fns": "^2.30.0",
     "@sentry/node": "^7.99.0",
-    "@sentry/profiling-node": "^7.99.0"
+    "@sentry/profiling-node": "^7.99.0",
+    "cors": "^2.8.5",
+    "express": "^5.1.0"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

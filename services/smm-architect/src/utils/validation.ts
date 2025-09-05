@@ -3,6 +3,7 @@ import addFormats from "ajv-formats";
 import fs from "fs";
 import path from "path";
 import { WorkspaceContract } from "../types";
+import logger from "../config/logger";
 
 // Initialize AJV with formats support
 const ajv = new Ajv({ allErrors: true });
@@ -15,7 +16,7 @@ let workspaceSchema: any;
 try {
   workspaceSchema = JSON.parse(fs.readFileSync(schemaPath, "utf8"));
 } catch (error) {
-  console.warn("Could not load workspace schema, using basic validation");
+  logger.warn("Could not load workspace schema, using basic validation");
   workspaceSchema = null;
 }
 

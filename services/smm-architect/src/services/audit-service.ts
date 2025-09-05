@@ -1,13 +1,7 @@
-// Mock log implementation
-const log = {
-  info: (message: string, data?: any) => console.log('[INFO]', message, data),
-  error: (message: string, data?: any) => console.error('[ERROR]', message, data),
-  debug: (message: string, data?: any) => console.log('[DEBUG]', message, data),
-  warn: (message: string, data?: any) => console.warn('[WARN]', message, data)
-};
 import { v4 as uuidv4 } from "uuid";
 import crypto from "crypto";
 import { AuditBundleResponse } from "../types";
+import logger from "../config/logger";
 
 // Simple KMS interface for audit service
 interface SimpleKMSManager {
@@ -55,7 +49,7 @@ export class AuditService {
   
   async getAuditBundle(workspaceId: string): Promise<AuditBundleResponse> {
     try {
-      log.info("Creating audit bundle", { workspaceId });
+      logger.info("Creating audit bundle", { workspaceId });
 
       // Get workspace contract (this would typically come from database)
       const workspaceContract = await this.getWorkspaceContract(workspaceId);
@@ -71,7 +65,7 @@ export class AuditService {
         signature
       };
 
-      log.info("Audit bundle created and signed", { 
+      logger.info("Audit bundle created and signed", { 
         workspaceId, 
         bundleId: bundle.bundleId 
       });
@@ -80,7 +74,7 @@ export class AuditService {
 
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      log.error("Failed to create audit bundle", { workspaceId, error: errorMessage });
+      logger.error("Failed to create audit bundle", { workspaceId, error: errorMessage });
       throw error;
     }
   }
@@ -185,13 +179,13 @@ export class AuditService {
         await this.kmsManager.createKey(keyId);
       } catch (error) {
         // Key might already exist, continue
-        log.debug('Key creation failed (might already exist)', { keyId, error: error instanceof Error ? error.message : error });
+        logger.debug('Key creation failed (might already exist)', { keyId, error: error instanceof Error ? error.message : error });
       }
 
       // Sign the bundle data
       const signature = await this.kmsManager.sign(bundleData, keyId);
       
-      log.info('Bundle signed successfully', { 
+      logger.info('Bundle signed successfully', { 
         bundleId: bundle.bundleId, 
         keyId, 
         signatureLength: signature.length 
@@ -203,7 +197,7 @@ export class AuditService {
         signedAt: new Date().toISOString()
       };
     } catch (error) {
-      log.error('Bundle signing failed', { 
+      logger.error('Bundle signing failed', { 
         bundleId: bundle.bundleId, 
         error: error instanceof Error ? error.message : error 
       });
@@ -255,11 +249,11 @@ export class AuditService {
 
   async verifyBundleSignature(bundleId: string, signature: string, bundleData?: any): Promise<boolean> {
     try {
-      log.info('Verifying bundle signature', { bundleId });
+      logger.info('Verifying bundle signature', { bundleId });
 
       if (!bundleData) {
         // In real implementation, would fetch bundle from storage
-        log.warn('Bundle data not provided for verification', { bundleId });
+        logger.warn('Bundle data not provided for verification', { bundleId });
         return false;
       }
 
@@ -273,7 +267,7 @@ export class AuditService {
       // Verify signature using KMS
       const isValid = await this.kmsManager.verify(data, signature, keyId);
 
-      log.info('Bundle signature verification completed', { 
+      logger.info('Bundle signature verification completed', { 
         bundleId, 
         keyId, 
         isValid 
@@ -282,7 +276,7 @@ export class AuditService {
       return isValid;
 
     } catch (error) {
-      log.error('Signature verification failed', { 
+      logger.error('Signature verification failed', { 
         bundleId, 
         error: error instanceof Error ? error.message : error 
       });

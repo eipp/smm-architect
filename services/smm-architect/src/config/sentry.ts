@@ -1,16 +1,10 @@
+import logger from './logger';
+
 // Mock sentry-utils implementation
 function initializeSentry(config: any, context: any) {
   // Mock initialization
-  console.log('Sentry initialized (mock)', config, context);
+  logger.info('Sentry initialized (mock)', { config, context });
 }
-
-// Mock log implementation
-const log = {
-  info: (message: string, data?: any) => console.log('[INFO]', message, data),
-  error: (message: string, data?: any) => console.error('[ERROR]', message, data),
-  debug: (message: string, data?: any) => console.log('[DEBUG]', message, data),
-  warn: (message: string, data?: any) => console.warn('[WARN]', message, data)
-};
 
 // Sentry configuration
 const sentryConfig = {
@@ -35,9 +29,9 @@ const serviceContext = {
 // Initialize Sentry
 try {
   initializeSentry(sentryConfig, serviceContext);
-  log.info("Sentry initialized for smm-architect service");
+  logger.info("Sentry initialized for smm-architect service");
 } catch (error) {
-  log.error("Failed to initialize Sentry", { error: error instanceof Error ? error.message : String(error) });
+  logger.error("Failed to initialize Sentry", { error: error instanceof Error ? error.message : String(error) });
 }
 
 export default sentryConfig;

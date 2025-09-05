@@ -23,17 +23,11 @@ class SQLDatabase {
   }
 }
 
-const log = {
-  info: (message: string, data?: any) => console.log('[INFO]', message, data),
-  error: (message: string, data?: any) => console.error('[ERROR]', message, data),
-  debug: (message: string, data?: any) => console.log('[DEBUG]', message, data),
-  warn: (message: string, data?: any) => console.warn('[WARN]', message, data)
-};
-
 import "./config/sentry"; // Initialize Sentry
+import logger from './config/logger';
 // Mock sentry-utils implementation
 function captureException(error: any, context: any) {
-  console.error('Sentry exception (mock)', error, context);
+  logger.error('Sentry exception (mock)', { error, context });
 }
 import { 
   WorkspaceContract,
@@ -69,7 +63,7 @@ export const createWorkspace = api(
   { method: "POST", path: "/workspaces", auth: true },
   async (req: CreateWorkspaceRequest): Promise<CreateWorkspaceResponse> => {
     try {
-      log.info("Creating new workspace", { tenantId: req.contract.tenantId });
+      logger.info("Creating new workspace", { tenantId: req.contract.tenantId });
 
       // Validate the contract schema
       const validationResult = await validateWorkspaceContract({
@@ -90,7 +84,7 @@ export const createWorkspace = api(
       // Create the workspace
       const workspace = await workspaceService.createWorkspace(req.contract);
 
-      log.info("Workspace created successfully", { 
+      logger.info("Workspace created successfully", { 
         workspaceId: workspace.workspaceId,
         tenantId: workspace.tenantId 
       });
@@ -101,7 +95,7 @@ export const createWorkspace = api(
       };
 
     } catch (error) {
-      log.error("Failed to create workspace", { error: error instanceof Error ? error.message : String(error) });
+      logger.error("Failed to create workspace", { error: error instanceof Error ? error.message : String(error) });
       captureException(error, { 
         endpoint: "createWorkspace",
         tenantId: req.contract.tenantId 
@@ -118,7 +112,7 @@ export const getWorkspaceStatus = api(
   { method: "GET", path: "/workspaces/:id/status", auth: true },
   async ({ id }: { id: string }): Promise<WorkspaceStatusResponse> => {
     try {
-      log.info("Getting workspace status", { workspaceId: id });
+      logger.info("Getting workspace status", { workspaceId: id });
 
       const workspace = await workspaceService.getWorkspace(id);
       if (!workspace) {
@@ -135,7 +129,7 @@ export const getWorkspaceStatus = api(
       };
 
     } catch (error) {
-      log.error("Failed to get workspace status", { 
+      logger.error("Failed to get workspace status", { 
         workspaceId: id, 
         error: error instanceof Error ? error.message : String(error) 
       });
@@ -155,7 +149,7 @@ export const approvePromotion = api(
   { method: "POST", path: "/workspaces/:id/approve", auth: true },
   async ({ id, ...req }: { id: string } & ApprovalRequest): Promise<ApprovalResponse> => {
     try {
-      log.info("Processing approval request", { 
+      logger.info("Processing approval request", { 
         workspaceId: id, 
         action: req.action 
       });
@@ -173,7 +167,7 @@ export const approvePromotion = api(
       // Process the approval
       const result = await workspaceService.processApproval(id, req);
 
-      log.info("Approval processed", { 
+      logger.info("Approval processed", { 
         workspaceId: id, 
         approved: result.approved 
       });
@@ -181,7 +175,7 @@ export const approvePromotion = api(
       return result;
 
     } catch (error) {
-      log.error("Failed to process approval", { 
+      logger.error("Failed to process approval", { 
         workspaceId: id, 
         error: error instanceof Error ? error.message : String(error) 
       });
@@ -202,7 +196,7 @@ export const simulateCampaign = api(
   { method: "POST", path: "/workspaces/:id/simulate", auth: true },
   async ({ id, ...req }: { id: string } & SimulationRequest): Promise<SimulationResponse> => {
     try {
-      log.info("Starting campaign simulation", { workspaceId: id });
+      logger.info("Starting campaign simulation", { workspaceId: id });
 
       const workspace = await workspaceService.getWorkspace(id);
       if (!workspace) {
@@ -212,7 +206,7 @@ export const simulateCampaign = api(
       // Run the simulation
       const simulationResult = await simulationService.simulate(workspace, req);
 
-      log.info("Simulation completed", { 
+      logger.info("Simulation completed", { 
         workspaceId: id, 
         simulationId: simulationResult.simulationId,
         readinessScore: simulationResult.readinessScore 
@@ -221,7 +215,7 @@ export const simulateCampaign = api(
       return simulationResult;
 
     } catch (error) {
-      log.error("Failed to run simulation", { 
+      logger.error("Failed to run simulation", { 
         workspaceId: id, 
         error: error instanceof Error ? error.message : String(error) 
       });
@@ -241,7 +235,7 @@ export const getAuditBundle = api(
   { method: "GET", path: "/workspaces/:id/audit", auth: true },
   async ({ id }: { id: string }): Promise<AuditBundleResponse> => {
     try {
-      log.info("Retrieving audit bundle", { workspaceId: id });
+      logger.info("Retrieving audit bundle", { workspaceId: id });
 
       const workspace = await workspaceService.getWorkspace(id);
       if (!workspace) {
@@ -250,7 +244,7 @@ export const getAuditBundle = api(
 
       const auditBundle = await auditService.getAuditBundle(id);
 
-      log.info("Audit bundle retrieved", { 
+      logger.info("Audit bundle retrieved", { 
         workspaceId: id, 
         bundleId: auditBundle.bundleId 
       });
@@ -258,7 +252,7 @@ export const getAuditBundle = api(
       return auditBundle;
 
     } catch (error) {
-      log.error("Failed to retrieve audit bundle", { 
+      logger.error("Failed to retrieve audit bundle", { 
         workspaceId: id, 
         error: error instanceof Error ? error.message : String(error) 
       });
@@ -291,14 +285,14 @@ export const listWorkspaces = api(
   { method: "GET", path: "/workspaces", auth: true },
   async ({ tenantId }: { tenantId?: string }): Promise<{ workspaces: WorkspaceContract[] }> => {
     try {
-      log.info("Listing workspaces", { tenantId });
+      logger.info("Listing workspaces", { tenantId });
 
       const workspaces = await workspaceService.listWorkspaces(tenantId);
 
       return { workspaces };
 
     } catch (error) {
-      log.error("Failed to list workspaces", { 
+      logger.error("Failed to list workspaces", { 
         tenantId, 
         error: error instanceof Error ? error.message : String(error) 
       });
@@ -318,16 +312,16 @@ export const updateWorkspace = api(
   { method: "PUT", path: "/workspaces/:id", auth: true },
   async ({ id, contract }: { id: string; contract: Partial<WorkspaceContract> }): Promise<{ updated: boolean }> => {
     try {
-      log.info("Updating workspace", { workspaceId: id });
+      logger.info("Updating workspace", { workspaceId: id });
 
       const result = await workspaceService.updateWorkspace(id, contract);
 
-      log.info("Workspace updated", { workspaceId: id, updated: result });
+      logger.info("Workspace updated", { workspaceId: id, updated: result });
 
       return { updated: result };
 
     } catch (error) {
-      log.error("Failed to update workspace", { 
+      logger.error("Failed to update workspace", { 
         workspaceId: id, 
         error: error instanceof Error ? error.message : String(error) 
       });
@@ -347,16 +341,16 @@ export const deleteWorkspace = api(
   { method: "DELETE", path: "/workspaces/:id", auth: true },
   async ({ id }: { id: string }): Promise<{ deleted: boolean }> => {
     try {
-      log.info("Decommissioning workspace", { workspaceId: id });
+      logger.info("Decommissioning workspace", { workspaceId: id });
 
       const result = await workspaceService.decommissionWorkspace(id);
 
-      log.info("Workspace decommissioned", { workspaceId: id });
+      logger.info("Workspace decommissioned", { workspaceId: id });
 
       return { deleted: result };
 
     } catch (error) {
-      log.error("Failed to decommission workspace", { 
+      logger.error("Failed to decommission workspace", { 
         workspaceId: id, 
         error: error instanceof Error ? error.message : String(error) 
       });

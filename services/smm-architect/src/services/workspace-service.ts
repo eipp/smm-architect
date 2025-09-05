@@ -3,19 +3,13 @@ interface SQLDatabase {
   query(sql: string, params?: any[]): Promise<any[]>;
   exec(sql: string, params?: any[]): Promise<void>;
 }
-
-const log = {
-  info: (message: string, data?: any) => console.log('[INFO]', message, data),
-  error: (message: string, data?: any) => console.error('[ERROR]', message, data),
-  debug: (message: string, data?: any) => console.log('[DEBUG]', message, data),
-  warn: (message: string, data?: any) => console.warn('[WARN]', message, data)
-};
 import { v4 as uuidv4 } from "uuid";
-import { 
-  WorkspaceContract, 
+import logger from "../config/logger";
+import {
+  WorkspaceContract,
   CreateWorkspaceRequest,
   ApprovalRequest,
-  ApprovalResponse 
+  ApprovalResponse
 } from "../types";
 
 export class WorkspaceService {
@@ -51,7 +45,7 @@ export class WorkspaceService {
       ]
     );
 
-    log.info("Workspace stored in database", { workspaceId });
+    logger.info("Workspace stored in database", { workspaceId });
 
     return workspace;
   }
@@ -112,7 +106,7 @@ export class WorkspaceService {
       }
     });
 
-    log.info("Workspace decommissioned", { workspaceId });
+    logger.info("Workspace decommissioned", { workspaceId });
     return true;
   }
 

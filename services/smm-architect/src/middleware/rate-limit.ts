@@ -5,13 +5,7 @@
  * on authentication endpoints and other sensitive operations.
  */
 
-// Mock log implementation
-const log = {
-  info: (message: string, data?: any) => console.log('[INFO]', message, data),
-  error: (message: string, data?: any) => console.error('[ERROR]', message, data),
-  debug: (message: string, data?: any) => console.log('[DEBUG]', message, data),
-  warn: (message: string, data?: any) => console.warn('[WARN]', message, data)
-};
+import logger from '../config/logger';
 
 // In-memory store for demo - in production use Redis
 interface RateLimitEntry {
@@ -50,7 +44,7 @@ export async function rateLimit(
     };
     rateLimitStore.set(key, entry);
     
-    log.debug("Rate limit - new window", { 
+    logger.debug("Rate limit - new window", { 
       category, 
       identifier: maskIdentifier(identifier), 
       count: 1, 
@@ -67,7 +61,7 @@ export async function rateLimit(
   if (entry.count > maxAttempts) {
     const timeUntilReset = Math.ceil((entry.resetTime - now) / 1000);
     
-    log.warn("Rate limit exceeded", {
+    logger.warn("Rate limit exceeded", {
       category,
       identifier: maskIdentifier(identifier),
       attempts: entry.count,
@@ -80,7 +74,7 @@ export async function rateLimit(
     );
   }
   
-  log.debug("Rate limit check", {
+  logger.debug("Rate limit check", {
     category,
     identifier: maskIdentifier(identifier),
     count: entry.count,
@@ -133,7 +127,7 @@ export async function clearRateLimit(
   const key = `${category}:${identifier}`;
   rateLimitStore.delete(key);
   
-  log.info("Rate limit cleared", {
+  logger.info("Rate limit cleared", {
     category,
     identifier: maskIdentifier(identifier)
   });
@@ -154,7 +148,7 @@ export function cleanupExpiredEntries(): void {
   }
   
   if (cleaned > 0) {
-    log.debug("Rate limit cleanup", { expiredEntries: cleaned });
+    logger.debug("Rate limit cleanup", { expiredEntries: cleaned });
   }
 }
 

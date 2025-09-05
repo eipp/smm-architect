@@ -23,16 +23,9 @@ function api(config: ApiConfig, handler: (req: any) => Promise<any>) {
 interface Header {
   [key: string]: string | undefined;
 }
-
-const log = {
-  info: (message: string, data?: any) => console.log('[INFO]', message, data),
-  error: (message: string, data?: any) => console.error('[ERROR]', message, data),
-  debug: (message: string, data?: any) => console.log('[DEBUG]', message, data),
-  warn: (message: string, data?: any) => console.warn('[WARN]', message, data)
-};
-
 import crypto from 'crypto';
 import { rateLimit } from './middleware/rate-limit';
+import logger from './config/logger';
 
 // Simple auth service implementation
 class SimpleAuthService {
@@ -178,7 +171,7 @@ async function generateRefreshToken(userId: string, tenantId: string): Promise<s
 
 async function updateLastLogin(userId: string, tenantId: string): Promise<void> {
   // Mock - in production this would update the database
-  log.info('Last login updated', { userId, tenantId });
+  logger.info('Last login updated', { userId, tenantId });
 }
 
 // User and permission interfaces
@@ -261,9 +254,9 @@ const initAuthService = async () => {
     try {
       await authService.initialize();
       authServiceInitialized = true;
-      log.info("Authentication service initialized");
+      logger.info("Authentication service initialized");
     } catch (error) {
-      log.error("Failed to initialize authentication service", { error });
+      logger.error("Failed to initialize authentication service", { error });
       throw new Error("Authentication service unavailable");
     }
   }
@@ -286,7 +279,7 @@ export const login = api(
     await rateLimit('auth:login', req.email, 5, 900); // 5 attempts per 15 minutes
 
     try {
-      log.info("Login attempt", { email: req.email });
+      logger.info("Login attempt", { email: req.email });
 
       // Validate input
       if (!req.email || !req.password) {
@@ -301,7 +294,7 @@ export const login = api(
       const authResult = await authService.authenticate(req.email, req.password);
       
       if (!authResult.success || !authResult.userId || !authResult.tenantId) {
-        log.warn("Login failed", { email: req.email, reason: authResult.error });
+        logger.warn("Login failed", { email: req.email, reason: authResult.error });
         throw new Error("Invalid credentials");
       }
 
@@ -328,7 +321,7 @@ export const login = api(
       // Update last login timestamp
       await updateLastLogin(user.id, user.tenantId);
 
-      log.info("Login successful", { 
+      logger.info("Login successful", { 
         userId: user.id, 
         tenantId: user.tenantId,
         email: req.email 
@@ -342,7 +335,7 @@ export const login = api(
       };
 
     } catch (error) {
-      log.error("Login error", { 
+      logger.error("Login error", { 
         email: req.email, 
         error: error instanceof Error ? error.message : error 
       });
@@ -392,7 +385,7 @@ export const refresh = api(
 
       const expiresAt = Date.now() + (24 * 60 * 60 * 1000);
 
-      log.info("Token refreshed", { userId: user.id, tenantId: user.tenantId });
+      logger.info("Token refreshed", { userId: user.id, tenantId: user.tenantId });
 
       return {
         token,
@@ -401,7 +394,7 @@ export const refresh = api(
       };
 
     } catch (error) {
-      log.error("Token refresh error", { 
+      logger.error("Token refresh error", { 
         error: error instanceof Error ? error.message : error 
       });
       throw new Error(`Token refresh failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -421,7 +414,7 @@ export const getCurrentUser = api(
   },
   async (req: { userId: string; tenantId: string }): Promise<User> => {
     try {
-      log.debug("Getting current user profile", { 
+      logger.debug("Getting current user profile", { 
         userId: req.userId, 
         tenantId: req.tenantId 
       });
@@ -431,7 +424,7 @@ export const getCurrentUser = api(
       return user;
 
     } catch (error) {
-      log.error("Get current user error", {
+      logger.error("Get current user error", {
         userId: req.userId,
         tenantId: req.tenantId,
         error: error instanceof Error ? error.message : error
@@ -453,7 +446,7 @@ export const logout = api(
   },
   async (req: { userId: string; tenantId: string }): Promise<{ message: string }> => {
     try {
-      log.info("User logout", { 
+      logger.info("User logout", { 
         userId: req.userId, 
         tenantId: req.tenantId 
       });
@@ -471,7 +464,7 @@ export const logout = api(
       };
 
     } catch (error) {
-      log.error("Logout error", {
+      logger.error("Logout error", {
         userId: req.userId,
         tenantId: req.tenantId,
         error: error instanceof Error ? error.message : error
@@ -498,7 +491,7 @@ export const register = api(
     await rateLimit('auth:register', req.email, 3, 3600); // 3 attempts per hour
 
     try {
-      log.info("Registration attempt", { email: req.email, tenantId: req.tenantId });
+      logger.info("Registration attempt", { email: req.email, tenantId: req.tenantId });
 
       // Validate input
       if (!req.email || !req.password || !req.name || !req.tenantId) {
@@ -533,7 +526,7 @@ export const register = api(
         tenantId: req.tenantId
       });
 
-      log.info("User registration successful", { 
+      logger.info("User registration successful", { 
         userId: user.id, 
         email: req.email, 
         tenantId: req.tenantId 
@@ -545,7 +538,7 @@ export const register = api(
       };
 
     } catch (error) {
-      log.error("Registration error", { 
+      logger.error("Registration error", { 
         email: req.email, 
         tenantId: req.tenantId,
         error: error instanceof Error ? error.message : error 
@@ -573,7 +566,7 @@ async function validateRefreshToken(refreshToken: string): Promise<{ userId: str
 
 async function invalidateRefreshTokens(userId: string, tenantId: string): Promise<void> {
   // Remove all refresh tokens for this user
-  log.debug("Invalidated refresh tokens", { userId, tenantId });
+  logger.debug("Invalidated refresh tokens", { userId, tenantId });
 }
 
 async function isRegistrationAllowed(tenantId: string, inviteCode?: string): Promise<boolean> {
