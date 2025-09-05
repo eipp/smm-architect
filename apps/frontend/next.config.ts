@@ -1,5 +1,6 @@
-import type { NextConfig } from "next";
+import crypto from "node:crypto";
 import { withSentryConfig } from "@sentry/nextjs";
+import type { NextConfig } from "next";
 
 // Bundle analyzer (optional)
 const withBundleAnalyzer = (() => {
@@ -219,6 +220,7 @@ const nextConfig: NextConfig = {
   },
   // Security headers
   async headers() {
+    const nonce = crypto.randomBytes(16).toString('base64');
     return [
       {
         source: '/(.*)',
@@ -227,8 +229,8 @@ const nextConfig: NextConfig = {
             key: 'Content-Security-Policy',
             value: `
               default-src 'self';
-              script-src 'self' 'unsafe-eval' 'unsafe-inline';
-              style-src 'self' 'unsafe-inline';
+              script-src 'self' 'nonce-${nonce}';
+              style-src 'self' 'nonce-${nonce}';
               img-src 'self' data: https:;
               font-src 'self';
               connect-src 'self' ${process.env.NEXT_PUBLIC_API_BASE_URL || ''} wss:;
