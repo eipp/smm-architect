@@ -3,6 +3,15 @@ set -euo pipefail
 
 # Comprehensive Security Test Runner for SMM Architect
 # Runs all security tests and generates compliance reports
+#
+# Usage: ./tools/scripts/run-security-tests.sh
+#
+# Prerequisites:
+#   - pnpm
+#   - jq
+#   - Jest (installed via pnpm)
+#
+# Ensure project dependencies are installed with `pnpm install` before running.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
@@ -30,6 +39,34 @@ log_warning() {
 
 log_error() {
     echo -e "${RED}[ERROR]${NC} $1"
+}
+
+# Check if a command exists
+command_exists() {
+    command -v "$1" >/dev/null 2>&1
+}
+
+# Verify required tools are installed
+check_prerequisites() {
+    local missing=false
+
+    for cmd in pnpm npm jq; do
+        if ! command_exists "$cmd"; then
+            log_error "Required tool '$cmd' is not installed. Please install it before running this script."
+            missing=true
+        fi
+    done
+
+    if command_exists pnpm && ! pnpm exec jest --version >/dev/null 2>&1; then
+        log_error "Jest test framework is not installed. Run 'pnpm install' to install project dependencies."
+        missing=true
+    fi
+
+    if [ "$missing" = true ]; then
+        exit 1
+    fi
+
+    log_success "All prerequisite tools available"
 }
 
 # Create reports directory
@@ -322,7 +359,8 @@ EOF
 main() {
     log_info "🚨 Starting comprehensive security test suite..."
     log_info "Report directory: ${REPORTS_DIR}"
-    
+
+    check_prerequisites
     setup_reports_directory
     
     # Run all security tests

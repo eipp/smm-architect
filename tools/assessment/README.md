@@ -268,6 +268,8 @@ npm run assess  # (includes agent validation)
 
 These scripts remain complementary to the assessment system:
 - `run-security-tests.sh` - Specific security testing
+  - Prerequisites: `pnpm`, `jq`, `jest`
+  - Usage: `./tools/scripts/run-security-tests.sh`
 - `generate-sbom.sh` - SBOM generation
 - `deploy-*.sh` - Deployment automation
 - `setup-*.sh` - Environment setup
