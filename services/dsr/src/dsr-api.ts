@@ -224,7 +224,7 @@ app.post('/api/dsr/portability',
 
       archive.on('error', (err) => {
         logger.error('Portability archive creation error', { userId, tenantId, error: err });
-        res.status(500).json({ error: 'Failed to create portability package' });
+        if (!res.headersSent) res.status(500).json({ error: 'Failed to create portability package' }); else res.end();
       });
 
       archive.pipe(res);
