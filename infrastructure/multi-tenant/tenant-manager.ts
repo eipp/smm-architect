@@ -465,14 +465,33 @@ export class TenantManager {
   }
 
   private async getBusinessMetric(tenantId: string, metricName: string): Promise<number> {
-    // Query business metrics from application database
-    // This would typically connect to the tenant's database or metrics store
-    return Math.floor(Math.random() * 1000); // Placeholder
+    // Query business metrics from application database or telemetry store
+    const metric = await this.queryPrometheus(
+      `tenant_business_${metricName}{tenant="${tenantId}"}`
+    );
+
+    if (metric === 0 && process.env.NODE_ENV !== 'production') {
+      // TODO: implement tenant-specific business metric retrieval
+      return 0;
+    }
+
+    return metric;
   }
 
   private async calculateUptime(tenantId: string, startTime: string, endTime: string): Promise<number> {
     // Calculate uptime percentage based on monitoring data
-    return 99.5; // Placeholder
+    const start = new Date(startTime).getTime();
+    const end = new Date(endTime).getTime();
+    const rangeSeconds = Math.max(Math.floor((end - start) / 1000), 0);
+    const query = `avg_over_time(probe_success{tenant="${tenantId}"}[${rangeSeconds}s]) * 100`;
+    const uptime = await this.queryPrometheus(query);
+
+    if (uptime === 0 && process.env.NODE_ENV !== 'production') {
+      // TODO: integrate with real uptime telemetry
+      return 100;
+    }
+
+    return uptime;
   }
 
   private getPricingModel(tenantId: string): any {
@@ -511,8 +530,11 @@ export class TenantManager {
   }
 
   private calculateConnectorCosts(tenantId: string, pricing: any): number {
-    // Calculate based on connector usage
-    return 0; // Placeholder
+    // TODO: calculate based on connector usage telemetry
+    if (process.env.NODE_ENV !== 'production') {
+      return 0;
+    }
+    throw new Error('Connector cost calculation not implemented');
   }
 
   private calculateDiscounts(tenantId: string, metrics: TenantMetrics): any[] {
@@ -538,8 +560,11 @@ export class TenantManager {
   }
 
   private isLongTermCustomer(tenantId: string): boolean {
-    // Check if customer has been with us for more than a year
-    return false; // Placeholder
+    // TODO: check customer tenure from billing system
+    if (process.env.NODE_ENV !== 'production') {
+      return false;
+    }
+    throw new Error('Long term customer check not implemented');
   }
 
   private getComplianceFlags(complianceLevel: string): any {
