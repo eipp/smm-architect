@@ -63,6 +63,20 @@ const simulationService = new SimulationService();
 const auditService = new AuditService();
 
 /**
+ * Basic health check endpoint
+ */
+export const health = api(
+  { method: "GET", path: "/health" },
+  async (): Promise<{ status: string; timestamp: string; service: string }> => {
+    return {
+      status: "healthy",
+      timestamp: new Date().toISOString(),
+      service: "smm-architect"
+    };
+  }
+);
+
+/**
  * Create a new workspace contract
  */
 export const createWorkspace = api(
