@@ -175,7 +175,68 @@ const db = new aws.rds.Instance("smm-postgres", {
     maintenanceWindow: "sun:04:00-sun:05:00",
     storageEncrypted: true,
     skipFinalSnapshot: environment === "development",
+    copyTagsToSnapshot: true,
     tags,
+});
+
+// Scheduled snapshots with copy to S3
+const backupVault = new aws.backup.Vault("smm-db-backup-vault", {
+    tags: { ...tags, Name: `${workspaceId}-db-backup-vault` },
+});
+
+const backupPlan = new aws.backup.Plan("smm-db-backup-plan", {
+    rules: [{
+        ruleName: "daily-rds-snapshots",
+        targetVaultName: backupVault.name,
+        schedule: "cron(0 3 * * ? *)",
+        lifecycle: { deleteAfterDays: 30 },
+    }],
+    tags: { ...tags, Name: `${workspaceId}-db-backup-plan` },
+});
+
+const backupSelection = new aws.backup.Selection("smm-db-backup-selection", {
+    planId: backupPlan.id,
+    selectionName: "smm-db-backup-selection",
+    resources: [db.arn],
+});
+
+// S3 bucket and export task for snapshot copies
+const snapshotBucket = new aws.s3.Bucket("smm-db-snapshots", {
+    bucket: pulumi.interpolate`${workspaceId}-db-snapshots-${suffix.hex}`,
+    versioning: { enabled: true },
+    serverSideEncryptionConfiguration: {
+        rule: { applyServerSideEncryptionByDefault: { sseAlgorithm: "AES256" } },
+    },
+    tags,
+});
+
+const exportKey = new aws.kms.Key("smm-db-export-key", {
+    description: "KMS key for RDS snapshot export",
+    tags,
+});
+
+const exportRole = new aws.iam.Role("smm-db-export-role", {
+    assumeRolePolicy: aws.iam.assumeRolePolicyForPrincipal({ Service: "export.rds.amazonaws.com" }),
+    tags,
+});
+
+new aws.iam.RolePolicyAttachment("smm-db-export-policy", {
+    role: exportRole.name,
+    policyArn: "arn:aws:iam::aws:policy/AmazonS3FullAccess",
+});
+
+const snapshot = new aws.rds.Snapshot("smm-db-snapshot", {
+    dbInstanceIdentifier: db.id,
+    dbSnapshotIdentifier: pulumi.interpolate`${workspaceId}-snapshot-${suffix.hex}`,
+    tags,
+});
+
+const exportTask = new aws.rds.ExportTask("smm-db-snapshot-export", {
+    snapshotArn: snapshot.dbSnapshotArn,
+    s3BucketName: snapshotBucket.bucket,
+    iamRoleArn: exportRole.arn,
+    kmsKeyId: exportKey.arn,
+    exportTaskIdentifier: pulumi.interpolate`${workspaceId}-snapshot-export-${suffix.hex}`,
 });
 
 // Create ECR repositories for Docker images
