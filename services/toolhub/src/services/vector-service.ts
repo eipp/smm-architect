@@ -56,7 +56,12 @@ export class VectorService {
     this.pineconeApiKey = process.env.PINECONE_API_KEY || '';
     this.pineconeEnvironment = process.env.PINECONE_ENVIRONMENT || 'us-east1-gcp';
     this.pineconeIndex = process.env.PINECONE_INDEX || 'smm-architect';
-    
+
+    const isProduction = process.env.NODE_ENV === 'production';
+    if (isProduction && (!this.openaiApiKey || !this.pineconeApiKey)) {
+      throw new Error('Vector service: Missing API keys in production');
+    }
+
     if (!this.openaiApiKey || !this.pineconeApiKey) {
       console.warn('Vector service: Missing API keys, using mock mode');
     }
