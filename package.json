@@ -54,7 +54,8 @@
     "rimraf": "^5.0.0",
     "ts-jest": "^29.1.1",
     "turbo": "^2.5.6",
-    "typescript": "^5.3.0"
+    "typescript": "^5.3.0",
+    "supertest": "^7.1.4"
   },
   "dependencies": {
     "@genkit-ai/mcp": "^1.17.1",
