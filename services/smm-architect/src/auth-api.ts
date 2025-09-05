@@ -32,7 +32,8 @@ const log = {
 };
 
 import crypto from 'crypto';
-import { rateLimit } from './middleware/rate-limit';
+import rateLimit from 'express-rate-limit';
+import { verifyUser, createUser, findUser } from './services/user-store';
 
 // Simple auth service implementation
 class SimpleAuthService {
@@ -43,15 +44,19 @@ class SimpleAuthService {
   }
 
   async authenticate(email: string, password: string): Promise<{ success: boolean; userId?: string; tenantId?: string; error?: string }> {
-    // Mock authentication - in production this would validate against a real auth provider
-    if (email && password && password.length >= 6) {
-      return {
-        success: true,
-        userId: `user-${Buffer.from(email).toString('base64').slice(0, 8)}`,
-        tenantId: 'default-tenant'
-      };
+    try {
+      const user = await findUser(email);
+      if (!user) {
+        return { success: false, error: 'Invalid credentials' };
+      }
+      const verified = await verifyUser(email, user.tenantId, password);
+      if (!verified) {
+        return { success: false, error: 'Invalid credentials' };
+      }
+      return { success: true, userId: verified.id, tenantId: verified.tenantId };
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'Authentication failed' };
     }
-    return { success: false, error: 'Invalid credentials' };
   }
 
   async generateToken(payload: any): Promise<string> {
@@ -130,6 +135,45 @@ class SimpleAuthService {
 
 // Initialize authentication service
 const authService = new SimpleAuthService();
+
+// Rate limiters for auth endpoints
+const loginLimiter = rateLimit({
+  windowMs: Number(process.env.AUTH_RATE_LIMIT_WINDOW_MS || 15 * 60 * 1000),
+  max: Number(process.env.AUTH_RATE_LIMIT_MAX || 5),
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+const refreshLimiter = rateLimit({
+  windowMs: Number(process.env.REFRESH_RATE_LIMIT_WINDOW_MS || 15 * 60 * 1000),
+  max: Number(process.env.REFRESH_RATE_LIMIT_MAX || 30),
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+const registerLimiter = rateLimit({
+  windowMs: Number(process.env.REGISTER_RATE_LIMIT_WINDOW_MS || 60 * 60 * 1000),
+  max: Number(process.env.REGISTER_RATE_LIMIT_MAX || 3),
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+async function applyRateLimiter(limiter: ReturnType<typeof rateLimit>, req: any): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    const res = {
+      status: () => res,
+      setHeader: () => undefined,
+      send: (body: any) => reject(new Error(typeof body === 'string' ? body : 'Rate limit exceeded'))
+    } as any;
+    limiter(req as any, res, (err: any) => {
+      if (err) {
+        reject(err);
+      } else {
+        resolve();
+      }
+    });
+  });
+}
 
 // Helper functions
 function isValidEmail(email: string): boolean {
@@ -281,9 +325,9 @@ export const login = api(
   },
   async (req: LoginRequest): Promise<LoginResponse> => {
     await initAuthService();
-    
+
     // Rate limiting for login attempts
-    await rateLimit('auth:login', req.email, 5, 900); // 5 attempts per 15 minutes
+    await applyRateLimiter(loginLimiter, req);
 
     try {
       log.info("Login attempt", { email: req.email });
@@ -365,6 +409,9 @@ export const refresh = api(
     await initAuthService();
     // Rate limiting for token refresh attempts
     await rateLimit('auth:refresh', req.refreshToken, 10, 60); // 10 attempts per minute
+
+    // Rate limiting for refresh attempts
+    await applyRateLimiter(refreshLimiter, req);
 
     try {
       // For now, implement a simple refresh mechanism
@@ -503,7 +550,7 @@ export const register = api(
     await initAuthService();
 
     // Rate limiting for registration attempts
-    await rateLimit('auth:register', req.email, 3, 3600); // 3 attempts per hour
+    await applyRateLimiter(registerLimiter, req);
 
     try {
       log.info("Registration attempt", { email: req.email, tenantId: req.tenantId });
@@ -591,9 +638,8 @@ async function isRegistrationAllowed(tenantId: string, inviteCode?: string): Pro
 }
 
 async function checkUserExists(email: string, tenantId: string): Promise<boolean> {
-  // Mock implementation - check if user exists in database
-  // For demo, assume user doesn't exist
-  return false;
+  const user = await findUser(email, tenantId);
+  return !!user;
 }
 
 async function createUserAccount(userData: {
@@ -602,11 +648,8 @@ async function createUserAccount(userData: {
   name: string;
   tenantId: string;
 }): Promise<{ id: string }> {
-  // Mock implementation - create user in database
-  // For demo, return mock user ID
-  return {
-    id: `user_${crypto.randomUUID()}`
-  };
+  const user = await createUser(userData);
+  return { id: user.id };
 }
 
 function isValidPassword(password: string): boolean {

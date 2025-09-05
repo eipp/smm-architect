@@ -413,6 +413,9 @@ cd services/toolhub && pnpm test:benchmark
 | `VAULT_TOKEN` | Vault authentication token | - |
 | `DATABASE_URL` | PostgreSQL connection string | - |
 | `PINECONE_API_KEY` | Vector database API key | - |
+| `AUTH_RATE_LIMIT_WINDOW_MS` | Rate limit window for auth endpoints (ms) | `900000` |
+| `AUTH_RATE_LIMIT_MAX` | Max requests per window for auth endpoints | `5` |
+| `USER_STORE_PATH` | Path to persistent user storage | `services/smm-architect/src/data/users.json` |
 
 ### Workspace Configuration
 
