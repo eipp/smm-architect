@@ -125,7 +125,12 @@ const DecisionCard: React.FC<DecisionCardProps> = ({
   }
 
   return (
-    <Card className={cn("decision-card relative", isExpired && "opacity-75", className)}>
+    <Card
+      role="region"
+      aria-labelledby={`${actionId}-title`}
+      data-testid="decision-card"
+      className={cn("decision-card relative", isExpired && "opacity-75", className)}
+    >
       {isExpired && (
         <div className="absolute top-2 right-2 z-10">
           <Badge variant="destructive">Expired</Badge>
@@ -135,11 +140,16 @@ const DecisionCard: React.FC<DecisionCardProps> = ({
       <CardHeader className="pb-3">
         <div className="flex justify-between items-start">
           <div className="flex-1 pr-4">
-            <CardTitle className="text-lg font-semibold">{title}</CardTitle>
+            <CardTitle
+              id={`${actionId}-title`}
+              className="text-lg font-semibold"
+            >
+              {title}
+            </CardTitle>
             <CardDescription className="mt-1">{oneLine}</CardDescription>
           </div>
           <div className="flex flex-col items-end space-y-1">
-            <Badge 
+            <Badge
               className={cn("text-xs", getRiskColor(duplicateRisk))}
               variant="outline"
             >
