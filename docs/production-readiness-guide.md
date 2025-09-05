@@ -392,6 +392,19 @@ curl -f $API_ENDPOINT/health
 - [ ] Architecture review and optimization
 - [ ] Business continuity plan review
 
+### TLS Certificate Management
+
+cert-manager automatically renews Let's Encrypt certificates 30 days before expiration.
+
+#### Renewal Verification
+- `kubectl get certificate -n smm-architect`
+- `kubectl cert-manager renew smm-architect-prod-cert`
+
+#### Troubleshooting
+- `kubectl describe certificate smm-architect-prod-cert -n smm-architect`
+- `kubectl describe clusterissuer letsencrypt-prod`
+- `kubectl logs -n cert-manager deploy/cert-manager`
+
 ### Continuous Improvement
 
 #### Metrics and KPIs
