@@ -1,6 +1,7 @@
+import type { ThemeName } from './tokens';
 // Design System Exports
-export { default as tokens, motionConfig } from './tokens';
-export type { DesignTokens, MotionConfig } from './tokens';
+export { default as tokens, motionConfig, themes, getThemeTokens } from './tokens';
+export type { DesignTokens, MotionConfig, ThemeName } from './tokens';
 
 export { 
   getMotionConfig, 
@@ -103,6 +104,12 @@ export const prefersDarkMode = () => {
   return window.matchMedia('(prefers-color-scheme: dark)').matches;
 };
 
+export const setTheme = (theme: ThemeName) => {
+  if (typeof document === 'undefined') return;
+  document.documentElement.setAttribute('data-theme', theme);
+  document.documentElement.classList.toggle('dark', theme === 'dark');
+};
+
 // Export everything as default for convenience
 export default {
   tokens,
@@ -124,5 +131,8 @@ export default {
   createAnimation,
   createLayout,
   isLightMode,
-  prefersDarkMode
+  prefersDarkMode,
+  setTheme,
+  themes,
+  getThemeTokens
 };
