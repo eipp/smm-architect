@@ -1,0 +1,14 @@
+{
+  "name": "SMM Architect Dev Container",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": "../.."
+  },
+  "postCreateCommand": "pnpm install",
+  "customizations": {
+    "vscode": {
+      "settings": {},
+      "extensions": []
+    }
+  }
+}

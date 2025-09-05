@@ -28,6 +28,18 @@ SMM Architect is an **enterprise-ready platform** that enables organizations to 
 - **Real-Time Monitoring**: Prometheus metrics, Grafana dashboards, Sentry error tracking
 - **Infrastructure as Code**: Pulumi templates for automated AWS deployment
 
+## 🧰 Development Container
+
+A preconfigured Docker development container is available in `tools/devcontainer/`.
+Build and start it with:
+
+```bash
+docker build -t smm-architect-dev -f tools/devcontainer/Dockerfile .
+docker run --rm -it -v "$(pwd)":/workspace smm-architect-dev
+```
+
+See [docs/development.md](docs/development.md) for more details.
+
 ## 🏢 Architecture
 
 ### Monorepo Structure
