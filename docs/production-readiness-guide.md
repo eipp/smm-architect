@@ -366,6 +366,20 @@ curl -f $API_ENDPOINT/health
 
 ## Maintenance and Monitoring
 
+### Certificate Renewal Procedures
+cert-manager automatically renews TLS certificates 30 days before expiration. Use the following commands to monitor and force renewal when needed:
+
+```bash
+# Check certificate status
+kubectl get certificate -n smm-architect
+
+# Manually trigger a renewal
+kubectl cert-manager renew smm-architect-cert -n smm-architect
+
+# Verify new expiration date
+kubectl get certificate smm-architect-cert -n smm-architect -o jsonpath='{.status.notAfter}'
+```
+
 ### Regular Maintenance Tasks
 
 #### Daily
