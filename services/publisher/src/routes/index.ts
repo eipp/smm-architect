@@ -515,4 +515,76 @@ router.get('/media/:workspaceId',
   }
 );
 
+/**
+ * DSR Endpoints - user data access, deletion and export
+ */
+router.get('/dsr/data/:userId',
+  requireScopes(['dsr:access']),
+  [
+    param('userId').isString().isLength({ min: 1 }).withMessage('Valid user ID required')
+  ],
+  async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        throw new ApiError(400, 'VALIDATION_ERROR', 'Invalid DSR access request', errors.array());
+      }
+
+      const data = await publisherService.getUserData(req.params.userId);
+      res.json({ success: true, data });
+    } catch (error) {
+      if (error instanceof ApiError) {
+        throw error;
+      }
+      throw new ApiError(500, 'DSR_ACCESS_ERROR', `Failed to access user data: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+);
+
+router.delete('/dsr/data/:userId',
+  requireScopes(['dsr:delete']),
+  [
+    param('userId').isString().isLength({ min: 1 }).withMessage('Valid user ID required')
+  ],
+  async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        throw new ApiError(400, 'VALIDATION_ERROR', 'Invalid DSR delete request', errors.array());
+      }
+
+      await publisherService.deleteUserData(req.params.userId);
+      res.json({ success: true, message: 'User data deleted' });
+    } catch (error) {
+      if (error instanceof ApiError) {
+        throw error;
+      }
+      throw new ApiError(500, 'DSR_DELETE_ERROR', `Failed to delete user data: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+);
+
+router.get('/dsr/data/:userId/export',
+  requireScopes(['dsr:export']),
+  [
+    param('userId').isString().isLength({ min: 1 }).withMessage('Valid user ID required')
+  ],
+  async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        throw new ApiError(400, 'VALIDATION_ERROR', 'Invalid DSR export request', errors.array());
+      }
+
+      const exportData = await publisherService.exportUserData(req.params.userId);
+      res.json({ success: true, data: exportData });
+    } catch (error) {
+      if (error instanceof ApiError) {
+        throw error;
+      }
+      throw new ApiError(500, 'DSR_EXPORT_ERROR', `Failed to export user data: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+);
+
 export { router as publisherRoutes };
