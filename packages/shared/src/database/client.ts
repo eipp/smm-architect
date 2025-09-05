@@ -5,7 +5,9 @@
  * and connection management for all services.
  */
 
-import { PrismaClient } from '../generated/client';
+import { execSync } from 'child_process';
+import path from 'path';
+import { PrismaClient } from '@prisma/client';
 import { logger } from '../utils/logger';
 
 // Global Prisma client instance
@@ -122,9 +124,11 @@ export async function closeDatabaseConnection(): Promise<void> {
  */
 export class DatabaseMigration {
   private client: PrismaClient;
+  private config: DatabaseConfig;
 
   constructor(config: DatabaseConfig = {}) {
     this.client = getDatabaseClient(config);
+    this.config = config;
   }
 
   /**
@@ -151,9 +155,22 @@ export class DatabaseMigration {
    */
   async migrate(): Promise<void> {
     logger.info('Applying database migrations...');
-    // Note: In production, migrations should be run via Prisma CLI
-    // Migration coordination will be implemented with production database deployment
-    logger.info('Migrations completed');
+    const schemaPath = path.resolve(__dirname, '../../database/schema.prisma');
+    const projectRoot = path.resolve(__dirname, '../..');
+    try {
+      execSync(`npx prisma migrate deploy --schema="${schemaPath}"`, {
+        stdio: 'inherit',
+        cwd: projectRoot,
+        env: {
+          ...process.env,
+          DATABASE_URL: this.config.connectionString || process.env['DATABASE_URL']
+        }
+      });
+      logger.info('Migrations completed');
+    } catch (error) {
+      logger.error('Migration failed:', error);
+      throw error;
+    }
   }
 
   /**
@@ -163,17 +180,34 @@ export class DatabaseMigration {
     if (process.env['NODE_ENV'] === 'production') {
       throw new Error('Database reset not allowed in production');
     }
-    
+
     logger.warn('Resetting database...');
-    // Implementation would go here
-    logger.info('Database reset completed');
+    const schemaPath = path.resolve(__dirname, '../../database/schema.prisma');
+    const projectRoot = path.resolve(__dirname, '../..');
+    try {
+      execSync(
+        `npx prisma migrate reset --force --skip-seed --schema="${schemaPath}"`,
+        {
+          stdio: 'inherit',
+          cwd: projectRoot,
+          env: {
+            ...process.env,
+            DATABASE_URL: this.config.connectionString || process.env['DATABASE_URL']
+          }
+        }
+      );
+      logger.info('Database reset completed');
+    } catch (error) {
+      logger.error('Database reset failed:', error);
+      throw error;
+    }
   }
 }
 
 // Export types from Prisma client
-export type { 
-  Workspace, 
-  WorkspaceRun, 
+export type {
+  Workspace,
+  WorkspaceRun,
   AuditBundle,
   Connector,
   ConsentRecord,
@@ -181,6 +215,6 @@ export type {
   DecisionCard,
   SimulationResult,
   AssetFingerprint
-} from '../generated/client';
+} from '@prisma/client';
 
-export { PrismaClient } from '../generated/client';
+export { PrismaClient } from '@prisma/client';
