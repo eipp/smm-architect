@@ -5,8 +5,15 @@ interface ApiConfig {
   auth?: boolean;
 }
 
+import { authenticate, AuthenticatedRequest } from "./middleware/auth-middleware";
+
 function api(config: ApiConfig, handler: (req: any) => Promise<any>) {
-  return handler;
+  return async (req: AuthenticatedRequest): Promise<any> => {
+    if (config.auth) {
+      authenticate(req);
+    }
+    return handler(req);
+  };
 }
 
 // Mock SQLDatabase implementation
