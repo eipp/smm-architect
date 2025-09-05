@@ -936,7 +936,7 @@ spec:
             runAsUser: 1001
             seccompProfile:
               type: RuntimeDefault
-          image: "docker.io/smm-architect/agents:latest"
+          image: "docker.io/smm-architect/agents:1.0.0"
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
@@ -1036,7 +1036,7 @@ spec:
             runAsUser: 1001
             seccompProfile:
               type: RuntimeDefault
-          image: "docker.io/smm-architect/core:latest"
+          image: "docker.io/smm-architect/core:1.0.0"
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
@@ -1136,7 +1136,7 @@ spec:
             runAsUser: 1001
             seccompProfile:
               type: RuntimeDefault
-          image: "docker.io/smm-architect/frontend:latest"
+          image: "docker.io/smm-architect/frontend:1.0.0"
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
@@ -1236,7 +1236,7 @@ spec:
             runAsUser: 1001
             seccompProfile:
               type: RuntimeDefault
-          image: "docker.io/smm-architect/model-router:latest"
+          image: "docker.io/smm-architect/model-router:1.0.0"
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
@@ -1336,7 +1336,7 @@ spec:
             runAsUser: 1001
             seccompProfile:
               type: RuntimeDefault
-          image: "docker.io/smm-architect/publisher:latest"
+          image: "docker.io/smm-architect/publisher:1.0.0"
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
@@ -1436,7 +1436,7 @@ spec:
             runAsUser: 1001
             seccompProfile:
               type: RuntimeDefault
-          image: "docker.io/smm-architect/toolhub:latest"
+          image: "docker.io/smm-architect/toolhub:1.0.0"
           imagePullPolicy: IfNotPresent
           ports:
             - name: http

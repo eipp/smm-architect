@@ -667,7 +667,7 @@ N8N_BASIC_AUTH_PASSWORD=admin
 3. **Security Updates**
    ```bash
    # Scan for vulnerabilities
-   trivy image smm-architect/smm-architect-service:latest
+   trivy image smm-architect/smm-architect-service:1.0.0
    
    # Update base images
    docker build --pull -t smm-architect/smm-architect-service:v1.0.1 .

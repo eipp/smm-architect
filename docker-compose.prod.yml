@@ -6,7 +6,7 @@ services:
     build:
       context: .
       dockerfile: services/smm-architect/Dockerfile
-    image: smm-architect/core:latest
+    image: smm-architect/core:1.0.0
     ports:
       - "4000:4000"
     environment:
@@ -45,7 +45,7 @@ services:
     build:
       context: .
       dockerfile: services/toolhub/Dockerfile
-    image: smm-architect/toolhub:latest
+    image: smm-architect/toolhub:1.0.0
     ports:
       - "3001:3001"
     environment:
@@ -84,7 +84,7 @@ services:
     build:
       context: .
       dockerfile: apps/frontend/Dockerfile
-    image: smm-architect/frontend:latest
+    image: smm-architect/frontend:1.0.0
     ports:
       - "3000:3000"
     environment:
@@ -132,7 +132,7 @@ services:
 
   # Monitoring
   prometheus:
-    image: prom/prometheus:latest
+    image: prom/prometheus:v2.45.0
     ports:
       - "9090:9090"
     volumes:
@@ -150,7 +150,7 @@ services:
     restart: unless-stopped
 
   grafana:
-    image: grafana/grafana:latest
+    image: grafana/grafana:10.4.3
     ports:
       - "3001:3000"
     environment:

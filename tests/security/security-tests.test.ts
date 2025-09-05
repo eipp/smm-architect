@@ -513,7 +513,7 @@ describe('End-to-End Security Testing', () => {
 
     it('should validate container security', async () => {
       const containerScanResults = await vulnerabilityScanner.scanContainer({
-        imageName: 'smm-architect:latest',
+        imageName: 'smm-architect:1.0.0',
         scanLayers: true,
         checkBaseImage: true,
         validateSecurityPolicies: true

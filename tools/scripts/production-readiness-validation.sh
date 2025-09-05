@@ -310,7 +310,7 @@ run_security_scan() {
     
     # Container image vulnerabilities
     if command -v trivy >/dev/null 2>&1; then
-        run_check_with_output "Container vulnerability scan" "trivy image --severity HIGH,CRITICAL --quiet --format json nginx:latest | jq '.Results | length'"
+        run_check_with_output "Container vulnerability scan" "trivy image --severity HIGH,CRITICAL --quiet --format json nginx:1.25.3 | jq '.Results | length'"
     else
         log_warning "Trivy not available - manual container scanning required"
         ((WARNING_CHECKS++))

@@ -27,7 +27,7 @@ spec:
         fsGroup: 1001
       containers:
       - name: frontend
-        image: smm-architect/frontend:latest
+        image: smm-architect/frontend:1.0.0
         imagePullPolicy: Always
         ports:
         - containerPort: 3000

@@ -381,7 +381,7 @@ spec:
         spec:
           containers:
           - name: integrity-checker
-            image: smm-architect/audit-tools:latest
+            image: smm-architect/audit-tools:1.0.0
             command:
             - /bin/bash
             - -c

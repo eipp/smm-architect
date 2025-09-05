@@ -195,7 +195,7 @@ variable "redis_storage_size" {
 variable "workspace_api_image" {
   description = "Docker image for workspace API"
   type        = string
-  default     = "smm-architect/workspace-api:latest"
+  default     = "smm-architect/workspace-api:1.0.0"
 }
 
 variable "workspace_api_replicas" {

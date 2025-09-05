@@ -565,7 +565,7 @@ spec:
     spec:
       containers:
       - name: model-router
-        image: smm-architect/model-router:latest
+        image: smm-architect/model-router:1.0.0
         ports:
         - containerPort: 3003
         env:

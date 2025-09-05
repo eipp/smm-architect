@@ -12,13 +12,15 @@ import { execSync, spawn } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 
+const VERSION = '1.0.0';
+
 const program = new Command();
 
 // CLI Configuration
 program
   .name('smm-cli')
   .description('SMM Architect Unified CLI Tool')
-  .version('1.0.0');
+  .version(VERSION);
 
 // Development Commands
 const devCommand = program
@@ -93,7 +95,7 @@ buildCommand
   .action(async (options) => {
     if (options.service) {
       console.log(`🐳 Building Docker image for ${options.service}...`);
-      execSync(`docker build -f services/${options.service}/Dockerfile -t smm-architect/${options.service}:latest .`, { stdio: 'inherit' });
+      execSync(`docker build -f services/${options.service}/Dockerfile -t smm-architect/${options.service}:${VERSION} .`, { stdio: 'inherit' });
     } else {
       console.log('🐳 Building all Docker images...');
       execSync('docker-compose build', { stdio: 'inherit' });

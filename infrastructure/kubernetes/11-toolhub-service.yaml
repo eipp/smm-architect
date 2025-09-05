@@ -27,7 +27,7 @@ spec:
         fsGroup: 1001
       containers:
       - name: toolhub
-        image: smm-architect/toolhub:latest
+        image: smm-architect/toolhub:1.0.0
         imagePullPolicy: Always
         ports:
         - containerPort: 3001
