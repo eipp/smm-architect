@@ -434,6 +434,23 @@ See `examples/workspace-contract.icblabs.json` for a complete example workspace 
 - Agent failure rates
 - Security incidents
 
+## 💻 Development Environment
+
+A Docker-based development container is provided for a consistent build setup.
+
+```bash
+docker build -f tools/devcontainer/Dockerfile -t smm-architect-dev .
+docker run --rm -it -v $(pwd):/workspace smm-architect-dev
+```
+
+Inside the container, install dependencies:
+
+```bash
+pnpm install
+```
+
+See [docs/development.md](docs/development.md) for more details.
+
 ## 🤝 Contributing
 
 1. **Fork the repository**

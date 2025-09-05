@@ -1,0 +1,19 @@
+name: Devcontainer Smoke Test
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
+
+      - name: Build dev container
+        run: docker build -f tools/devcontainer/Dockerfile -t smm-architect-dev .
+
+      - name: Run pnpm install
+        run: docker run --rm -v $PWD:/workspace -w /workspace smm-architect-dev pnpm install --frozen-lockfile
