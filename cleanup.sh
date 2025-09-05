@@ -3,6 +3,9 @@
 # SMM Architect Enterprise Project Cleanup Script
 # Tailored for: Turborepo + pnpm + Encore.ts + Next.js + Storybook + Playwright + Artillery
 # Optimized for monorepo architecture with microservices
+#
+# Usage: ./cleanup.sh [project_root]
+# If project_root is not provided, the script auto-detects the repository root
 
 set -euo pipefail
 
@@ -17,7 +20,11 @@ BOLD='\033[1m'
 NC='\033[0m' # No Color
 
 # Project configuration
-PROJECT_ROOT="/Users/ivan/smm-architect"
+if [ $# -gt 0 ]; then
+    PROJECT_ROOT="$1"
+else
+    PROJECT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+fi
 PROJECT_NAME="SMM Architect"
 MONOREPO_WORKSPACES=("apps" "packages" "services" "tools")
 TURBO_CACHE_DIR=".turbo"
