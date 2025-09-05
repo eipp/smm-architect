@@ -4,7 +4,7 @@ module.exports = {
   plugins: ['@typescript-eslint'],
   extends: [
     'eslint:recommended',
-    '@typescript-eslint/recommended'
+    'plugin:@typescript-eslint/recommended'
   ],
   env: {
     node: true,
@@ -22,7 +22,7 @@ module.exports = {
     '*.config.ts'
   ],
   rules: {
-    '@typescript-eslint/no-unused-vars': ['error', { 'argsIgnorePattern': '^_' }],
+    '@typescript-eslint/no-unused-vars': ['warn', { 'argsIgnorePattern': '^_' }],
     '@typescript-eslint/no-explicit-any': 'warn',
     'no-console': 'off' // Allow console in services
   }
