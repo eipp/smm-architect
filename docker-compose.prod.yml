@@ -12,12 +12,17 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=4000
-      - DATABASE_URL=${DATABASE_URL}
-      - REDIS_URL=${REDIS_URL}
+      - DATABASE_URL_FILE=/run/secrets/database_url
+      - REDIS_URL_FILE=/run/secrets/redis_url
       - VAULT_URL=${VAULT_URL}
-      - VAULT_TOKEN=${VAULT_TOKEN}
-      - SENTRY_DSN=${SENTRY_DSN}
+      - VAULT_TOKEN_FILE=/run/secrets/vault_token
+      - SENTRY_DSN_FILE=/run/secrets/sentry_dsn
       - SENTRY_ENVIRONMENT=production
+    secrets:
+      - database_url
+      - redis_url
+      - vault_token
+      - sentry_dsn
     volumes:
       - smm_logs:/app/logs
     networks:
@@ -51,13 +56,19 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=3001
-      - DATABASE_URL=${DATABASE_URL}
-      - REDIS_URL=${REDIS_URL}
+      - DATABASE_URL_FILE=/run/secrets/database_url
+      - REDIS_URL_FILE=/run/secrets/redis_url
       - VAULT_URL=${VAULT_URL}
-      - VAULT_TOKEN=${VAULT_TOKEN}
-      - SENTRY_DSN=${SENTRY_DSN}
+      - VAULT_TOKEN_FILE=/run/secrets/vault_token
+      - SENTRY_DSN_FILE=/run/secrets/sentry_dsn
       - SENTRY_ENVIRONMENT=production
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_API_KEY_FILE=/run/secrets/openai_api_key
+    secrets:
+      - database_url
+      - redis_url
+      - vault_token
+      - sentry_dsn
+      - openai_api_key
     volumes:
       - toolhub_logs:/app/logs
     networks:
@@ -91,8 +102,10 @@ services:
       - NODE_ENV=production
       - NEXT_PUBLIC_API_URL=${API_URL}
       - NEXT_PUBLIC_TOOLHUB_URL=${TOOLHUB_URL}
-      - SENTRY_DSN=${SENTRY_DSN}
+      - SENTRY_DSN_FILE=/run/secrets/sentry_dsn
       - SENTRY_ENVIRONMENT=production
+    secrets:
+      - sentry_dsn
     networks:
       - smm-network
     restart: unless-stopped
@@ -174,6 +187,19 @@ volumes:
     driver: local
   toolhub_logs:
     driver: local
+
+# Secrets
+secrets:
+  database_url:
+    external: true
+  redis_url:
+    external: true
+  vault_token:
+    external: true
+  sentry_dsn:
+    external: true
+  openai_api_key:
+    external: true
 
 # Networks
 networks:

@@ -7,10 +7,12 @@ services:
     container_name: smm-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_DB: smm_architect
-      POSTGRES_USER: smm_user
+      POSTGRES_DB_FILE: /run/secrets/postgres_db
+      POSTGRES_USER_FILE: /run/secrets/postgres_user
       POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
     secrets:
+      - postgres_db
+      - postgres_user
       - postgres_password
     volumes:
       - postgres_data:/var/lib/postgresql/data:rw
@@ -20,7 +22,7 @@ services:
     networks:
       - smm-network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U smm_user -d smm_architect"]
+      test: ["CMD-SHELL", "pg_isready -U $$(cat /run/secrets/postgres_user) -d $$(cat /run/secrets/postgres_db)"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -48,7 +50,7 @@ services:
     restart: unless-stopped
     command: >
       redis-server
-      --requirepass "${REDIS_PASSWORD}"
+      --requirepass "$${REDIS_PASSWORD}"
       --maxmemory 256mb
       --maxmemory-policy allkeys-lru
       --save 60 1
@@ -362,6 +364,10 @@ volumes:
 secrets:
   postgres_password:
     file: ./secrets/postgres_password.txt
+  postgres_user:
+    file: ./secrets/postgres_user.txt
+  postgres_db:
+    file: ./secrets/postgres_db.txt
   redis_password:
     file: ./secrets/redis_password.txt
   database_url:
