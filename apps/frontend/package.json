@@ -35,6 +35,8 @@
     "@sentry/nextjs": "^7.99.0",
     "@sentry/react": "^7.99.0",
     "@smm-architect/ui": "workspace:*",
+    "@upstash/ratelimit": "2.0.6",
+    "@upstash/redis": "1.35.3",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.0.0",
     "date-fns": "^2.30.0",
