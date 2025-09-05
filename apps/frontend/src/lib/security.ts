@@ -28,7 +28,7 @@ export const cspConfig = {
     "'self'",
     process.env.NEXT_PUBLIC_API_BASE_URL || '',
     'wss:',
-    'https://o4507902433558528.ingest.us.sentry.io', // Sentry DSN
+    'https://YOUR_SENTRY_DSN', // Sentry DSN
   ],
   'frame-ancestors': ["'none'"],
   'base-uri': ["'self'"],

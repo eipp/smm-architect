@@ -30,7 +30,6 @@
 ## 🎯 Your Sentry Project Details
 
 ```
-DSN: https://02a82d6e1d09e631f5ef7083e197c841@o4509899378786304.ingest.de.sentry.io/4509899558879312
 Organization ID: 4509899378786304
 Project Name: smm-architect
 Platform: Express/Node.js
@@ -52,8 +51,10 @@ Add these to your environment (or use the `.env.example` file):
 
 ```bash
 # Required
-SENTRY_DSN=https://02a82d6e1d09e631f5ef7083e197c841@o4509899378786304.ingest.de.sentry.io/4509899558879312
-NEXT_PUBLIC_SENTRY_DSN=https://02a82d6e1d09e631f5ef7083e197c841@o4509899378786304.ingest.de.sentry.io/4509899558879312
+DSN: YOUR_SENTRY_DSN
+
+SENTRY_DSN=YOUR_SENTRY_DSN
+NEXT_PUBLIC_SENTRY_DSN=YOUR_SENTRY_DSN
 
 # Optional
 SENTRY_ENABLED=true

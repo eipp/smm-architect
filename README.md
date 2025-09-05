@@ -412,7 +412,13 @@ cd services/toolhub && pnpm test:benchmark
 | `VAULT_ADDR` | Vault server address | `http://localhost:8200` |
 | `VAULT_TOKEN` | Vault authentication token | - |
 | `DATABASE_URL` | PostgreSQL connection string | - |
+| `DB_PASSWORD` | Database user password | - |
+| `REDIS_URL` | Redis connection string | - |
+| `OPENAI_API_KEY` | OpenAI API key | - |
 | `PINECONE_API_KEY` | Vector database API key | - |
+| `JWT_SECRET` | JWT signing secret | - |
+| `ENCRYPTION_KEY` | Encryption key for sensitive data | - |
+| `SENTRY_DSN` | Sentry Data Source Name | - |
 
 ### Workspace Configuration
 
