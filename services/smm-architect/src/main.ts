@@ -1,39 +1,27 @@
-// Mock encore.dev imports
-interface ApiConfig {
-  method: string;
-  path: string;
-  auth?: boolean;
-}
-
-function api(config: ApiConfig, handler: (req: any) => Promise<any>) {
-  return handler;
-}
-
-// Mock SQLDatabase implementation
-class SQLDatabase {
-  constructor(public name: string, public options: any) {}
-  
-  async query(sql: string, params?: any[]): Promise<any[]> {
-    // Mock implementation
-    return [];
-  }
-  
-  async exec(sql: string, params?: any[]): Promise<void> {
-    // Mock implementation
-  }
-}
-
-const log = {
-  info: (message: string, data?: any) => console.log('[INFO]', message, data),
-  error: (message: string, data?: any) => console.error('[ERROR]', message, data),
-  debug: (message: string, data?: any) => console.log('[DEBUG]', message, data),
-  warn: (message: string, data?: any) => console.warn('[WARN]', message, data)
-};
-
+import { api } from "encore.dev/api";
+import log from "encore.dev/log";
+import {
+  SQLDatabase,
+  SQLDatabaseConfig
+} from "encore.dev/storage/sqldb";
+import { captureException } from "@sentry/node";
 import "./config/sentry"; // Initialize Sentry
-// Mock sentry-utils implementation
-function captureException(error: any, context: any) {
-  console.error('Sentry exception (mock)', error, context);
+
+// Database wrapper implementing the minimal interface needed by services
+class DatabaseAdapter {
+  constructor(private readonly db: SQLDatabase) {}
+
+  async query(sql: string, params?: any[]): Promise<any[]> {
+    const rows: any[] = [];
+    for await (const row of this.db.rawQuery(sql, ...(params ?? []))) {
+      rows.push(row);
+    }
+    return rows;
+  }
+
+  async exec(sql: string, params?: any[]): Promise<void> {
+    await this.db.rawExec(sql, ...(params ?? []));
+  }
 }
 import { 
   WorkspaceContract,
@@ -52,10 +40,28 @@ import { SimulationService } from "./services/simulation-service";
 import { AuditService } from "./services/audit-service";
 import { validateWorkspaceContract } from "./utils/validation";
 
-// Database connection
-const db = new SQLDatabase("smm_architect", {
-  migrations: "./migrations",
-});
+// Database configuration and connection handling
+const dbConfig: SQLDatabaseConfig = {
+  migrations: process.env.DB_MIGRATIONS || "./migrations",
+};
+
+const databaseName = process.env.DB_NAME || "smm_architect";
+const sqlDatabase = new SQLDatabase(databaseName, dbConfig);
+const db = new DatabaseAdapter(sqlDatabase);
+
+async function initializeDatabase(): Promise<void> {
+  await db.exec("SELECT 1");
+  log.info("Database connection established", { database: databaseName });
+}
+
+if (process.env.NODE_ENV !== "test") {
+  initializeDatabase().catch((error) => {
+    log.error("Database initialization failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    captureException(error, { scope: "database_init" });
+  });
+}
 
 // Service instances
 const workspaceService = new WorkspaceService(db);
