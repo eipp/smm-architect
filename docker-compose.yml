@@ -132,7 +132,7 @@ services:
 
   # Monitoring Services
   prometheus:
-    image: prom/prometheus:latest
+    image: prom/prometheus:v2.45.0
     container_name: smm-prometheus
     ports:
       - "9090:9090"
@@ -150,7 +150,7 @@ services:
     restart: unless-stopped
 
   grafana:
-    image: grafana/grafana:latest
+    image: grafana/grafana:10.4.3
     container_name: smm-grafana
     ports:
       - "3001:3000"
@@ -165,7 +165,7 @@ services:
 
   # Development Tools
   mailhog:
-    image: mailhog/mailhog:latest
+    image: mailhog/mailhog:v1.0.1
     container_name: smm-mailhog
     ports:
       - "8025:8025"  # Web interface

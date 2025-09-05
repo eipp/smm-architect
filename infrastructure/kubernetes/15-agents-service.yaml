@@ -29,7 +29,7 @@ spec:
         fsGroup: 1001
       containers:
       - name: agents
-        image: smm-architect/agents:latest
+        image: smm-architect/agents:1.0.0
         imagePullPolicy: Always
         ports:
         - containerPort: 3004
