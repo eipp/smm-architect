@@ -3,6 +3,7 @@
 # SMM Architect - FINAL PRODUCTION VERIFICATION
 # Comprehensive validation of all 10 production-ready tasks
 
+# Exit immediately on unhandled errors in verification logic
 set -e
 
 echo "🏁 SMM ARCHITECT - FINAL PRODUCTION VERIFICATION"
@@ -35,12 +36,12 @@ verify_item() {
     local check_command="$2"
     local is_critical="${3:-false}"
     
-    ((TOTAL_VERIFICATIONS++))
+    ((TOTAL_VERIFICATIONS+=1))
     print_status "Verifying: $name"
     
     if eval "$check_command" >/dev/null 2>&1; then
         print_success "✅ $name"
-        ((PASSED_VERIFICATIONS++))
+        ((PASSED_VERIFICATIONS+=1))
         return 0
     else
         if [ "$is_critical" = "true" ]; then
@@ -48,7 +49,7 @@ verify_item() {
         else
             print_warning "⚠️ $name"
         fi
-        ((FAILED_VERIFICATIONS++))
+        ((FAILED_VERIFICATIONS+=1))
         return 1
     fi
 }
@@ -90,8 +91,8 @@ echo ""
 print_header "TASK 2: WORKSPACE PROVISIONING DEPENDENCIES"
 echo "==========================================="
 
-verify_file_exists "Pulumi Infrastructure Code" "infra/pulumi/workspace-provisioning.ts" "false"
-verify_file_exists "Infrastructure Configuration" "infra/pulumi/Pulumi.yaml" "false"
+verify_file_exists "Pulumi Infrastructure Code" "infrastructure/pulumi/main.ts" "false"
+verify_file_exists "Infrastructure Configuration" "infrastructure/pulumi/Pulumi.yaml" "false"
 verify_content_exists "Package Dependencies Fixed" "package.json" '"overrides"' "true"
 
 print_success "✅ TASK 2: Workspace Provisioning Dependencies - VERIFIED"
