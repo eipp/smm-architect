@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import jwt from 'jsonwebtoken';
+import jwt, { JwtPayload } from 'jsonwebtoken';
 
 export interface AuthenticatedRequest extends Request {
   user?: {
@@ -49,8 +49,18 @@ export function authMiddleware(req: AuthenticatedRequest, res: Response, next: N
     }
 
     try {
-      const decoded = jwt.verify(token, jwtSecret) as JWTPayload;
-      
+      const decoded = jwt.verify(token, jwtSecret, {
+        algorithms: ['HS256']
+      }) as JWTPayload;
+
+      if (!decoded.exp) {
+        res.status(401).json({
+          code: 'INVALID_TOKEN',
+          message: 'Token missing expiration'
+        });
+        return;
+      }
+
       req.user = {
         userId: decoded.userId,
         workspaceId: decoded.workspaceId,
@@ -180,15 +190,19 @@ export function optionalAuth(req: AuthenticatedRequest, res: Response, next: Nex
   }
 
   try {
-    const decoded = jwt.verify(token, jwtSecret) as JWTPayload;
-    
-    req.user = {
-      userId: decoded.userId,
-      workspaceId: decoded.workspaceId,
-      scopes: decoded.scopes || [],
-      email: decoded.email,
-      name: decoded.name
-    };
+    const decoded = jwt.verify(token, jwtSecret, {
+      algorithms: ['HS256']
+    }) as JWTPayload;
+
+    if (decoded.exp && Date.now() < decoded.exp * 1000) {
+      req.user = {
+        userId: decoded.userId,
+        workspaceId: decoded.workspaceId,
+        scopes: decoded.scopes || [],
+        email: decoded.email,
+        name: decoded.name
+      };
+    }
   } catch (error) {
     // Ignore token errors for optional auth
     console.warn('Optional auth token validation failed:', error instanceof Error ? error.message : error);
@@ -255,12 +269,23 @@ export function generateToken(payload: Omit<JWTPayload, 'iat' | 'exp'>, expiresI
  */
 export function verifyToken(token: string): JWTPayload {
   const jwtSecret = process.env.JWT_SECRET;
-  
+
   if (!jwtSecret) {
     throw new Error('JWT_SECRET environment variable not set');
   }
 
-  return jwt.verify(token, jwtSecret) as JWTPayload;
+  const decoded = jwt.verify(token, jwtSecret, {
+    algorithms: ['HS256']
+  }) as JWTPayload;
+
+  if (!decoded.exp) {
+    throw new Error('Token missing expiration');
+  }
+  if (Date.now() >= decoded.exp * 1000) {
+    throw new Error('JWT token has expired');
+  }
+
+  return decoded;
 }
 
 /**
