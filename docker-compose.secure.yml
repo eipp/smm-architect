@@ -7,8 +7,8 @@ services:
     container_name: smm-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_DB: smm_architect
-      POSTGRES_USER: smm_user
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
     secrets:
       - postgres_password
@@ -20,7 +20,7 @@ services:
     networks:
       - smm-network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U smm_user -d smm_architect"]
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 10s
       timeout: 5s
       retries: 5

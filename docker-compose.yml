@@ -6,17 +6,17 @@ services:
     image: postgres:14-alpine
     container_name: smm-postgres
     environment:
-      POSTGRES_DB: smm_architect
-      POSTGRES_USER: smm_user
-      POSTGRES_PASSWORD: smm_password
-      POSTGRES_MULTIPLE_DATABASES: smm_architect,smm_test
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_MULTIPLE_DATABASES: ${POSTGRES_MULTIPLE_DATABASES}
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./services/smm-architect/migrations:/docker-entrypoint-initdb.d
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U smm_user -d smm_architect"]
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -49,7 +49,7 @@ services:
     environment:
       - NODE_ENV=development
       - PORT=4000
-      - DATABASE_URL=postgresql://smm_user:smm_password@postgres:5432/smm_architect
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       - REDIS_URL=redis://redis:6379
       - VAULT_URL=http://vault:8200
       - SENTRY_DSN=${SENTRY_DSN}
@@ -75,7 +75,7 @@ services:
     environment:
       - NODE_ENV=development
       - PORT=3001
-      - DATABASE_URL=postgresql://smm_user:smm_password@postgres:5432/smm_architect
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       - REDIS_URL=redis://redis:6379
       - VAULT_URL=http://vault:8200
       - SENTRY_DSN=${SENTRY_DSN}
