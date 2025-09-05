@@ -11,6 +11,7 @@ data:
   LOG_LEVEL: "info"
   POSTGRES_DB: "smm_architect"
   POSTGRES_USER: "smm_user"
+  POSTGRES_HOST: "${DATABASE_ENDPOINT}"
   REDIS_URL: "redis://smm-redis:6379"
   VAULT_URL: "http://smm-vault:8200"
   SENTRY_ENVIRONMENT: "production"
