@@ -24,7 +24,7 @@ spec:
       protocol: HTTPS
     tls:
       mode: SIMPLE
-      credentialName: smm-architect-tls
+      credentialName: smm-architect-prod-tls # managed by cert-manager
     hosts:
     - api.smm-architect.com
     - toolhub.smm-architect.com
