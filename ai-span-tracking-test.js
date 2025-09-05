@@ -178,15 +178,13 @@ async function runAllTests() {
   
   // Flush Sentry events
   const Sentry = require('@sentry/node');
-  await Sentry.close(2000);
-  
-  process.exit(0);
+  await Sentry.flush(2000);
 }
 
 // Handle errors
 process.on('unhandledRejection', (error) => {
   console.error('❌ Unhandled promise rejection:', error);
-  process.exit(1);
+  process.exitCode = 1;
 });
 
 // Run the tests
