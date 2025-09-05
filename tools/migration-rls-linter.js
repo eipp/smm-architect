@@ -35,6 +35,21 @@ const REQUIRED_RLS_PATTERNS = {
   withCheck: /WITH CHECK\s*\(/gi
 };
 
+const ALLOWED_MIGRATION_DIRS = [
+  path.resolve(__dirname, '../services/smm-architect/migrations')
+];
+
+function resolveAndValidateInput(p) {
+  const resolved = path.resolve(p);
+  const isWithin = ALLOWED_MIGRATION_DIRS.some(dir =>
+    resolved === dir || resolved.startsWith(dir + path.sep)
+  );
+  if (!isWithin) {
+    throw new Error(`Path outside allowed directories: ${p}`);
+  }
+  return resolved;
+}
+
 class MigrationLinter {
   constructor() {
     this.violations = [];
@@ -45,15 +60,16 @@ class MigrationLinter {
    * Lint a single migration file
    */
   lintMigrationFile(filePath) {
-    console.log(`🔍 Linting migration: ${filePath}`);
-    
-    if (!fs.existsSync(filePath)) {
-      this.violations.push(`Migration file not found: ${filePath}`);
+    const targetPath = resolveAndValidateInput(filePath);
+    console.log(`🔍 Linting migration: ${targetPath}`);
+
+    if (!fs.existsSync(targetPath)) {
+      this.violations.push(`Migration file not found: ${targetPath}`);
       return;
     }
 
-    const content = fs.readFileSync(filePath, 'utf8');
-    const filename = path.basename(filePath);
+    const content = fs.readFileSync(targetPath, 'utf8');
+    const filename = path.basename(targetPath);
     
     // Extract table names from CREATE TABLE statements
     const createdTables = this.extractCreatedTables(content);
@@ -188,24 +204,25 @@ class MigrationLinter {
    * Lint all migration files in a directory
    */
   lintDirectory(dirPath) {
-    if (!fs.existsSync(dirPath)) {
-      this.violations.push(`Migration directory not found: ${dirPath}`);
+    const targetDir = resolveAndValidateInput(dirPath);
+    if (!fs.existsSync(targetDir)) {
+      this.violations.push(`Migration directory not found: ${targetDir}`);
       return;
     }
 
-    const files = fs.readdirSync(dirPath)
+    const files = fs.readdirSync(targetDir)
       .filter(file => file.endsWith('.sql'))
       .sort();
 
     if (files.length === 0) {
-      console.log(`No SQL migration files found in ${dirPath}`);
+      console.log(`No SQL migration files found in ${targetDir}`);
       return;
     }
 
-    console.log(`🔍 Linting ${files.length} migration files in ${dirPath}`);
+    console.log(`🔍 Linting ${files.length} migration files in ${targetDir}`);
 
     for (const file of files) {
-      const filePath = path.join(dirPath, file);
+      const filePath = path.join(targetDir, file);
       this.lintMigrationFile(filePath);
     }
   }
@@ -258,16 +275,16 @@ function main() {
   }
 
   const linter = new MigrationLinter();
-  const targetPath = args[0];
-
   try {
+    const targetPath = resolveAndValidateInput(args[0]);
+
     if (!fs.existsSync(targetPath)) {
       console.error(`❌ Path not found: ${targetPath}`);
       process.exit(2);
     }
 
     const stats = fs.statSync(targetPath);
-    
+
     if (stats.isDirectory()) {
       linter.lintDirectory(targetPath);
     } else if (stats.isFile()) {
@@ -278,7 +295,7 @@ function main() {
     }
 
     linter.printSummaryAndExit();
-    
+
   } catch (error) {
     console.error(`❌ Script error: ${error.message}`);
     process.exit(2);
