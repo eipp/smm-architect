@@ -453,7 +453,7 @@ See `examples/workspace-contract.icblabs.json` for a complete example workspace 
 
 ## 📄 License
 
-This project is proprietary software. See [LICENSE](LICENSE) for details.
+This project is proprietary software released under the SMM Architect Proprietary License. See [LICENSE](LICENSE) for details.
 
 ## 🙋‍♀️ Support
 
