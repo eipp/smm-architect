@@ -5,7 +5,8 @@ export const motionConfig = {
   fade: { duration: 0.2, ease: [0.2, 0.9, 0.2, 1] as [number, number, number, number] }
 };
 
-export const tokens = {
+// Base (light) theme design tokens
+const lightTokens = {
   color: {
     primary: {
       50: 'hsl(215 100% 97%)',
@@ -210,7 +211,48 @@ export const tokens = {
   }
 } as const;
 
-export type DesignTokens = typeof tokens;
+// Dark theme overrides for color tokens
+const darkTokens: typeof lightTokens = {
+  ...lightTokens,
+  color: {
+    ...lightTokens.color,
+    neutral: {
+      50: 'hsl(210 15% 8%)',
+      100: 'hsl(210 15% 12%)',
+      200: 'hsl(210 15% 22%)',
+      300: 'hsl(210 15% 32%)',
+      400: 'hsl(210 20% 40%)',
+      500: 'hsl(210 20% 50%)',
+      600: 'hsl(210 25% 60%)',
+      700: 'hsl(210 30% 70%)',
+      800: 'hsl(210 30% 82%)',
+      900: 'hsl(210 40% 90%)',
+      950: 'hsl(210 40% 96%)'
+    },
+    semantic: {
+      canvasBackground: 'hsl(210 40% 4%)',
+      agentActive: lightTokens.color.semantic.agentActive,
+      simulationRunning: lightTokens.color.semantic.simulationRunning,
+      policyCompliant: lightTokens.color.semantic.policyCompliant,
+      auditVerified: lightTokens.color.semantic.auditVerified,
+      workspaceBackground: 'hsl(210 40% 10%)',
+      surfaceElevated: 'hsl(210 25% 15%)',
+      borderSubtle: 'hsl(210 25% 25%)',
+      borderStrong: 'hsl(210 20% 40%)'
+    }
+  }
+};
+
+export const themes = {
+  light: lightTokens,
+  dark: darkTokens
+} as const;
+
+export const tokens = themes.light;
+
+export type DesignTokens = typeof lightTokens;
+export type ThemeName = keyof typeof themes;
+export const getTokens = (theme: ThemeName = 'light') => themes[theme];
 export type MotionConfig = typeof motionConfig;
 
 export default tokens;

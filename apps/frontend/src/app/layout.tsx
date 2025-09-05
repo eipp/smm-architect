@@ -7,6 +7,7 @@ import { Toaster } from "@/components/ui/toaster"
 import { ErrorBoundary } from "@/components/error-boundary"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { I18nProvider } from "@/lib/i18n"
+import { ThemeProvider } from "@/contexts/theme-context"
 import PerformanceMonitoring from "@/components/core-web-vitals"
 
 // Inter Variable font with optimized loading strategy
@@ -118,18 +119,20 @@ export default function RootLayout({
         className={`${inter.variable} ${jetbrainsMono.variable} font-sans antialiased bg-background text-foreground`}
       >
         <ErrorBoundary>
-          <I18nProvider>
-            <TooltipProvider>
-              <div className="relative min-h-screen flex flex-col">
-                <Navigation />
-                <main className="flex-1">
-                  {children}
-                </main>
-              </div>
-              <Toaster />
-              <PerformanceMonitoring />
-            </TooltipProvider>
-          </I18nProvider>
+          <ThemeProvider>
+            <I18nProvider>
+              <TooltipProvider>
+                <div className="relative min-h-screen flex flex-col">
+                  <Navigation />
+                  <main className="flex-1">
+                    {children}
+                  </main>
+                </div>
+                <Toaster />
+                <PerformanceMonitoring />
+              </TooltipProvider>
+            </I18nProvider>
+          </ThemeProvider>
         </ErrorBoundary>
       </body>
     </html>
