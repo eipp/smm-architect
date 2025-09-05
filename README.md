@@ -450,6 +450,7 @@ See `examples/workspace-contract.icblabs.json` for a complete example workspace 
 - Update documentation for new features
 - Validate against schema and policy rules
 - Test policy changes thoroughly
+- Ensure `pnpm lint` and `pnpm type-check` pass before building
 
 ## 📄 License
 

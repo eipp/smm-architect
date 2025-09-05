@@ -35,12 +35,15 @@ jobs:
     
     - name: Install dependencies
       run: pnpm install
-    
+
     - name: Run linting
-      run: pnpm run lint
-    
+      run: pnpm lint
+
+    - name: Run type check
+      run: pnpm type-check
+
     - name: Run tests
-      run: pnpm run test
+      run: pnpm test
       env:
         NODE_ENV: test
     
