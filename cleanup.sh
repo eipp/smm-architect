@@ -3,8 +3,26 @@
 # SMM Architect Enterprise Project Cleanup Script
 # Tailored for: Turborepo + pnpm + Encore.ts + Next.js + Storybook + Playwright + Artillery
 # Optimized for monorepo architecture with microservices
+#
+# Options:
+#   --dry-run   Print cleanup actions without executing them
+#
+# The script will prompt for confirmation before removing any files or directories.
 
 set -euo pipefail
+
+DRY_RUN=false
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --dry-run)
+            DRY_RUN=true
+            shift
+            ;;
+        *)
+            break
+            ;;
+    esac
+done
 
 # Colors and styling
 RED='\033[0;31m'
@@ -90,29 +108,44 @@ get_size() {
     fi
 }
 
+confirm_action() {
+    local prompt="$1"
+    read -r -p "$prompt [y/N] " response
+    [[ "$response" =~ ^[Yy]$ ]]
+}
+
 # Enhanced safe removal with size tracking
 safe_remove() {
     local path="$1"
     local description="$2"
     local category="${3:-general}"
-    
+
     if [ -e "$path" ]; then
         local size=$(get_size "$path")
         log_action "CLEAN" "Removing $description ($size): $path"
-        
+
+        if [ "$DRY_RUN" = true ]; then
+            log_action "INFO" "(dry-run) Would remove $description at $path"
+            return
+        fi
+
         # Backup critical files before removal (if needed)
         if [[ "$category" == "critical" ]]; then
             log_action "WARN" "Creating backup before removing critical path: $path"
             local backup_path="${path}.backup.$(date +%s)"
             cp -r "$path" "$backup_path" 2>/dev/null || true
         fi
-        
-        rm -rf "$path" 2>/dev/null && {
-            log_action "SUCCESS" "Removed $description"
-            TOTAL_CLEANED=$((TOTAL_CLEANED + 1))
-        } || {
-            log_action "ERROR" "Failed to remove $description"
-        }
+
+        if confirm_action "Remove $path?"; then
+            rm -rf "$path" 2>/dev/null && {
+                log_action "SUCCESS" "Removed $description"
+                TOTAL_CLEANED=$((TOTAL_CLEANED + 1))
+            } || {
+                log_action "ERROR" "Failed to remove $description"
+            }
+        else
+            log_action "INFO" "Skipped $description"
+        fi
     else
         log_action "INFO" "Not found: $description ($path)"
     fi
@@ -178,10 +211,13 @@ clean_storybook_artifacts() {
 clean_playwright_artifacts() {
     local dir="$1"
     local name="$2"
-    
+
     safe_remove "$dir/playwright-report" "Playwright test reports ($name)"
     safe_remove "$dir/test-results" "Playwright test results ($name)"
-    find "$dir" -name "playwright-report-*" -type d -exec rm -rf {} + 2>/dev/null || true
+    find "$dir" -name "playwright-report-*" -type d -print0 2>/dev/null | \
+        while IFS= read -r -d '' path; do
+            safe_remove "$path" "Playwright report ($name)"
+        done
 }
 
 # Artillery performance testing cleanup
@@ -308,7 +344,10 @@ clean_enterprise_artifacts() {
     
     # Test artifacts cleanup
     safe_remove "$dir/tests/tmp" "Test temporary files ($name)"
-    find "$dir" -path "*/tmp/coverage-*" -type d -exec rm -rf {} + 2>/dev/null || true
+    find "$dir" -path "*/tmp/coverage-*" -type d -print0 2>/dev/null | \
+        while IFS= read -r -d '' path; do
+            safe_remove "$path" "Coverage temp directory ($name)"
+        done
     
     # Runtime process artifacts
     for runtime_pattern in "${SMM_RUNTIME_FILES[@]}"; do
