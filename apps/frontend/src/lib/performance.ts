@@ -133,14 +133,15 @@ export function useLazyImage(src: string, placeholder?: string) {
 
 // Debounced search hook
 export function useDebouncedSearch(
-  searchFunction: (query: string) => Promise<any[]>,
+  searchFunction: (query: string, signal?: AbortSignal) => Promise<any[]>,
   delay: number = 300
 ) {
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<any[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<Error | null>(null)
-  
+  const abortControllerRef = useRef<AbortController | null>(null)
+
   const debouncedSearch = useMemo(
     () => debounce(async (searchQuery: string) => {
       if (!searchQuery.trim()) {
@@ -148,25 +149,38 @@ export function useDebouncedSearch(
         setIsLoading(false)
         return
       }
-      
+
       setIsLoading(true)
       setError(null)
-      
+
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort()
+      }
+
+      const controller = new AbortController()
+      abortControllerRef.current = controller
+
       try {
-        const searchResults = await searchFunction(searchQuery)
+        const searchResults = await searchFunction(searchQuery, controller.signal)
         setResults(searchResults)
       } catch (err) {
-        setError(err as Error)
-        setResults([])
+        if ((err as any)?.name !== 'AbortError') {
+          setError(err as Error)
+          setResults([])
+        }
       } finally {
         setIsLoading(false)
       }
     }, delay),
     [searchFunction, delay]
   )
-  
+
   useEffect(() => {
     debouncedSearch(query)
+
+    return () => {
+      abortControllerRef.current?.abort()
+    }
   }, [query, debouncedSearch])
   
   return {
