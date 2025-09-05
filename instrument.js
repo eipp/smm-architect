@@ -19,7 +19,7 @@ if (nodeProfilingIntegration) {
 }
 
 Sentry.init({
-  dsn: "https://02a82d6e1d09e631f5ef7083e197c841@o4509899378786304.ingest.de.sentry.io/4509899558879312",
+  dsn: "YOUR_SENTRY_DSN",
   integrations: integrations,
   // Tracing
   tracesSampleRate: process.env.NODE_ENV === 'production' ? 0.1 : 1.0,
