@@ -277,16 +277,25 @@ if (typeof setInterval !== 'undefined') {
  * Generate cryptographic session ID
  */
 export const generateSessionId = (): string => {
-  if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+  const globalCrypto = globalThis.crypto as (Crypto & { randomUUID?: () => string }) | undefined
+
+  if (globalCrypto?.randomUUID) {
+    return globalCrypto.randomUUID().replace(/-/g, '')
+  }
+
+  if (globalCrypto?.getRandomValues) {
     const array = new Uint8Array(32)
-    crypto.getRandomValues(array)
+    globalCrypto.getRandomValues(array)
     return Array.from(array, byte => byte.toString(16).padStart(2, '0')).join('')
   }
-  
-  // Fallback for environments without crypto
-  return Math.random().toString(36).substring(2) + 
-         Math.random().toString(36).substring(2) +
-         Date.now().toString(36)
+
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const nodeCrypto = require('crypto') as { randomUUID?: () => string; randomBytes: (size: number) => Buffer }
+    return nodeCrypto.randomUUID ? nodeCrypto.randomUUID().replace(/-/g, '') : nodeCrypto.randomBytes(32).toString('hex')
+  } catch {
+    throw new Error('Secure random number generation is not supported in this environment')
+  }
 }
 
 /**

@@ -221,7 +221,16 @@ class FrontendMetrics implements MetricsCollector {
   private generateSessionId(): string {
     let sessionId = sessionStorage.getItem('session_id')
     if (!sessionId) {
-      sessionId = `session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+      const cryptoObj = globalThis.crypto as Crypto | undefined
+      if (cryptoObj?.randomUUID) {
+        sessionId = `session-${cryptoObj.randomUUID()}`
+      } else if (cryptoObj?.getRandomValues) {
+        const array = new Uint8Array(16)
+        cryptoObj.getRandomValues(array)
+        sessionId = `session-${Array.from(array, byte => byte.toString(16).padStart(2, '0')).join('')}`
+      } else {
+        throw new Error('Secure random number generation is not supported')
+      }
       sessionStorage.setItem('session_id', sessionId)
     }
     return sessionId
