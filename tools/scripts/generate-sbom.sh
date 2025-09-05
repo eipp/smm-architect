@@ -6,7 +6,7 @@ set -euo pipefail
 # Uses Syft for SBOM generation and CycloneDX format for industry compatibility
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 SBOM_OUTPUT_DIR="${PROJECT_ROOT}/sbom"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 
@@ -69,6 +69,49 @@ setup_output_directory() {
     log_success "SBOM directory structure created at ${SBOM_OUTPUT_DIR}"
 }
 
+# Fetch license information from npm registry
+fetch_license_info() {
+    local pkg="$1"
+    local version="$2"
+    npm view "${pkg}@${version}" license 2>/dev/null || echo "UNKNOWN"
+}
+
+# Populate missing license fields in a SBOM file
+populate_license_info() {
+    local sbom_file="$1"
+    local temp_file=$(mktemp)
+    cp "$sbom_file" "$temp_file"
+
+    jq -c '.components[] | {name: .name, version: .version, purl: .purl, licenses: .licenses}' "$temp_file" | while read -r component; do
+        local name=$(echo "$component" | jq -r '.name')
+        local version=$(echo "$component" | jq -r '.version')
+        local purl=$(echo "$component" | jq -r '.purl')
+        local license_count=$(echo "$component" | jq '.licenses | length')
+
+        if [[ "$license_count" -eq 0 ]] && [[ "$purl" == pkg:npm* ]]; then
+            local license=$(fetch_license_info "$name" "$version")
+            if [[ -n "$license" ]]; then
+                jq --arg name "$name" --arg version "$version" --arg license "$license" \
+                   '(.components[] | select(.name==$name and .version==$version) | .licenses) = [{"license": {"name": $license}}]' \
+                   "$temp_file" > "${temp_file}.tmp" && mv "${temp_file}.tmp" "$temp_file"
+            fi
+        fi
+    done
+
+    mv "$temp_file" "$sbom_file"
+}
+
+# Verify that all components have license information
+verify_license_compliance() {
+    local sbom_file="$1"
+    local missing=$(jq '[.components[] | select(.licenses == null or .licenses == [] or .licenses[]?.license.name == null or .licenses[]?.license.name == "" or .licenses[]?.license.name == "UNKNOWN")] | length' "$sbom_file")
+    if [[ "$missing" -gt 0 ]]; then
+        log_error "Found ${missing} components without license information"
+        return 1
+    fi
+    log_success "All components contain license information"
+}
+
 # Generate SBOM for a specific service
 generate_service_sbom() {
     local service_name="$1"
@@ -93,15 +136,19 @@ generate_service_sbom() {
     jq --arg timestamp "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
        --arg version "$(git rev-parse HEAD 2>/dev/null || echo 'unknown')" \
        --arg service "$service_name" \
-       '.metadata.timestamp = $timestamp | 
+       '.metadata.timestamp = $timestamp |
         .metadata.component.version = $version |
         .metadata.component.name = $service |
         .metadata.supplier.name = "SMM Architect" |
         .metadata.supplier.url = ["https://smm-architect.com"]' \
        "$output_file" > "$temp_file"
-    
+
     mv "$temp_file" "$output_file"
-    
+
+    # Ensure license information is present
+    populate_license_info "$output_file"
+    verify_license_compliance "$output_file"
+
     # Generate vulnerability report for this service
     generate_vulnerability_report "$service_name" "$output_file"
     
@@ -263,7 +310,11 @@ EOF
             component_count=$((component_count + $(echo "$infra_components" | jq 'length')))
         fi
     done
-    
+
+    # Populate and verify license information
+    populate_license_info "$combined_file"
+    verify_license_compliance "$combined_file"
+
     # Generate summary report
     cat > "$summary_file" << EOF
 {

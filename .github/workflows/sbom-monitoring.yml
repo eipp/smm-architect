@@ -89,10 +89,16 @@ jobs:
 
     - name: Run comprehensive SBOM generation
       run: |
-        chmod +x scripts/generate-sbom.sh
-        ./scripts/generate-sbom.sh
+        chmod +x tools/scripts/generate-sbom.sh
+        ./tools/scripts/generate-sbom.sh
       env:
         SBOM_STORAGE_BUCKET: ${{ secrets.SBOM_STORAGE_BUCKET }}
+
+    - name: Verify SBOM license data
+      run: |
+        missing=$(jq '[.components[] | select(.licenses == null or .licenses == [] or .licenses[]?.license.name == null or .licenses[]?.license.name == "" or .licenses[]?.license.name == "UNKNOWN")] | length' sbom/combined/smm-architect-complete-sbom.json)
+        if [ "$missing" -gt 0 ]; then
+          echo "Missing license information for $missing components"; exit 1; fi
 
     - name: Vulnerability scanning with Grype
       run: |
