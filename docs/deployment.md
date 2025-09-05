@@ -100,6 +100,7 @@ PINECONE_API_KEY=your-pinecone-key
 
 # Monitoring
 SENTRY_DSN=your-sentry-dsn
+NEXT_PUBLIC_SENTRY_DSN=your-sentry-dsn
 PROMETHEUS_URL=http://localhost:9090
 
 # n8n Configuration

@@ -13,8 +13,10 @@ const log = {
 };
 
 // Sentry configuration
+const dsn = process.env.SENTRY_DSN;
+
 const sentryConfig = {
-  dsn: process.env.SENTRY_DSN || "https://02a82d6e1d09e631f5ef7083e197c841@o4509899378786304.ingest.de.sentry.io/4509899558879312",
+  dsn,
   environment: process.env.NODE_ENV || "development",
   release: process.env.npm_package_version,
   tracesSampleRate: process.env.NODE_ENV === "production" ? 0.1 : 1.0,
@@ -34,8 +36,12 @@ const serviceContext = {
 
 // Initialize Sentry
 try {
-  initializeSentry(sentryConfig, serviceContext);
-  log.info("Sentry initialized for smm-architect service");
+  if (!dsn) {
+    log.warn("Sentry DSN not provided. Skipping Sentry initialization.");
+  } else {
+    initializeSentry(sentryConfig, serviceContext);
+    log.info("Sentry initialized for smm-architect service");
+  }
 } catch (error) {
   log.error("Failed to initialize Sentry", { error: error instanceof Error ? error.message : String(error) });
 }

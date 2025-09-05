@@ -18,7 +18,8 @@ SMM Architect uses Sentry across multiple components:
 
 All services use the following environment variables:
 
-- `SENTRY_DSN` - The Data Source Name for your Sentry project
+- `SENTRY_DSN` - The Data Source Name for your Sentry project. If unset, services log a warning and skip Sentry initialization.
+- `NEXT_PUBLIC_SENTRY_DSN` - Browser DSN for the frontend application. If unset, client monitoring is disabled.
 - `SENTRY_ORG` - Your Sentry organization name (for source map uploads)
 - `SENTRY_PROJECT` - Your Sentry project name (for source map uploads)
 - `SENTRY_AUTH_TOKEN` - Authentication token for source map uploads

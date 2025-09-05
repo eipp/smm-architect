@@ -10,8 +10,10 @@ function initializeSentry(config: any) {
 import winston from 'winston';
 
 // Sentry configuration
+const dsn = process.env.SENTRY_DSN;
+
 const sentryConfig = {
-  dsn: process.env.SENTRY_DSN || "",
+  dsn,
   environment: process.env.NODE_ENV || "development",
   release: process.env.npm_package_version,
   tracesSampleRate: process.env.NODE_ENV === "production" ? 0.1 : 1.0,
@@ -29,7 +31,11 @@ const serviceContext = {
 
 // Initialize Sentry
 try {
-  initializeSentry(sentryConfig);
+  if (!dsn) {
+    console.warn("Sentry DSN not provided. Skipping Sentry initialization.");
+  } else {
+    initializeSentry(sentryConfig);
+  }
 } catch (error) {
   // Log to console if Sentry fails to initialize
   const errorMessage = error instanceof Error ? error.message : String(error);

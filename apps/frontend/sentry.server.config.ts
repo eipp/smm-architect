@@ -1,7 +1,15 @@
 import * as Sentry from "@sentry/nextjs";
 
+const dsn = process.env.SENTRY_DSN;
+
+if (!dsn) {
+  // eslint-disable-next-line no-console
+  console.warn("Sentry DSN not provided. Server-side monitoring disabled.");
+}
+
 Sentry.init({
-  dsn: process.env.SENTRY_DSN || "https://02a82d6e1d09e631f5ef7083e197c841@o4509899378786304.ingest.de.sentry.io/4509899558879312",
+  dsn,
+  enabled: !!dsn,
   
   // Adjust this value in production, or use tracesSampler for greater control
   tracesSampleRate: process.env.NODE_ENV === 'production' ? 0.1 : 1.0,
