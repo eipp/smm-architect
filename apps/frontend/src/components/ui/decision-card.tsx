@@ -5,16 +5,14 @@ import { cn } from "@/lib/cn"
 import { Button } from "./button"
 import { Badge } from "./badge"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "./card"
-import { 
-  Clock, 
-  DollarSign, 
-  AlertTriangle, 
-  CheckCircle, 
+import {
+  Clock,
+  AlertTriangle,
+  CheckCircle,
   ExternalLink,
   ChevronDown,
   ChevronUp,
-  Shield,
-  Info
+  Shield
 } from "lucide-react"
 
 export interface ProvenanceLink {
@@ -74,8 +72,6 @@ const DecisionCard: React.FC<DecisionCardProps> = ({
 }) => {
   const [showDetails, setShowDetails] = React.useState(false)
   const [showSources, setShowSources] = React.useState(false)
-  const [feedback, setFeedback] = React.useState("")
-  const [showFeedback, setShowFeedback] = React.useState(false)
 
   // Calculate time until expiry
   const timeToExpiry = React.useMemo(() => {
@@ -85,8 +81,8 @@ const DecisionCard: React.FC<DecisionCardProps> = ({
     if (diffMs <= 0) return "Expired"
     
     const hours = Math.floor(diffMs / (1000 * 60 * 60))
-    if (hours < 24) return `${hours}h left`
-    
+    if (hours < 72) return `${hours}h left`
+
     const days = Math.floor(hours / 24)
     return `${days}d left`
   }, [expiresAt])
@@ -116,16 +112,8 @@ const DecisionCard: React.FC<DecisionCardProps> = ({
     }).format(amount)
   }
 
-  const handleRequestChanges = () => {
-    if (onRequestChanges && feedback.trim()) {
-      onRequestChanges(feedback)
-      setFeedback("")
-      setShowFeedback(false)
-    }
-  }
-
   return (
-    <Card className={cn("decision-card relative", isExpired && "opacity-75", className)}>
+    <Card role="article" className={cn("decision-card relative", isExpired && "opacity-75", className)}>
       {isExpired && (
         <div className="absolute top-2 right-2 z-10">
           <Badge variant="destructive">Expired</Badge>
@@ -226,10 +214,10 @@ const DecisionCard: React.FC<DecisionCardProps> = ({
                 onClick={() => setShowSources(!showSources)}
                 className="w-full justify-between"
               >
-                Show Sources ({provenance.length})
+                {showSources ? "Hide Sources" : "Show Sources"}
                 {showSources ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
               </Button>
-              
+
               {showSources && (
                 <div className="mt-2 space-y-2">
                   {provenance.map((source, index) => (
@@ -292,14 +280,14 @@ const DecisionCard: React.FC<DecisionCardProps> = ({
           {onRequestChanges && (
             <Button
               variant="outline"
-              onClick={() => setShowFeedback(!showFeedback)}
+              onClick={() => onRequestChanges?.("")}
               disabled={loading || isExpired}
               size="sm"
             >
               Request Changes
             </Button>
           )}
-          
+
           {onEscalate && (
             <Button
               variant="ghost"
@@ -312,35 +300,6 @@ const DecisionCard: React.FC<DecisionCardProps> = ({
             </Button>
           )}
         </div>
-
-        {/* Feedback Input */}
-        {showFeedback && (
-          <div className="space-y-2 pt-2 border-t">
-            <textarea
-              value={feedback}
-              onChange={(e) => setFeedback(e.target.value)}
-              placeholder="Describe the changes needed..."
-              className="w-full p-2 border rounded text-sm resize-none"
-              rows={3}
-            />
-            <div className="flex space-x-2">
-              <Button
-                size="sm"
-                onClick={handleRequestChanges}
-                disabled={!feedback.trim()}
-              >
-                Submit Feedback
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setShowFeedback(false)}
-              >
-                Cancel
-              </Button>
-            </div>
-          </div>
-        )}
       </CardContent>
     </Card>
   )
