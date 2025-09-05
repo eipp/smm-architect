@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import crypto from 'crypto';
 import Redis from 'ioredis';
 import winston from 'winston';
+import { readFileSync } from 'fs';
 
 // Type definition for VaultClient (unused but kept for compatibility)
 interface VaultClient {
@@ -20,6 +21,20 @@ const logger = winston.createLogger({
     new winston.transports.Console()
   ]
 });
+
+function getRedisPassword(): string | undefined {
+  if (process.env.REDIS_PASSWORD) {
+    return process.env.REDIS_PASSWORD;
+  }
+  if (process.env.REDIS_PASSWORD_FILE) {
+    try {
+      return readFileSync(process.env.REDIS_PASSWORD_FILE, 'utf8').trim();
+    } catch (error) {
+      logger.error('Failed to read Redis password file', error);
+    }
+  }
+  return undefined;
+}
 
 export interface WebhookVerificationConfig {
   secretPath: string; // Vault path for webhook secret (e.g., 'secret/data/tenants/{tenantId}/webhooks/{connectorId}')
@@ -72,10 +87,11 @@ export class WebhookVerifier {
       connectorIdExtractor: config.connectorIdExtractor || this.defaultConnectorExtractor
     };
 
+    const redisPassword = getRedisPassword();
     this.redisClient = redisClient || new Redis({
       host: process.env.REDIS_HOST || 'localhost',
       port: parseInt(process.env.REDIS_PORT || '6379'),
-      password: process.env.REDIS_PASSWORD,
+      password: redisPassword,
       db: parseInt(process.env.REDIS_DB || '0'),
       maxRetriesPerRequest: 3
     });

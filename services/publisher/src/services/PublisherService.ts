@@ -1,10 +1,11 @@
 import { v4 as uuidv4 } from 'uuid';
 import Queue from 'bull';
 import axios from 'axios';
-import { 
-  PublishRequest, 
-  PublishResult, 
-  ScheduledPost, 
+import { readFileSync } from 'fs';
+import {
+  PublishRequest,
+  PublishResult,
+  ScheduledPost,
   PublishJob,
   Platform,
   OAuthConnection,
@@ -14,17 +15,32 @@ import {
   ContentOptimization
 } from '../types';
 
+function getRedisPassword(): string | undefined {
+  if (process.env.REDIS_PASSWORD) {
+    return process.env.REDIS_PASSWORD;
+  }
+  if (process.env.REDIS_PASSWORD_FILE) {
+    try {
+      return readFileSync(process.env.REDIS_PASSWORD_FILE, 'utf8').trim();
+    } catch (error) {
+      console.error('Failed to read Redis password file', error);
+    }
+  }
+  return undefined;
+}
+
 export class PublisherService {
   private publishQueue: Queue.Queue;
   private platforms: Map<string, Platform> = new Map();
 
   constructor() {
     // Initialize Bull queue for job processing
+    const redisPassword = getRedisPassword();
     this.publishQueue = new Queue('publish queue', {
       redis: {
         host: process.env.REDIS_HOST || 'localhost',
         port: parseInt(process.env.REDIS_PORT || '6379'),
-        password: process.env.REDIS_PASSWORD,
+        password: redisPassword,
       },
       defaultJobOptions: {
         removeOnComplete: 100,

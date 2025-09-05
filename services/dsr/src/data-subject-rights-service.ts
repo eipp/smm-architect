@@ -22,6 +22,7 @@ import winston from 'winston';
 import crypto from 'crypto';
 import { pipeline } from 'stream/promises';
 import { Readable } from 'stream';
+import { readFileSync } from 'fs';
 
 const logger = winston.createLogger({
   level: process.env.LOG_LEVEL || 'info',
@@ -34,6 +35,20 @@ const logger = winston.createLogger({
     new winston.transports.File({ filename: 'dsr-operations.log' })
   ]
 });
+
+function getRedisPassword(): string | undefined {
+  if (process.env.REDIS_PASSWORD) {
+    return process.env.REDIS_PASSWORD;
+  }
+  if (process.env.REDIS_PASSWORD_FILE) {
+    try {
+      return readFileSync(process.env.REDIS_PASSWORD_FILE, 'utf8').trim();
+    } catch (error) {
+      logger.error('Failed to read Redis password file', error);
+    }
+  }
+  return undefined;
+}
 
 export interface DSRRequest {
   requestId: string;
@@ -134,10 +149,11 @@ export class DataSubjectRightsService {
     // Initialize production clients
     this.pineconeClient = subsystemClients?.pinecone || createPineconeClient();
     this.s3Client = subsystemClients?.s3 || createS3Client();
+    const redisPassword = getRedisPassword();
     this.redisClient = subsystemClients?.redis || new Redis({
       host: process.env.REDIS_HOST || 'localhost',
       port: parseInt(process.env.REDIS_PORT || '6379'),
-      password: process.env.REDIS_PASSWORD,
+      password: redisPassword,
       db: parseInt(process.env.REDIS_DB || '0')
     });
   }
