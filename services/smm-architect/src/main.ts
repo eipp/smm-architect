@@ -100,14 +100,19 @@ export const createWorkspace = api(
         status: "created"
       };
 
-    } catch (error) {
-      log.error("Failed to create workspace", { error: error instanceof Error ? error.message : String(error) });
-      captureException(error, { 
-        endpoint: "createWorkspace",
-        tenantId: req.contract.tenantId 
-      });
-      throw new Error(`Failed to create workspace: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
+      } catch (error) {
+        log.error("Failed to create workspace", {
+          tenantId: req.contract.tenantId,
+          error: error instanceof Error
+            ? { message: error.message, stack: error.stack }
+            : String(error)
+        });
+        captureException(error, {
+          endpoint: "createWorkspace",
+          tenantId: req.contract.tenantId
+        });
+        throw new Error("Failed to create workspace");
+      }
   }
 );
 
@@ -134,17 +139,19 @@ export const getWorkspaceStatus = api(
         metrics
       };
 
-    } catch (error) {
-      log.error("Failed to get workspace status", { 
-        workspaceId: id, 
-        error: error instanceof Error ? error.message : String(error) 
-      });
-      captureException(error, { 
-        endpoint: "getWorkspaceStatus",
-        workspaceId: id 
-      });
-      throw new Error(`Failed to get workspace status: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
+      } catch (error) {
+        log.error("Failed to get workspace status", {
+          workspaceId: id,
+          error: error instanceof Error
+            ? { message: error.message, stack: error.stack }
+            : String(error)
+        });
+        captureException(error, {
+          endpoint: "getWorkspaceStatus",
+          workspaceId: id
+        });
+        throw new Error("Failed to get workspace status");
+      }
   }
 );
 
@@ -180,18 +187,20 @@ export const approvePromotion = api(
 
       return result;
 
-    } catch (error) {
-      log.error("Failed to process approval", { 
-        workspaceId: id, 
-        error: error instanceof Error ? error.message : String(error) 
-      });
-      captureException(error, { 
-        endpoint: "approvePromotion",
-        workspaceId: id,
-        action: req.action
-      });
-      throw new Error(`Failed to process approval: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
+      } catch (error) {
+        log.error("Failed to process approval", {
+          workspaceId: id,
+          error: error instanceof Error
+            ? { message: error.message, stack: error.stack }
+            : String(error)
+        });
+        captureException(error, {
+          endpoint: "approvePromotion",
+          workspaceId: id,
+          action: req.action
+        });
+        throw new Error("Failed to process approval");
+      }
   }
 );
 
@@ -220,17 +229,19 @@ export const simulateCampaign = api(
 
       return simulationResult;
 
-    } catch (error) {
-      log.error("Failed to run simulation", { 
-        workspaceId: id, 
-        error: error instanceof Error ? error.message : String(error) 
-      });
-      captureException(error, { 
-        endpoint: "simulateCampaign",
-        workspaceId: id
-      });
-      throw new Error(`Failed to run simulation: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
+      } catch (error) {
+        log.error("Failed to run simulation", {
+          workspaceId: id,
+          error: error instanceof Error
+            ? { message: error.message, stack: error.stack }
+            : String(error)
+        });
+        captureException(error, {
+          endpoint: "simulateCampaign",
+          workspaceId: id
+        });
+        throw new Error("Failed to run simulation");
+      }
   }
 );
 
@@ -257,17 +268,19 @@ export const getAuditBundle = api(
 
       return auditBundle;
 
-    } catch (error) {
-      log.error("Failed to retrieve audit bundle", { 
-        workspaceId: id, 
-        error: error instanceof Error ? error.message : String(error) 
-      });
-      captureException(error, { 
-        endpoint: "getAuditBundle",
-        workspaceId: id
-      });
-      throw new Error(`Failed to retrieve audit bundle: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
+      } catch (error) {
+        log.error("Failed to retrieve audit bundle", {
+          workspaceId: id,
+          error: error instanceof Error
+            ? { message: error.message, stack: error.stack }
+            : String(error)
+        });
+        captureException(error, {
+          endpoint: "getAuditBundle",
+          workspaceId: id
+        });
+        throw new Error("Failed to retrieve audit bundle");
+      }
   }
 );
 
@@ -297,17 +310,19 @@ export const listWorkspaces = api(
 
       return { workspaces };
 
-    } catch (error) {
-      log.error("Failed to list workspaces", { 
-        tenantId, 
-        error: error instanceof Error ? error.message : String(error) 
-      });
-      captureException(error, { 
-        endpoint: "listWorkspaces",
-        tenantId: tenantId
-      });
-      throw new Error(`Failed to list workspaces: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
+      } catch (error) {
+        log.error("Failed to list workspaces", {
+          tenantId,
+          error: error instanceof Error
+            ? { message: error.message, stack: error.stack }
+            : String(error)
+        });
+        captureException(error, {
+          endpoint: "listWorkspaces",
+          tenantId: tenantId
+        });
+        throw new Error("Failed to list workspaces");
+      }
   }
 );
 
@@ -326,17 +341,19 @@ export const updateWorkspace = api(
 
       return { updated: result };
 
-    } catch (error) {
-      log.error("Failed to update workspace", { 
-        workspaceId: id, 
-        error: error instanceof Error ? error.message : String(error) 
-      });
-      captureException(error, { 
-        endpoint: "updateWorkspace",
-        workspaceId: id
-      });
-      throw new Error(`Failed to update workspace: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
+      } catch (error) {
+        log.error("Failed to update workspace", {
+          workspaceId: id,
+          error: error instanceof Error
+            ? { message: error.message, stack: error.stack }
+            : String(error)
+        });
+        captureException(error, {
+          endpoint: "updateWorkspace",
+          workspaceId: id
+        });
+        throw new Error("Failed to update workspace");
+      }
   }
 );
 
@@ -355,16 +372,18 @@ export const deleteWorkspace = api(
 
       return { deleted: result };
 
-    } catch (error) {
-      log.error("Failed to decommission workspace", { 
-        workspaceId: id, 
-        error: error instanceof Error ? error.message : String(error) 
-      });
-      captureException(error, { 
-        endpoint: "deleteWorkspace",
-        workspaceId: id
-      });
-      throw new Error(`Failed to decommission workspace: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
+      } catch (error) {
+        log.error("Failed to decommission workspace", {
+          workspaceId: id,
+          error: error instanceof Error
+            ? { message: error.message, stack: error.stack }
+            : String(error)
+        });
+        captureException(error, {
+          endpoint: "deleteWorkspace",
+          workspaceId: id
+        });
+        throw new Error("Failed to decommission workspace");
+      }
   }
 );
