@@ -305,6 +305,9 @@ importers:
       date-fns:
         specifier: ^2.30.0
         version: 2.30.0
+      rotating-file-stream:
+        specifier: ^3.2.7
+        version: 3.2.7
       uuid:
         specifier: ^9.0.0
         version: 9.0.1
@@ -22550,6 +22553,11 @@ packages:
       '@rollup/rollup-win32-x64-msvc': 4.49.0
       fsevents: 2.3.3
     dev: true
+
+  /rotating-file-stream@3.2.7:
+    resolution: {integrity: sha512-SVquhBEVvRFY+nWLUc791Y0MIlyZrEClRZwZFLLRgJKldHyV1z4e2e/dp9LPqCS3AM//uq/c3PnOFgjqnm5P+A==}
+    engines: {node: '>=14.0'}
+    dev: false
 
   /router@2.2.0:
     resolution: {integrity: sha512-nLTrUKm2UyiL7rlhapu/Zl45FwNgkZGaCpZbIHajDYgwlJCOzLSk+cIPAnsEqV955GjILJnKbdQC1nVPz+gAYQ==}

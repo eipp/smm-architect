@@ -110,6 +110,20 @@ N8N_BASIC_AUTH_USER=admin
 N8N_BASIC_AUTH_PASSWORD=admin
 ```
 
+### Log Management
+
+Application logs are written to rotating files and retained for analysis or shipping to a centralized log service.
+
+```
+# Log directory and rotation settings
+LOG_DIRECTORY=./logs
+LOG_ROTATION_SIZE=10M       # rotate when file exceeds 10MB
+LOG_ROTATION_INTERVAL=1d    # rotate daily
+LOG_ROTATION_MAX_FILES=14   # keep 14 archived logs
+```
+
+By default logs are stored under `./logs`. Tools like Fluentd can tail this directory to forward logs to Elasticsearch or any other central service.
+
 ## Kubernetes Deployment
 
 ### Prerequisites Setup
