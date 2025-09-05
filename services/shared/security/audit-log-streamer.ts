@@ -8,6 +8,7 @@
 
 import { EventEmitter } from 'events';
 import crypto from 'crypto';
+import { Logging } from '@google-cloud/logging';
 import { logger } from '../utils/logger';
 
 export interface AuditEvent {
@@ -375,9 +376,45 @@ class AuditLogStreamer extends EventEmitter {
    * Send events to GCP Cloud Logging
    */
   private async sendToGCPLogging(events: AuditEvent[], destination: SIEMDestination): Promise<void> {
-    // This would require Google Cloud SDK integration
-    // For now, log that it's not implemented
-    logger.warn('GCP Logging integration not yet implemented');
+    const { project, logName, keyFilename, credentials } = destination.config;
+    const logging = new Logging({ projectId: project, keyFilename, credentials });
+    const log = logging.log(logName);
+
+    const entries = events.map(event =>
+      log.entry({ resource: { type: 'global' } }, event)
+    );
+
+    const retryableCodes = [429, 500, 502, 503, 504];
+
+    for (let attempt = 0; attempt <= this.config.retry_attempts; attempt++) {
+      try {
+        await log.write(entries);
+        logger.debug(`Sent ${events.length} events to GCP Logging: ${destination.name}`);
+        return;
+      } catch (error: any) {
+        const status = error?.code || error?.statusCode;
+
+        if (status === 401 || status === 403) {
+          logger.error('GCP Logging authentication failed', {
+            destination: destination.name,
+            error: error.message
+          });
+          throw error;
+        }
+
+        if (attempt < this.config.retry_attempts && retryableCodes.includes(status)) {
+          logger.warn('Retryable error sending to GCP Logging', {
+            attempt: attempt + 1,
+            destination: destination.name,
+            error: error.message
+          });
+          await new Promise(resolve => setTimeout(resolve, this.config.retry_delay_ms * (attempt + 1)));
+          continue;
+        }
+
+        throw error;
+      }
+    }
   }
 
   /**

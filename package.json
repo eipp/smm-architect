@@ -59,6 +59,7 @@
   },
   "dependencies": {
     "@genkit-ai/mcp": "^1.17.1",
+    "@google-cloud/logging": "^11.2.0",
     "@sentry/node": "^7.99.0",
     "@types/js-yaml": "^4.0.9",
     "artillery": "^2.0.4",

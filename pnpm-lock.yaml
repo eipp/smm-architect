@@ -16,6 +16,9 @@ importers:
       '@genkit-ai/mcp':
         specifier: ^1.17.1
         version: 1.17.1(@modelcontextprotocol/sdk@1.17.4)(genkit@1.17.1)
+      '@google-cloud/logging':
+        specifier: ^11.2.0
+        version: 11.2.0
       '@sentry/node':
         specifier: ^7.99.0
         version: 7.120.4
