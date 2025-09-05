@@ -93,19 +93,7 @@ const nextConfig: NextConfig = {
   
   // SWC minification
   swcMinify: true,
-  
-  // Temporarily disable strict linting to get build working
-  eslint: {
-    // Warning: This allows production builds to successfully complete even if
-    // your project has ESLint errors.
-    ignoreDuringBuilds: true,
-  },
-  typescript: {
-    // Warning: This allows production builds to successfully complete even if
-    // your project has TypeScript errors.
-    ignoreBuildErrors: true,
-  },
-  
+
   // Environment variables
   env: {
     NEXT_PUBLIC_APP_VERSION: process.env.npm_package_version || '1.0.0',
