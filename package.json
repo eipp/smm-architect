@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "description": "QA & Validation framework for SMM Architect",
   "packageManager": "pnpm@8.15.0",
+  "engines": {
+    "node": ">=18.x"
+  },
   "scripts": {
     "build": "turbo build",
     "dev": "turbo dev",
