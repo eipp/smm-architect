@@ -12,12 +12,17 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=4000
-      - DATABASE_URL=${DATABASE_URL}
-      - REDIS_URL=${REDIS_URL}
+      - DATABASE_URL_FILE=/run/secrets/database_url
+      - REDIS_URL_FILE=/run/secrets/redis_url
       - VAULT_URL=${VAULT_URL}
-      - VAULT_TOKEN=${VAULT_TOKEN}
-      - SENTRY_DSN=${SENTRY_DSN}
+      - VAULT_TOKEN_FILE=/run/secrets/vault_token
+      - SENTRY_DSN_FILE=/run/secrets/sentry_dsn
       - SENTRY_ENVIRONMENT=production
+    secrets:
+      - database_url
+      - redis_url
+      - vault_token
+      - sentry_dsn
     volumes:
       - smm_logs:/app/logs
     networks:
@@ -51,18 +56,24 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=3001
-      - DATABASE_URL=${DATABASE_URL}
-      - REDIS_URL=${REDIS_URL}
+      - DATABASE_URL_FILE=/run/secrets/database_url
+      - REDIS_URL_FILE=/run/secrets/redis_url
       - VAULT_URL=${VAULT_URL}
-      - VAULT_TOKEN=${VAULT_TOKEN}
-      - SENTRY_DSN=${SENTRY_DSN}
+      - VAULT_TOKEN_FILE=/run/secrets/vault_token
+      - SENTRY_DSN_FILE=/run/secrets/sentry_dsn
       - SENTRY_ENVIRONMENT=production
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_API_KEY_FILE=/run/secrets/openai_api_key
     volumes:
       - toolhub_logs:/app/logs
     networks:
       - smm-network
     restart: unless-stopped
+    secrets:
+      - database_url
+      - redis_url
+      - vault_token
+      - sentry_dsn
+      - openai_api_key
     deploy:
       replicas: 2
       update_config:
@@ -91,11 +102,13 @@ services:
       - NODE_ENV=production
       - NEXT_PUBLIC_API_URL=${API_URL}
       - NEXT_PUBLIC_TOOLHUB_URL=${TOOLHUB_URL}
-      - SENTRY_DSN=${SENTRY_DSN}
+      - SENTRY_DSN_FILE=/run/secrets/sentry_dsn
       - SENTRY_ENVIRONMENT=production
     networks:
       - smm-network
     restart: unless-stopped
+    secrets:
+      - sentry_dsn
     deploy:
       replicas: 2
       update_config:
@@ -154,8 +167,8 @@ services:
     ports:
       - "3001:3000"
     environment:
-      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD}
-      - GF_SECURITY_SECRET_KEY=${GRAFANA_SECRET_KEY}
+      - GF_SECURITY_ADMIN_PASSWORD_FILE=/run/secrets/grafana_password
+      - GF_SECURITY_SECRET_KEY_FILE=/run/secrets/grafana_secret_key
       - GF_USERS_ALLOW_SIGN_UP=false
     volumes:
       - grafana_data:/var/lib/grafana
@@ -163,6 +176,9 @@ services:
     networks:
       - smm-network
     restart: unless-stopped
+    secrets:
+      - grafana_password
+      - grafana_secret_key
 
 # Volumes
 volumes:
@@ -183,3 +199,19 @@ networks:
     ipam:
       config:
         - subnet: 172.20.0.0/16
+
+secrets:
+  database_url:
+    external: true
+  redis_url:
+    external: true
+  vault_token:
+    external: true
+  sentry_dsn:
+    external: true
+  openai_api_key:
+    external: true
+  grafana_password:
+    external: true
+  grafana_secret_key:
+    external: true
