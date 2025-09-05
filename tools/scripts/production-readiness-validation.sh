@@ -267,6 +267,8 @@ validate_disaster_recovery() {
     
     # Backup validation
     run_check_with_output "Recent database backup exists" "kubectl get jobs -n backup | grep database-backup | tail -1 | awk '{print $3}'"
+
+    run_check_with_output "Recent successful RDS snapshot" "latest=\$(aws rds describe-db-snapshots --db-instance-identifier ${DB_INSTANCE_IDENTIFIER:-smm-architect} --snapshot-type automated --query 'reverse(sort_by(DBSnapshots, &SnapshotCreateTime))[0].SnapshotCreateTime' --output text 2>/dev/null); if [ -z \"$latest\" ]; then exit 1; fi; if [ \$(( \$(date -u +%s) - \$(date -u -d \"$latest\" +%s) )) -lt 86400 ]; then echo \$latest; else exit 1; fi"
     
     # Multi-region setup
     run_check "Multi-AZ deployment" "kubectl get nodes -o jsonpath='{.items[*].metadata.labels.topology\.kubernetes\.io/zone}' | tr ' ' '\n' | sort -u | wc -l | xargs test 2 -le"
