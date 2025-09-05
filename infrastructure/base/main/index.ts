@@ -123,6 +123,115 @@ const publicRtAssoc2 = new aws.ec2.RouteTableAssociation("smm-public-rt-assoc-2"
     routeTableId: publicRouteTable.id,
 });
 
+// Create security group for EKS cluster
+const eksSecurityGroup = new aws.ec2.SecurityGroup("smm-eks-sg", {
+    vpcId: vpc.id,
+    description: "Security group for EKS control plane",
+    egress: [{ protocol: "-1", fromPort: 0, toPort: 0, cidrBlocks: ["0.0.0.0/0"] }],
+    tags: { ...tags, Name: `${workspaceId}-eks-sg` },
+});
+
+// IAM role for EKS cluster
+const eksRole = new aws.iam.Role("smm-eks-cluster-role", {
+    assumeRolePolicy: aws.iam.assumeRolePolicyForPrincipal({ Service: "eks.amazonaws.com" }),
+    tags: { ...tags, Name: `${workspaceId}-eks-cluster-role` },
+});
+
+new aws.iam.RolePolicyAttachment("smm-eks-cluster-policy", {
+    role: eksRole.name,
+    policyArn: "arn:aws:iam::aws:policy/AmazonEKSClusterPolicy",
+});
+
+// EKS Cluster
+const cluster = new aws.eks.Cluster("smm-eks-cluster", {
+    roleArn: eksRole.arn,
+    vpcConfig: {
+        subnetIds: [privateSubnet1.id, privateSubnet2.id],
+        securityGroupIds: [eksSecurityGroup.id],
+    },
+    tags: { ...tags, Name: `${workspaceId}-eks-cluster` },
+});
+
+// IAM role for managed node group
+const nodeGroupRole = new aws.iam.Role("smm-eks-nodegroup-role", {
+    assumeRolePolicy: aws.iam.assumeRolePolicyForPrincipal({ Service: "ec2.amazonaws.com" }),
+    tags: { ...tags, Name: `${workspaceId}-eks-nodegroup-role` },
+});
+
+[
+    "arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy",
+    "arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy",
+    "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly",
+].forEach((policyArn, index) => {
+    new aws.iam.RolePolicyAttachment(`smm-eks-nodegroup-policy-${index}`, {
+        role: nodeGroupRole.name,
+        policyArn,
+    });
+});
+
+// Managed node group with auto-scaling
+const nodeGroup = new aws.eks.NodeGroup("smm-eks-nodegroup", {
+    clusterName: cluster.name,
+    nodeRoleArn: nodeGroupRole.arn,
+    subnetIds: [privateSubnet1.id, privateSubnet2.id],
+    scalingConfig: {
+        desiredSize: tierConfig.desiredCapacity,
+        minSize: tierConfig.minSize,
+        maxSize: tierConfig.maxSize,
+    },
+    instanceTypes: [tierConfig.instanceType],
+    tags: { ...tags, Name: `${workspaceId}-eks-nodegroup` },
+});
+
+// Application Load Balancer for cluster ingress
+const ingressAlb = new aws.lb.LoadBalancer("smm-cluster-ingress", {
+    loadBalancerType: "application",
+    securityGroups: [eksSecurityGroup.id],
+    subnets: [publicSubnet1.id, publicSubnet2.id],
+    tags: { ...tags, Name: `${workspaceId}-ingress` },
+});
+
+// AWS WAF Web ACL
+const webAcl = new aws.waf.WebAcl("smm-waf", {
+    defaultAction: { type: "ALLOW" },
+    metricName: pulumi.interpolate`waf${suffix.hex}`,
+    rules: [],
+    tags: { ...tags, Name: `${workspaceId}-waf` },
+});
+
+// Associate WAF with ingress ALB
+const wafAssociation = new aws.wafregional.WebAclAssociation("smm-waf-association", {
+    resourceArn: ingressAlb.arn,
+    webAclId: webAcl.id,
+});
+
+// Client VPN endpoint
+const vpnEndpoint = new aws.ec2.ClientVpnEndpoint("smm-vpn-endpoint", {
+    description: "Client VPN for secure access",
+    serverCertificateArn: config.require("vpn:serverCertificateArn"),
+    authenticationOptions: [{
+        type: "certificate-authentication",
+        rootCertificateChainArn: config.require("vpn:rootCertificateArn"),
+    }],
+    clientCidrBlock: "10.200.0.0/16",
+    connectionLogOptions: { enabled: false },
+    splitTunnel: true,
+    dnsServers: ["8.8.8.8", "8.8.4.4"],
+    tags: { ...tags, Name: `${workspaceId}-vpn` },
+});
+
+// Attach VPN to VPC
+const vpnAssociation = new aws.ec2.ClientVpnNetworkAssociation("smm-vpn-association", {
+    clientVpnEndpointId: vpnEndpoint.id,
+    subnetId: privateSubnet1.id,
+});
+
+new aws.ec2.ClientVpnAuthorizationRule("smm-vpn-auth", {
+    clientVpnEndpointId: vpnEndpoint.id,
+    targetNetworkCidr: vpc.cidrBlock,
+    authorizeAllGroups: true,
+});
+
 // Create S3 bucket for artifacts and logs
 const bucket = new aws.s3.Bucket("smm-artifacts", {
     bucket: pulumi.interpolate`${workspaceId}-artifacts-${suffix.hex}`,
@@ -268,6 +377,12 @@ export const ecrRepositories = ecrRepos.map(repo => ({
     name: repo.name,
     url: repo.repositoryUrl,
 }));
+export const eksClusterName = cluster.name;
+export const eksClusterEndpoint = cluster.endpoint;
+export const ingressAlbDns = ingressAlb.dnsName;
+export const wafAclId = webAcl.id;
+export const vpnEndpointId = vpnEndpoint.id;
+export const vpnEndpointDns = vpnEndpoint.dnsName;
 
 // Infrastructure Status
 export const infrastructureStatus = {
@@ -282,7 +397,10 @@ export const infrastructureStatus = {
         subnets: "Created (2 public, 2 private)",
         database: "Created (PostgreSQL)",
         storage: "Created (S3)",
-        containerRegistry: "Created (ECR)"
+        containerRegistry: "Created (ECR)",
+        eks: "Created (cluster & node group)",
+        waf: "Created",
+        vpn: "Created"
     }
 };
 
