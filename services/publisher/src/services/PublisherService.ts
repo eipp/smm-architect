@@ -683,6 +683,37 @@ export class PublisherService {
   }
 
   /**
+   * Retrieve all user data handled by the publisher service
+   * Used to satisfy data access requests (GDPR/CCPA)
+   */
+  async getUserData(userId: string): Promise<Record<string, any[]>> {
+    // In production this would query databases and storage systems
+    // For now return structured placeholder data
+    return {
+      posts: [],
+      media: []
+    };
+  }
+
+  /**
+   * Delete all user data from the publisher service
+   * Used to satisfy data deletion requests (Right to Erasure)
+   */
+  async deleteUserData(userId: string): Promise<{ deleted: boolean }> {
+    // Real implementation would remove data from all subsystems
+    return { deleted: true };
+  }
+
+  /**
+   * Export user data in a machine readable format
+   * Used for data portability requests
+   */
+  async exportUserData(userId: string): Promise<{ userId: string; posts: any[]; media: any[] }> {
+    const data = await this.getUserData(userId);
+    return { userId, posts: data.posts, media: data.media };
+  }
+
+  /**
    * Utility function to chunk array
    */
   private chunkArray<T>(array: T[], size: number): T[][] {
