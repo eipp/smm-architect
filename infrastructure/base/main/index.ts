@@ -175,7 +175,52 @@ const db = new aws.rds.Instance("smm-postgres", {
     maintenanceWindow: "sun:04:00-sun:05:00",
     storageEncrypted: true,
     skipFinalSnapshot: environment === "development",
+    copyTagsToSnapshot: true,
     tags,
+});
+
+// Configure automated snapshot schedule (daily at 02:00 UTC)
+const dbSnapshotSchedule = new aws.rds.SnapshotSchedule("smm-db-snapshot-schedule", {
+    definitions: [{
+        schedule: "cron(0 2 * * ? *)",
+        retentionPeriod: 7,
+    }],
+    tags: { ...tags, Name: `${workspaceId}-db-snapshot-schedule` },
+});
+
+new aws.rds.SnapshotScheduleAssociation("smm-db-snapshot-assoc", {
+    dbInstanceIdentifier: db.id,
+    scheduleIdentifier: dbSnapshotSchedule.id,
+});
+
+// IAM role and policy for exporting snapshots to S3
+const snapshotExportRole = new aws.iam.Role("smm-snapshot-export-role", {
+    assumeRolePolicy: aws.iam.assumeRolePolicyForPrincipal({ Service: "rds.amazonaws.com" }),
+    tags: { ...tags, Name: `${workspaceId}-snapshot-export-role` },
+});
+
+new aws.iam.RolePolicy("smm-snapshot-export-policy", {
+    role: snapshotExportRole.id,
+    policy: bucket.arn.apply(arn => JSON.stringify({
+        Version: "2012-10-17",
+        Statement: [{
+            Effect: "Allow",
+            Action: ["s3:PutObject", "s3:AbortMultipartUpload", "s3:ListBucket"],
+            Resource: [arn, `${arn}/*`],
+        }],
+    })),
+});
+
+// Export the most recent snapshot to S3
+const latestSnapshot = db.id.apply(id =>
+    aws.rds.getDbSnapshot({ dbInstanceIdentifier: id, mostRecent: true })
+);
+
+const snapshotExport = new aws.rds.SnapshotExportTask("smm-snapshot-export", {
+    snapshotArn: latestSnapshot.apply(s => s.dbSnapshotArn),
+    s3BucketName: bucket.bucket,
+    iamRoleArn: snapshotExportRole.arn,
+    s3Prefix: "db-snapshots/",
 });
 
 // Create ECR repositories for Docker images

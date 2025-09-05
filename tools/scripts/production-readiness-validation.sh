@@ -11,6 +11,7 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 ENVIRONMENT="${1:-production}"
 VALIDATION_MODE="${2:-full}"
 OUTPUT_DIR="$PROJECT_ROOT/reports"
+DB_INSTANCE_IDENTIFIER="${DB_INSTANCE_IDENTIFIER:-smm-postgres}"
 
 # Color codes
 RED='\033[0;31m'
@@ -267,6 +268,8 @@ validate_disaster_recovery() {
     
     # Backup validation
     run_check_with_output "Recent database backup exists" "kubectl get jobs -n backup | grep database-backup | tail -1 | awk '{print $3}'"
+    run_check_with_output "RDS snapshot within 24h" \
+        "aws rds describe-db-snapshots --db-instance-identifier ${DB_INSTANCE_IDENTIFIER} --snapshot-type automated --query 'DBSnapshots[*].{Time:SnapshotCreateTime,Status:Status}' --output json | jq -re 'max_by(.Time) | select(.Status==\"available\" and (now - (.Time|fromdate) < 86400)) | .Time'"
     
     # Multi-region setup
     run_check "Multi-AZ deployment" "kubectl get nodes -o jsonpath='{.items[*].metadata.labels.topology\.kubernetes\.io/zone}' | tr ' ' '\n' | sort -u | wc -l | xargs test 2 -le"
