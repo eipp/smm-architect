@@ -5,7 +5,7 @@
  * for the production readiness assessment validators.
  */
 
-import { Client } from 'pg';
+import { Pool, PoolClient } from 'pg';
 
 export interface DatabaseTestConfig {
   connectionString?: string;
@@ -17,11 +17,13 @@ export interface DatabaseTestConfig {
   tenantId?: string;
 }
 
+export type ManagedClient = PoolClient & { __pool: Pool };
+
 /**
  * Create a database client for testing
  */
-export async function createTestDatabaseClient(config: DatabaseTestConfig): Promise<Client> {
-  const client = new Client({
+export async function createTestDatabaseClient(config: DatabaseTestConfig): Promise<ManagedClient> {
+  const pool = new Pool({
     connectionString: config.connectionString || process.env['SMM_DATABASE_URL'],
     host: config.host || process.env['DB_HOST'] || 'localhost',
     port: config.port || parseInt(process.env['DB_PORT'] || '5432'),
@@ -30,28 +32,41 @@ export async function createTestDatabaseClient(config: DatabaseTestConfig): Prom
     password: config.password || process.env['DB_PASSWORD']
   });
 
-  await client.connect();
-  return client;
+  const client = await pool.connect();
+  (client as ManagedClient).__pool = pool;
+  return client as ManagedClient;
+}
+
+export async function withTestDatabaseClient<T>(
+  config: DatabaseTestConfig,
+  fn: (client: ManagedClient) => Promise<T>
+): Promise<T> {
+  const client = await createTestDatabaseClient(config);
+  try {
+    return await fn(client);
+  } finally {
+    await closeDatabaseClient(client);
+  }
 }
 
 /**
  * Set tenant context for RLS testing
  */
-export async function setTenantContext(client: Client, tenantId: string): Promise<void> {
+export async function setTenantContext(client: PoolClient, tenantId: string): Promise<void> {
   await client.query('SELECT set_config(\'app.current_tenant_id\', $1, false)', [tenantId]);
 }
 
 /**
  * Clear tenant context
  */
-export async function clearTenantContext(client: Client): Promise<void> {
+export async function clearTenantContext(client: PoolClient): Promise<void> {
   await client.query('SELECT set_config(\'app.current_tenant_id\', \'\', false)');
 }
 
 /**
  * Check if RLS policies are enabled on key tables
  */
-export async function checkRLSPolicies(client: Client): Promise<boolean> {
+export async function checkRLSPolicies(client: PoolClient): Promise<boolean> {
   try {
     const result = await client.query(`
       SELECT schemaname, tablename, rowsecurity 
@@ -60,7 +75,7 @@ export async function checkRLSPolicies(client: Client): Promise<boolean> {
       AND tablename IN ('workspaces', 'workspace_contracts', 'audit_bundles')
     `);
     
-    return result.rows.every(row => row.rowsecurity === true);
+    return result.rows.every((row: { rowsecurity: boolean }) => row.rowsecurity === true);
   } catch (error) {
     console.error('RLS policy check failed:', error);
     return false;
@@ -71,8 +86,8 @@ export async function checkRLSPolicies(client: Client): Promise<boolean> {
  * Test tenant isolation by creating test data and verifying separation
  */
 export async function testTenantIsolation(
-  client: Client, 
-  tenantA: string, 
+  client: PoolClient,
+  tenantA: string,
   tenantB: string
 ): Promise<boolean> {
   try {
@@ -155,7 +170,7 @@ export async function testTenantIsolation(
  * Test cross-tenant data leakage
  */
 export async function testCrossTenantLeakage(
-  client: Client,
+  client: PoolClient,
   testTenant: string,
   evilTenant: string
 ): Promise<boolean> {
@@ -187,6 +202,7 @@ export async function testCrossTenantLeakage(
 /**
  * Close database connection
  */
-export async function closeDatabaseClient(client: Client): Promise<void> {
-  await client.end();
+export async function closeDatabaseClient(client: ManagedClient): Promise<void> {
+  client.release();
+  await client.__pool.end();
 }
