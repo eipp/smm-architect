@@ -15,7 +15,7 @@ let workspaceSchema: any;
 try {
   workspaceSchema = JSON.parse(fs.readFileSync(schemaPath, "utf8"));
 } catch (error) {
-  console.warn("Could not load workspace schema, using basic validation");
+  console.error("Could not load workspace schema");
   workspaceSchema = null;
 }
 
@@ -29,9 +29,8 @@ export interface ValidationResult {
 export async function validateWorkspaceContract(contract: WorkspaceContract): Promise<ValidationResult> {
   const errors: string[] = [];
 
-  // Basic validation if schema is not available
   if (!validateContract) {
-    return validateBasic(contract);
+    throw new Error("Workspace schema is missing");
   }
 
   // Schema validation
@@ -47,23 +46,6 @@ export async function validateWorkspaceContract(contract: WorkspaceContract): Pr
   if (!businessValidation.valid) {
     errors.push(...(businessValidation.errors || []));
   }
-
-  return {
-    valid: errors.length === 0,
-    errors: errors.length > 0 ? errors : undefined
-  };
-}
-
-function validateBasic(contract: WorkspaceContract): ValidationResult {
-  const errors: string[] = [];
-
-  // Required fields
-  if (!contract.workspaceId) errors.push("workspaceId is required");
-  if (!contract.tenantId) errors.push("tenantId is required");
-  if (!contract.createdBy) errors.push("createdBy is required");
-  if (!contract.goals || contract.goals.length === 0) errors.push("At least one goal is required");
-  if (!contract.primaryChannels || contract.primaryChannels.length === 0) errors.push("At least one primary channel is required");
-  if (!contract.budget) errors.push("Budget configuration is required");
 
   return {
     valid: errors.length === 0,
