@@ -32,26 +32,41 @@ const log = {
 };
 
 import crypto from 'crypto';
+import bcrypt from 'bcryptjs';
 import { rateLimit } from './middleware/rate-limit';
 
 // Simple auth service implementation
 class SimpleAuthService {
   private initialized = false;
+  private users = new Map<string, { passwordHash: string; userId: string; tenantId: string }>();
 
   async initialize(): Promise<void> {
     this.initialized = true;
   }
 
+  userExists(email: string): boolean {
+    return this.users.has(email);
+  }
+
+  async register(email: string, password: string, tenantId: string): Promise<{ userId: string; passwordHash: string }> {
+    const passwordHash = await bcrypt.hash(password, 10);
+    const userId = `user-${crypto.randomUUID()}`;
+    this.users.set(email, { passwordHash, userId, tenantId });
+    return { userId, passwordHash };
+  }
+
   async authenticate(email: string, password: string): Promise<{ success: boolean; userId?: string; tenantId?: string; error?: string }> {
-    // Mock authentication - in production this would validate against a real auth provider
-    if (email && password && password.length >= 6) {
-      return {
-        success: true,
-        userId: `user-${Buffer.from(email).toString('base64').slice(0, 8)}`,
-        tenantId: 'default-tenant'
-      };
+    const record = this.users.get(email);
+    if (!record) {
+      return { success: false, error: 'Invalid credentials' };
     }
-    return { success: false, error: 'Invalid credentials' };
+
+    const valid = await bcrypt.compare(password, record.passwordHash);
+    if (!valid) {
+      return { success: false, error: 'Invalid credentials' };
+    }
+
+    return { success: true, userId: record.userId, tenantId: record.tenantId };
   }
 
   async generateToken(payload: any): Promise<string> {
@@ -525,10 +540,14 @@ export const register = api(
         throw new Error("User already exists");
       }
 
-      // Create user account
+      // Register user and store hashed password
+      const registration = await authService.register(req.email, req.password, req.tenantId);
+
+      // Create user account record
       const user = await createUserAccount({
+        id: registration.userId,
         email: req.email,
-        password: req.password,
+        passwordHash: registration.passwordHash,
         name: req.name,
         tenantId: req.tenantId
       });
@@ -583,21 +602,21 @@ async function isRegistrationAllowed(tenantId: string, inviteCode?: string): Pro
 }
 
 async function checkUserExists(email: string, tenantId: string): Promise<boolean> {
-  // Mock implementation - check if user exists in database
-  // For demo, assume user doesn't exist
-  return false;
+  // For demo, check in-memory store
+  return authService.userExists(email);
 }
 
 async function createUserAccount(userData: {
+  id: string;
   email: string;
-  password: string;
+  passwordHash: string;
   name: string;
   tenantId: string;
 }): Promise<{ id: string }> {
   // Mock implementation - create user in database
-  // For demo, return mock user ID
+  // For demo, return provided user ID
   return {
-    id: `user_${crypto.randomUUID()}`
+    id: userData.id
   };
 }
 
