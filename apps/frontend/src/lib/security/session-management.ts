@@ -1,4 +1,5 @@
 import { SignJWT, jwtVerify } from 'jose'
+import Redis from 'ioredis'
 import { cookies } from 'next/headers'
 import { NextRequest, NextResponse } from 'next/server'
 
@@ -32,6 +33,8 @@ export interface SessionConfig {
   renewalThreshold: number // seconds before expiry to auto-renew
   maxSessions: number // max concurrent sessions per user
   requireTwoFactor: boolean
+  storeType: 'memory' | 'redis'
+  storeUrl?: string
 }
 
 const DEFAULT_SESSION_CONFIG: SessionConfig = {
@@ -44,13 +47,32 @@ const DEFAULT_SESSION_CONFIG: SessionConfig = {
   path: '/',
   renewalThreshold: 2 * 60 * 60, // 2 hours
   maxSessions: 5,
-  requireTwoFactor: false
+  requireTwoFactor: false,
+  storeType: process.env.SESSION_STORE_URL ? 'redis' : 'memory',
+  storeUrl: process.env.SESSION_STORE_URL
 }
 
 /**
- * Session store for managing active sessions
+ * Session store interface and implementations
  */
-class SessionStore {
+interface SessionStore {
+  addSession(
+    sessionData: {
+      sessionId: string
+      userId: string
+      ipAddress: string
+      userAgent: string
+    },
+    config: SessionConfig
+  ): Promise<void>
+  updateActivity(sessionId: string): Promise<void>
+  removeSession(sessionId: string): Promise<void>
+  getUserSessions(userId: string): Promise<string[]>
+  cleanupExpiredSessions(maxAge: number): Promise<void>
+  isValidSession(sessionId: string, maxAge: number): Promise<boolean>
+}
+
+class InMemorySessionStore implements SessionStore {
   private sessions: Map<string, {
     sessionId: string
     userId: string
@@ -60,12 +82,15 @@ class SessionStore {
     userAgent: string
   }> = new Map()
 
-  addSession(sessionData: {
-    sessionId: string
-    userId: string
-    ipAddress: string
-    userAgent: string
-  }): void {
+  async addSession(
+    sessionData: {
+      sessionId: string
+      userId: string
+      ipAddress: string
+      userAgent: string
+    },
+    config: SessionConfig
+  ): Promise<void> {
     const now = Date.now()
     this.sessions.set(sessionData.sessionId, {
       ...sessionData,
@@ -73,22 +98,25 @@ class SessionStore {
       lastActivity: now
     })
 
-    // Clean up old sessions for this user
-    this.cleanupUserSessions(sessionData.userId, DEFAULT_SESSION_CONFIG.maxSessions)
+    this.cleanupUserSessions(sessionData.userId, config.maxSessions)
   }
 
-  updateActivity(sessionId: string): void {
-    const session = this.sessions.get(sessionId)
-    if (session) {
-      session.lastActivity = Date.now()
+  private cleanupUserSessions(userId: string, maxSessions: number): void {
+    const userSessions = this.getUserSessionsSync(userId)
+
+    if (userSessions.length > maxSessions) {
+      const sortedSessions = userSessions
+        .map(sessionId => ({ sessionId, session: this.sessions.get(sessionId)! }))
+        .sort((a, b) => a.session.lastActivity - b.session.lastActivity)
+
+      const sessionsToRemove = sortedSessions.slice(0, userSessions.length - maxSessions)
+      for (const { sessionId } of sessionsToRemove) {
+        this.sessions.delete(sessionId)
+      }
     }
   }
 
-  removeSession(sessionId: string): void {
-    this.sessions.delete(sessionId)
-  }
-
-  getUserSessions(userId: string): string[] {
+  private getUserSessionsSync(userId: string): string[] {
     const sessions: string[] = []
     for (const [sessionId, data] of this.sessions.entries()) {
       if (data.userId === userId) {
@@ -98,27 +126,24 @@ class SessionStore {
     return sessions
   }
 
-  cleanupUserSessions(userId: string, maxSessions: number): void {
-    const userSessions = this.getUserSessions(userId)
-    
-    if (userSessions.length > maxSessions) {
-      // Sort by last activity (oldest first)
-      const sortedSessions = userSessions
-        .map(sessionId => ({ sessionId, session: this.sessions.get(sessionId)! }))
-        .sort((a, b) => a.session.lastActivity - b.session.lastActivity)
-      
-      // Remove oldest sessions
-      const sessionsToRemove = sortedSessions.slice(0, userSessions.length - maxSessions)
-      for (const { sessionId } of sessionsToRemove) {
-        this.sessions.delete(sessionId)
-      }
+  async updateActivity(sessionId: string): Promise<void> {
+    const session = this.sessions.get(sessionId)
+    if (session) {
+      session.lastActivity = Date.now()
     }
   }
 
-  cleanupExpiredSessions(maxAge: number): void {
+  async removeSession(sessionId: string): Promise<void> {
+    this.sessions.delete(sessionId)
+  }
+
+  async getUserSessions(userId: string): Promise<string[]> {
+    return this.getUserSessionsSync(userId)
+  }
+
+  async cleanupExpiredSessions(maxAge: number): Promise<void> {
     const now = Date.now()
     const maxAgeMs = maxAge * 1000
-    
     for (const [sessionId, data] of this.sessions.entries()) {
       if (now - data.lastActivity > maxAgeMs) {
         this.sessions.delete(sessionId)
@@ -126,23 +151,115 @@ class SessionStore {
     }
   }
 
-  isValidSession(sessionId: string, maxAge: number): boolean {
+  async isValidSession(sessionId: string, maxAge: number): Promise<boolean> {
     const session = this.sessions.get(sessionId)
     if (!session) return false
-    
+
     const now = Date.now()
     const maxAgeMs = maxAge * 1000
-    
     return (now - session.lastActivity) <= maxAgeMs
   }
 }
 
-const sessionStore = new SessionStore()
+// Redis implementation
+class RedisSessionStore implements SessionStore {
+  private client: Redis
 
-// Clean up expired sessions every 10 minutes
+  constructor(url: string) {
+    this.client = new Redis(url)
+  }
+
+  async addSession(
+    sessionData: {
+      sessionId: string
+      userId: string
+      ipAddress: string
+      userAgent: string
+    },
+    config: SessionConfig
+  ): Promise<void> {
+    const now = Date.now()
+    const sessionKey = `session:${sessionData.sessionId}`
+    const userKey = `user:${sessionData.userId}:sessions`
+    const data = {
+      ...sessionData,
+      createdAt: now,
+      lastActivity: now
+    }
+
+    await this.client
+      .multi()
+      .set(sessionKey, JSON.stringify(data), 'EX', config.maxAge)
+      .zadd(userKey, now, sessionData.sessionId)
+      .exec()
+
+    const count = await this.client.zcard(userKey)
+    if (count > config.maxSessions) {
+      const excess = await this.client.zrange(userKey, 0, count - config.maxSessions - 1)
+      if (excess.length) {
+        const pipeline = this.client.multi()
+        for (const id of excess) {
+          pipeline.del(`session:${id}`)
+          pipeline.zrem(userKey, id)
+        }
+        await pipeline.exec()
+      }
+    }
+  }
+
+  async updateActivity(sessionId: string): Promise<void> {
+    const key = `session:${sessionId}`
+    const data = await this.client.get(key)
+    if (!data) return
+    const session = JSON.parse(data)
+    session.lastActivity = Date.now()
+    const ttl = await this.client.ttl(key)
+    if (ttl > 0) {
+      await this.client.set(key, JSON.stringify(session), 'EX', ttl)
+    } else {
+      await this.client.set(key, JSON.stringify(session))
+    }
+    await this.client.zadd(`user:${session.userId}:sessions`, Date.now(), sessionId)
+  }
+
+  async removeSession(sessionId: string): Promise<void> {
+    const key = `session:${sessionId}`
+    const data = await this.client.get(key)
+    if (data) {
+      const session = JSON.parse(data)
+      await this.client
+        .multi()
+        .del(key)
+        .zrem(`user:${session.userId}:sessions`, sessionId)
+        .exec()
+    }
+  }
+
+  async getUserSessions(userId: string): Promise<string[]> {
+    return this.client.zrange(`user:${userId}:sessions`, 0, -1)
+  }
+
+  async cleanupExpiredSessions(_maxAge: number): Promise<void> {
+    // Redis handles expiration via TTL
+  }
+
+  async isValidSession(sessionId: string, maxAge: number): Promise<boolean> {
+    const key = `session:${sessionId}`
+    const data = await this.client.get(key)
+    if (!data) return false
+    const session = JSON.parse(data)
+    return (Date.now() - session.lastActivity) <= maxAge * 1000
+  }
+}
+
+const sessionStore: SessionStore =
+  DEFAULT_SESSION_CONFIG.storeType === 'redis' && DEFAULT_SESSION_CONFIG.storeUrl
+    ? new RedisSessionStore(DEFAULT_SESSION_CONFIG.storeUrl)
+    : new InMemorySessionStore()
+
 if (typeof setInterval !== 'undefined') {
   setInterval(() => {
-    sessionStore.cleanupExpiredSessions(DEFAULT_SESSION_CONFIG.maxAge)
+    void sessionStore.cleanupExpiredSessions(DEFAULT_SESSION_CONFIG.maxAge)
   }, 10 * 60 * 1000)
 }
 
@@ -193,12 +310,12 @@ export const createSessionToken = async (
     .sign(secret)
 
   // Store session in session store
-  sessionStore.addSession({
+  await sessionStore.addSession({
     sessionId: sessionData.sessionId,
     userId: sessionData.userId,
     ipAddress: sessionData.ipAddress,
     userAgent: sessionData.userAgent
-  })
+  }, config)
 
   return token
 }
@@ -221,12 +338,12 @@ export const verifySessionToken = async (
     const sessionData = payload as unknown as SessionData
     
     // Verify session is still active in session store
-    if (!sessionStore.isValidSession(sessionData.sessionId, config.maxAge)) {
+    if (!(await sessionStore.isValidSession(sessionData.sessionId, config.maxAge))) {
       return null
     }
 
     // Update last activity
-    sessionStore.updateActivity(sessionData.sessionId)
+    await sessionStore.updateActivity(sessionData.sessionId)
     
     return sessionData
   } catch (error) {
@@ -369,7 +486,7 @@ export const logout = async (
   sessionId: string,
   config: SessionConfig = DEFAULT_SESSION_CONFIG
 ): Promise<void> => {
-  sessionStore.removeSession(sessionId)
+  await sessionStore.removeSession(sessionId)
 }
 
 /**
@@ -379,9 +496,9 @@ export const logoutAllSessions = async (
   userId: string,
   config: SessionConfig = DEFAULT_SESSION_CONFIG
 ): Promise<void> => {
-  const userSessions = sessionStore.getUserSessions(userId)
+  const userSessions = await sessionStore.getUserSessions(userId)
   for (const sessionId of userSessions) {
-    sessionStore.removeSession(sessionId)
+    await sessionStore.removeSession(sessionId)
   }
 }
 
