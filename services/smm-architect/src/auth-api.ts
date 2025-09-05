@@ -32,6 +32,7 @@ const log = {
 };
 
 import crypto from 'crypto';
+import jwt from 'jsonwebtoken';
 import { rateLimit } from './middleware/rate-limit';
 
 // Simple auth service implementation
@@ -64,8 +65,11 @@ class SimpleAuthService {
     // Comprehensive JWT secret validation
     this.validateJWTSecret(secret);
     
-    const tokenData = JSON.stringify({ ...payload, exp: Date.now() + 24 * 60 * 60 * 1000 });
-    return crypto.createHmac('sha256', secret).update(tokenData).digest('hex');
+    // Issue signed JWT token with 24 hour expiration
+    return jwt.sign(payload, secret, {
+      algorithm: 'HS256',
+      expiresIn: '24h'
+    });
   }
 
   /**
@@ -165,15 +169,19 @@ async function generateRefreshToken(userId: string, tenantId: string): Promise<s
   // Use the same validation as the auth service
   authService.validateJWTSecret(secret);
   
-  const tokenData = JSON.stringify({ 
-    userId, 
-    tenantId, 
-    type: 'refresh', 
-    exp: Date.now() + 30 * 24 * 60 * 60 * 1000,
-    iat: Date.now(),
-    version: process.env.JWT_VERSION || '1'
-  });
-  return crypto.createHmac('sha256', secret).update(tokenData).digest('hex');
+  return jwt.sign(
+    {
+      userId,
+      tenantId,
+      type: 'refresh',
+      version: process.env.JWT_VERSION || '1'
+    },
+    secret,
+    {
+      algorithm: 'HS256',
+      expiresIn: '30d'
+    }
+  );
 }
 
 async function updateLastLogin(userId: string, tenantId: string): Promise<void> {
@@ -563,12 +571,34 @@ async function withTenantContext<T>(tenantId: string, operation: (client: any) =
 }
 
 async function validateRefreshToken(refreshToken: string): Promise<{ userId: string; tenantId: string } | null> {
-  // Validate refresh token against secure storage
-  // For demo purposes, return mock data
-  return {
-    userId: 'demo_user',
-    tenantId: 'demo_tenant'
-  };
+  try {
+    const secret = process.env.JWT_SECRET;
+    if (!secret) {
+      throw new Error('JWT_SECRET environment variable must be configured for refresh token validation');
+    }
+
+    // Ensure the same secret validation logic is applied
+    authService.validateJWTSecret(secret);
+
+    const decoded = jwt.verify(refreshToken, secret) as any;
+    if (decoded.type !== 'refresh') {
+      return null;
+    }
+
+    if (!decoded.userId || !decoded.tenantId) {
+      return null;
+    }
+
+    return {
+      userId: decoded.userId,
+      tenantId: decoded.tenantId
+    };
+  } catch (error) {
+    log.error('Refresh token validation failed', {
+      error: error instanceof Error ? error.message : error
+    });
+    return null;
+  }
 }
 
 async function invalidateRefreshTokens(userId: string, tenantId: string): Promise<void> {
