@@ -90,8 +90,8 @@ echo ""
 print_header "TASK 2: WORKSPACE PROVISIONING DEPENDENCIES"
 echo "==========================================="
 
-verify_file_exists "Pulumi Infrastructure Code" "infra/pulumi/workspace-provisioning.ts" "false"
-verify_file_exists "Infrastructure Configuration" "infra/pulumi/Pulumi.yaml" "false"
+verify_file_exists "Pulumi Infrastructure Code" "infrastructure/pulumi/main.ts" "false"
+verify_file_exists "Infrastructure Configuration" "infrastructure/pulumi/Pulumi.yaml" "false"
 verify_content_exists "Package Dependencies Fixed" "package.json" '"overrides"' "true"
 
 print_success "✅ TASK 2: Workspace Provisioning Dependencies - VERIFIED"
