@@ -110,6 +110,26 @@ N8N_BASIC_AUTH_USER=admin
 N8N_BASIC_AUTH_PASSWORD=admin
 ```
 
+### Secret Provisioning (Production)
+
+For production deployments with `docker-compose.prod.yml`, store sensitive values as Docker secrets instead of environment variables:
+
+```bash
+# Create secret files from provided examples
+cp secrets/database_url.txt.example secrets/database_url.txt
+cp secrets/redis_url.txt.example secrets/redis_url.txt
+cp secrets/vault_url.txt.example secrets/vault_url.txt
+cp secrets/vault_token.txt.example secrets/vault_token.txt
+cp secrets/openai_api_key.txt.example secrets/openai_api_key.txt
+cp secrets/sentry_dsn.txt.example secrets/sentry_dsn.txt
+cp secrets/grafana_password.txt.example secrets/grafana_password.txt
+cp secrets/grafana_secret_key.txt.example secrets/grafana_secret_key.txt
+
+# Edit each *.txt file and insert the real secret value
+```
+
+These files are mounted into `/run/secrets` at runtime and referenced via `*_FILE` environment variables in `docker-compose.prod.yml`.
+
 ## Kubernetes Deployment
 
 ### Prerequisites Setup
