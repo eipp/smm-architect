@@ -15,7 +15,7 @@ This comprehensive security implementation provides multiple layers of protectio
 ### 🔐 Session Management
 - **JWT-based Sessions**: Cryptographically signed tokens
 - **Secure Cookies**: HttpOnly, Secure, SameSite protection
-- **Session Store**: In-memory session tracking with cleanup
+- **Session Store**: Redis-backed session tracking with optional in-memory fallback
 - **Auto-renewal**: Automatic token refresh before expiry
 - **Multi-session Control**: Limit concurrent sessions per user
 - **Role-based Access**: RBAC and permission-based controls
@@ -56,7 +56,8 @@ The security implementation uses these dependencies (already included in package
 {
   "dependencies": {
     "jose": "^5.1.3",
-    "isomorphic-dompurify": "^2.6.0"
+    "isomorphic-dompurify": "^2.6.0",
+    "ioredis": "^5.3.2"
   }
 }
 ```
@@ -70,6 +71,7 @@ CSRF_SECRET=your-csrf-secret-key
 CSP_REPORT_URI=https://your-domain.com/api/security/csp-report
 RATE_LIMIT_ENABLED=true
 SECURITY_DEBUG_MODE=false
+SESSION_STORE_URL=redis://localhost:6379
 ```
 
 ### 3. Middleware Configuration
