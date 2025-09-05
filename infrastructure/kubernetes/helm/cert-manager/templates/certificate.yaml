@@ -1,0 +1,14 @@
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: smm-architect-cert
+  namespace: smm-architect
+spec:
+  secretName: smm-architect-tls
+  issuerRef:
+    name: letsencrypt-production
+    kind: ClusterIssuer
+  dnsNames:
+    - api.smm-architect.com
+    - toolhub.smm-architect.com
+    - app.smm-architect.com

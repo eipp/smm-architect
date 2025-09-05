@@ -1,0 +1,9 @@
+cert-manager:
+  installCRDs: true
+
+letsencrypt:
+  email: admin@example.com
+  staging:
+    server: https://acme-staging-v02.api.letsencrypt.org/directory
+  production:
+    server: https://acme-v02.api.letsencrypt.org/directory
