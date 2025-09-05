@@ -863,7 +863,8 @@ export declare namespace DMMF {
         delete = "delete",
         deleteMany = "deleteMany",
         groupBy = "groupBy",
-        count = "count",// TODO: count does not actually exist, why?
+        /** Counts the number of records matching the query */
+        count = "count",
         aggregate = "aggregate",
         findRaw = "findRaw",
         aggregateRaw = "aggregateRaw"
@@ -2593,9 +2594,9 @@ declare type QueryMiddlewareParams = {
     model?: string;
     /** The action that is being handled */
     action: Action;
-    /** TODO what is this */
+    /** Path to the property being operated on, used for nested writes */
     dataPath: string[];
-    /** TODO what is this */
+    /** Whether this query is executed inside a transaction */
     runInTransaction: boolean;
     args?: UserArgs_2;
 };
