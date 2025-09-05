@@ -4,6 +4,7 @@ import multer from 'multer';
 import sharp from 'sharp';
 import { v4 as uuidv4 } from 'uuid';
 import path from 'path';
+import { Pool } from 'pg';
 import { MediaUpload } from '../types';
 
 export interface UploadOptions {
@@ -28,8 +29,13 @@ export class MediaUploadService {
   private s3Client: S3Client;
   private bucketName: string;
   private cdnDomain?: string;
+  private db: Pool;
 
   constructor() {
+    this.db = new Pool({
+      connectionString: process.env.DATABASE_URL,
+    });
+
     // Initialize S3 client
     this.s3Client = new S3Client({
       region: process.env.AWS_REGION || 'us-east-1',
@@ -253,59 +259,53 @@ export class MediaUploadService {
    * Get media files for a workspace
    */
   async getWorkspaceMedia(workspaceId: string, filter: MediaFilter): Promise<MediaResult> {
-    // This would query the database for media files
-    // For now, return mock data
-    const mockMedia: MediaUpload[] = [
-      {
-        id: 'media-1',
-        workspaceId,
-        originalName: 'example-image.jpg',
-        fileName: 'media-1.jpg',
-        mimeType: 'image/jpeg',
-        size: 1024000,
-        url: 'https://example.com/media-1.jpg',
-        cdnUrl: 'https://cdn.example.com/media-1.jpg',
-        thumbnailUrl: 'https://cdn.example.com/thumbnails/media-1.jpg',
-        metadata: { width: 1920, height: 1080, format: 'jpeg' },
-        uploadedAt: new Date(Date.now() - 86400000), // 1 day ago
-        uploadedBy: 'user-123',
-      },
-      {
-        id: 'media-2',
-        workspaceId,
-        originalName: 'example-video.mp4',
-        fileName: 'media-2.mp4',
-        mimeType: 'video/mp4',
-        size: 5120000,
-        url: 'https://example.com/media-2.mp4',
-        cdnUrl: 'https://cdn.example.com/media-2.mp4',
-        thumbnailUrl: 'https://cdn.example.com/thumbnails/media-2.jpg',
-        metadata: { duration: 60, format: 'mp4' },
-        uploadedAt: new Date(Date.now() - 43200000), // 12 hours ago
-        uploadedBy: 'user-456',
-      },
-    ];
+    const client = await this.db.connect();
+    try {
+      await client.query('SET app.current_tenant_id = $1', [workspaceId]);
 
-    // Apply filters
-    let filteredMedia = mockMedia;
-    if (filter.type) {
-      filteredMedia = mockMedia.filter(media => {
-        if (filter.type === 'image') return media.mimeType.startsWith('image/');
-        if (filter.type === 'video') return media.mimeType.startsWith('video/');
-        if (filter.type === 'document') return media.mimeType.startsWith('application/');
-        return false;
-      });
+      let where = 'workspace_id = $1';
+      if (filter.type === 'image') {
+        where += " AND mime_type LIKE 'image/%'";
+      } else if (filter.type === 'video') {
+        where += " AND mime_type LIKE 'video/%'";
+      } else if (filter.type === 'document') {
+        where += " AND mime_type LIKE 'application/%'";
+      }
+
+      const rows = await client.query(
+        `SELECT * FROM media_uploads WHERE ${where} ORDER BY uploaded_at DESC LIMIT $2 OFFSET $3`,
+        [workspaceId, filter.limit, filter.offset]
+      );
+
+      const count = await client.query(
+        `SELECT COUNT(*) FROM media_uploads WHERE ${where}`,
+        [workspaceId]
+      );
+
+      const total = parseInt(count.rows[0].count, 10);
+      const files: MediaUpload[] = rows.rows.map(r => ({
+        id: r.id,
+        workspaceId: r.workspace_id,
+        originalName: r.original_name,
+        fileName: r.file_name,
+        mimeType: r.mime_type,
+        size: r.size,
+        url: r.url,
+        cdnUrl: r.cdn_url || undefined,
+        thumbnailUrl: r.thumbnail_url || undefined,
+        metadata: r.metadata || {},
+        uploadedAt: r.uploaded_at,
+        uploadedBy: r.uploaded_by,
+      }));
+
+      return {
+        files,
+        total,
+        hasMore: filter.offset + filter.limit < total,
+      };
+    } finally {
+      client.release();
     }
-
-    const total = filteredMedia.length;
-    const paginatedMedia = filteredMedia.slice(filter.offset, filter.offset + filter.limit);
-    const hasMore = filter.offset + filter.limit < total;
-
-    return {
-      files: paginatedMedia,
-      total,
-      hasMore,
-    };
   }
 
   /**
@@ -345,31 +345,76 @@ export class MediaUploadService {
    * Get media by ID
    */
   private async getMediaById(mediaId: string): Promise<MediaUpload | null> {
-    // This would query the database
-    // For now, return null
-    return null;
+    const client = await this.db.connect();
+    try {
+      const res = await client.query(
+        `SELECT * FROM media_uploads WHERE id = $1`,
+        [mediaId]
+      );
+      if (res.rows.length === 0) {
+        return null;
+      }
+      const r = res.rows[0];
+      return {
+        id: r.id,
+        workspaceId: r.workspace_id,
+        originalName: r.original_name,
+        fileName: r.file_name,
+        mimeType: r.mime_type,
+        size: r.size,
+        url: r.url,
+        cdnUrl: r.cdn_url || undefined,
+        thumbnailUrl: r.thumbnail_url || undefined,
+        metadata: r.metadata || {},
+        uploadedAt: r.uploaded_at,
+        uploadedBy: r.uploaded_by,
+      };
+    } finally {
+      client.release();
+    }
   }
 
   /**
    * Store media upload in database
    */
   private async storeMediaUpload(media: MediaUpload): Promise<void> {
-    // This would store in the database
-    console.log('Storing media upload:', {
-      id: media.id,
-      workspaceId: media.workspaceId,
-      fileName: media.fileName,
-      mimeType: media.mimeType,
-      size: media.size,
-    });
+    const client = await this.db.connect();
+    try {
+      await client.query('SET app.current_tenant_id = $1', [media.workspaceId]);
+      await client.query(
+        `INSERT INTO media_uploads (
+          id, workspace_id, original_name, file_name, mime_type, size, url, cdn_url, thumbnail_url, metadata, uploaded_at, uploaded_by
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+        [
+          media.id,
+          media.workspaceId,
+          media.originalName,
+          media.fileName,
+          media.mimeType,
+          media.size,
+          media.url,
+          media.cdnUrl || null,
+          media.thumbnailUrl || null,
+          JSON.stringify(media.metadata),
+          media.uploadedAt,
+          media.uploadedBy,
+        ]
+      );
+    } finally {
+      client.release();
+    }
   }
 
   /**
    * Remove media from database
    */
   private async removeMediaFromDatabase(mediaId: string): Promise<void> {
-    // This would remove from the database
-    console.log('Removing media from database:', mediaId);
+    const client = await this.db.connect();
+    try {
+      await client.query(`DELETE FROM media_uploads WHERE id = $1`, [mediaId]);
+    } finally {
+      client.release();
+    }
   }
 
   /**

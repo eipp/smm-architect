@@ -180,31 +180,11 @@ router.get('/status/:publishId',
       }
 
       const { publishId } = req.params;
-      
-      // This would query the actual status from database/queue
-      // For now, return mock status
-      const status = {
-        id: publishId,
-        status: 'completed',
-        platforms: [
-          {
-            platform: 'linkedin',
-            postId: 'li-123456',
-            url: 'https://linkedin.com/posts/example',
-            status: 'success',
-            engagement: { likes: 45, comments: 8, shares: 12 }
-          },
-          {
-            platform: 'twitter',
-            postId: 'tw-789012',
-            url: 'https://twitter.com/user/status/789012',
-            status: 'success',
-            engagement: { likes: 67, comments: 15, shares: 23 }
-          }
-        ],
-        createdAt: new Date(Date.now() - 60000),
-        publishedAt: new Date(Date.now() - 30000)
-      };
+
+      const status = await publisherService.getPublishStatus(publishId);
+      if (!status) {
+        throw new ApiError(404, 'NOT_FOUND', 'Publish job not found');
+      }
 
       res.json({
         success: true,
@@ -322,40 +302,31 @@ router.get('/scheduled',
         throw new ApiError(400, 'VALIDATION_ERROR', 'Invalid scheduled posts request', errors.array());
       }
 
-      const { workspaceId, status, platform, limit = 20, offset = 0 } = req.query;
-      
+      const { workspaceId, status, limit = 20, offset = 0 } = req.query;
+
       // Verify user has access to workspace
       if (req.user?.workspaceId !== workspaceId && !req.user?.scopes.includes('admin')) {
         throw new ApiError(403, 'WORKSPACE_ACCESS_DENIED', 'Access denied to workspace');
       }
 
-      // This would query the database for scheduled posts
-      // For now, return mock data
-      const scheduledPosts = [
+      const scheduledPosts = await publisherService.getScheduledPosts(
+        workspaceId as string,
         {
-          id: 'sched-1',
-          workspaceId,
-          content: {
-            text: 'Scheduled post example',
-            tags: ['#example', '#scheduled']
-          },
-          platforms: ['linkedin', 'twitter'],
-          scheduledAt: new Date(Date.now() + 3600000), // 1 hour from now
-          status: 'pending',
-          createdAt: new Date(Date.now() - 1800000), // 30 minutes ago
-          createdBy: 'user-123'
+          status: status as string | undefined,
+          limit: parseInt(limit as string),
+          offset: parseInt(offset as string)
         }
-      ];
+      );
 
       res.json({
         success: true,
         data: {
-          posts: scheduledPosts,
+          posts: scheduledPosts.posts,
           pagination: {
-            total: scheduledPosts.length,
+            total: scheduledPosts.total,
             limit: parseInt(limit as string),
             offset: parseInt(offset as string),
-            hasMore: false
+            hasMore: scheduledPosts.hasMore
           }
         }
       });
