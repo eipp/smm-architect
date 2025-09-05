@@ -170,6 +170,81 @@ app.post('/api/dsr/export',
 );
 
 /**
+ * POST /api/dsr/portability
+ * Generate data export package for portability (Right to Data Portability - GDPR Article 20)
+ */
+app.post('/api/dsr/portability',
+  dsrRateLimit,
+  [
+    body('userId').isString().isLength({ min: 1, max: 255 }).trim(),
+    body('tenantId').isString().isLength({ min: 1, max: 255 }).trim(),
+    body('userEmail').isEmail().normalizeEmail(),
+    body('requestedBy').isString().isLength({ min: 1, max: 255 }).trim(),
+    body('verificationToken').optional().isString().isLength({ min: 32, max: 512 }),
+    body('reason').optional().isString().isLength({ max: 1000 }).trim()
+  ],
+  async (req: Request, res: Response) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({
+          error: 'Validation failed',
+          details: errors.array()
+        });
+      }
+
+      const { userId, tenantId, userEmail, requestedBy, verificationToken, reason } = req.body;
+
+      logger.info('DSR portability request received', {
+        userId,
+        tenantId,
+        userEmail,
+        requestedBy,
+        ip: req.ip
+      });
+
+      if (verificationToken) {
+        const isValidToken = await verifyUserToken(userId, verificationToken);
+        if (!isValidToken) {
+          return res.status(403).json({
+            error: 'Invalid verification token'
+          });
+        }
+      }
+
+      const exportData = await withTenantContext(tenantId, async (client) => {
+        const dsrService = new DataSubjectRightsService(client, vaultClient);
+        return await dsrService.generateDataExport(userId, tenantId);
+      });
+
+      res.setHeader('Content-Type', 'application/zip');
+      res.setHeader('Content-Disposition', `attachment; filename="data-portability-${encodeURIComponent(userId)}.zip"`);
+
+      const archive = archiver('zip', { zlib: { level: 9 } });
+
+      archive.on('error', (err) => {
+        logger.error('Portability archive creation error', { userId, tenantId, error: err });
+        if (!res.headersSent) res.status(500).json({ error: 'Failed to create portability package' }); else res.end();
+      });
+
+      archive.pipe(res);
+      archive.append(JSON.stringify(exportData, null, 2), { name: 'personal-data.json' });
+      archive.append(JSON.stringify(exportData.metadata, null, 2), { name: 'export-metadata.json' });
+      await archive.finalize();
+    } catch (error) {
+      logger.error('DSR portability endpoint error', {
+        error: error instanceof Error ? error.message : error,
+        ip: req.ip
+      });
+
+      return res.status(500).json({
+        error: 'Internal server error processing portability request'
+      });
+    }
+  }
+);
+
+/**
  * POST /api/dsr/delete
  * Process deletion request (Right to Erasure - GDPR Article 17)
  */

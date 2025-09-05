@@ -201,45 +201,37 @@ class ComplianceAssessment {
     let status: 'pass' | 'fail' | 'warning' = 'pass';
 
     try {
-      // Check for data access APIs
-      const accessAPIs = this.findFiles('**/services/**/*.ts', content =>
-        content.includes('getData') || content.includes('export') || content.includes('access')
-      );
-      
-      if (accessAPIs.length === 0) {
+      const dsrApiPath = path.join(this.projectRoot, 'services/dsr/src/dsr-api.ts');
+      const content = fs.readFileSync(dsrApiPath, 'utf-8');
+
+      const hasAccess = content.includes('/api/dsr/export');
+      const hasDeletion = content.includes('/api/dsr/delete');
+      const hasPortability = content.includes('/api/dsr/portability') || content.includes('/api/dsr/download');
+
+      if (!hasAccess) {
         status = 'fail';
-        evidence.push('Data access APIs not implemented');
+        evidence.push('Data access endpoint missing');
       } else {
-        evidence.push('Data access capabilities found');
+        evidence.push('Data access endpoint implemented');
       }
 
-      // Check for data deletion APIs
-      const deletionAPIs = this.findFiles('**/services/**/*.ts', content =>
-        content.includes('delete') || content.includes('remove') || content.includes('purge')
-      );
-      
-      if (deletionAPIs.length === 0) {
+      if (!hasDeletion) {
         status = status === 'pass' ? 'warning' : 'fail';
-        evidence.push('Data deletion APIs not implemented');
+        evidence.push('Data deletion endpoint missing');
       } else {
-        evidence.push('Data deletion capabilities found');
+        evidence.push('Data deletion endpoint implemented');
       }
 
-      // Check for data portability
-      const portabilityAPIs = this.findFiles('**/services/**/*.ts', content =>
-        content.includes('export') || content.includes('download') || content.includes('portability')
-      );
-      
-      if (portabilityAPIs.length === 0) {
+      if (!hasPortability) {
         status = status === 'pass' ? 'warning' : 'fail';
-        evidence.push('Data portability not implemented');
+        evidence.push('Data portability endpoint missing');
       } else {
-        evidence.push('Data portability capabilities found');
+        evidence.push('Data portability endpoint implemented');
       }
 
     } catch (error) {
       status = 'fail';
-      evidence.push(`Error checking data subject rights: ${error.message}`);
+      evidence.push(`Error checking data subject rights: ${error instanceof Error ? error.message : String(error)}`);
     }
 
     return {
