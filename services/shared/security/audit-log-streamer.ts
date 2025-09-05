@@ -392,7 +392,7 @@ class AuditLogStreamer extends EventEmitter {
       new PutLogEventsCommand({
         logGroupName,
         logStreamName,
-        logEvents
+        logEvents: logEvents.slice().sort((a, b) => a.timestamp - b.timestamp)
       })
     );
 
