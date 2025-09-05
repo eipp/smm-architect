@@ -22,6 +22,9 @@ interface RateLimitEntry {
 
 const rateLimitStore = new Map<string, RateLimitEntry>();
 
+// Maximum number of entries allowed in the in-memory store
+const MAX_STORE_SIZE = 10000;
+
 /**
  * Rate limiting function
  * @param category - Category of operation (e.g., 'auth:login', 'auth:register')
@@ -40,9 +43,13 @@ export async function rateLimit(
   const windowMs = windowSeconds * 1000;
   
   let entry = rateLimitStore.get(key);
-  
+
   // If no entry exists or window has expired, create new entry
   if (!entry || now >= entry.resetTime) {
+    if (rateLimitStore.size >= MAX_STORE_SIZE) {
+      cleanupExpiredEntries();
+    }
+
     entry = {
       count: 1,
       resetTime: now + windowMs,
@@ -145,16 +152,27 @@ export async function clearRateLimit(
 export function cleanupExpiredEntries(): void {
   const now = Date.now();
   let cleaned = 0;
-  
+
   for (const [key, entry] of rateLimitStore.entries()) {
     if (now >= entry.resetTime) {
       rateLimitStore.delete(key);
       cleaned++;
     }
   }
-  
+
+  if (rateLimitStore.size >= MAX_STORE_SIZE) {
+    const entries = Array.from(rateLimitStore.entries()).sort(
+      (a, b) => a[1].firstAttempt - b[1].firstAttempt
+    );
+    const toRemove = rateLimitStore.size - (MAX_STORE_SIZE - 1);
+    for (let i = 0; i < toRemove; i++) {
+      rateLimitStore.delete(entries[i][0]);
+    }
+    cleaned += toRemove;
+  }
+
   if (cleaned > 0) {
-    log.debug("Rate limit cleanup", { expiredEntries: cleaned });
+    log.debug("Rate limit cleanup", { cleaned, currentSize: rateLimitStore.size });
   }
 }
 
