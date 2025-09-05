@@ -1,6 +1,8 @@
 import { DatabaseClient } from '../../shared/database/client';
 import { logger } from '../utils/logger';
 import { createHash } from 'crypto';
+import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import { gzipSync } from 'zlib';
 
 export interface TTLArchivalConfig {
   dryRun: boolean;
@@ -202,13 +204,22 @@ export class TTLArchivalJob {
     if (!this.config.s3Bucket) {
       throw new Error('S3 bucket not configured for archival');
     }
-
-    // TODO: Implement S3 archival
-    // This would use AWS SDK to upload compressed JSON data
+    const client = new S3Client({});
     const archivePath = `archived-workspaces/${workspace_id}/${Date.now()}.json.gz`;
-    
+    const body = gzipSync(Buffer.from(JSON.stringify(data)));
+
+    await client.send(
+      new PutObjectCommand({
+        Bucket: this.config.s3Bucket,
+        Key: archivePath,
+        Body: body,
+        ContentType: 'application/json',
+        ContentEncoding: 'gzip'
+      })
+    );
+
     logger.info('Archiving to S3', { workspace_id, archivePath });
-    
+
     return `s3://${this.config.s3Bucket}/${archivePath}`;
   }
 
