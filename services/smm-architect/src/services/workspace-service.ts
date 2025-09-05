@@ -39,7 +39,11 @@ export class WorkspaceService {
         contract_version, goals, primary_channels, budget, approval_policy,
         risk_profile, data_retention, ttl_hours, policy_bundle_ref,
         policy_bundle_checksum, contract_data
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (
+        $1, $2, $3, $4, $5,
+        $6, $7, $8, $9, $10,
+        $11, $12, $13, $14, $15, $16
+      )`,
       [
         workspace.workspaceId, workspace.tenantId, workspace.createdBy,
         workspace.createdAt, workspace.lifecycle, workspace.contractVersion,
@@ -58,7 +62,7 @@ export class WorkspaceService {
 
   async getWorkspace(workspaceId: string): Promise<WorkspaceContract | null> {
     const result = await this.db.query(
-      "SELECT contract_data FROM workspaces WHERE workspace_id = ?",
+      'SELECT contract_data FROM workspaces WHERE workspace_id = $1',
       [workspaceId]
     );
 
@@ -78,11 +82,11 @@ export class WorkspaceService {
     const updated = { ...existing, ...updates };
     
     await this.db.exec(
-      `UPDATE workspaces 
-      SET 
-        contract_data = ?,
-        updated_at = ?
-      WHERE workspace_id = ?`,
+      `UPDATE workspaces
+      SET
+        contract_data = $1,
+        updated_at = $2
+      WHERE workspace_id = $3`,
       [JSON.stringify(updated), new Date().toISOString(), workspaceId]
     );
 
@@ -90,9 +94,9 @@ export class WorkspaceService {
   }
 
   async listWorkspaces(tenantId?: string): Promise<WorkspaceContract[]> {
-    const query = tenantId 
-      ? await this.db.query("SELECT contract_data FROM workspaces WHERE tenant_id = ?", [tenantId])
-      : await this.db.query("SELECT contract_data FROM workspaces", []);
+    const query = tenantId
+      ? await this.db.query('SELECT contract_data FROM workspaces WHERE tenant_id = $1', [tenantId])
+      : await this.db.query('SELECT contract_data FROM workspaces', []);
     return query.map((row: any) => JSON.parse(row.contract_data));
   }
 
@@ -146,13 +150,13 @@ export class WorkspaceService {
   async getWorkspaceMetrics(workspaceId: string): Promise<any> {
     // Get metrics from database
     const result = await this.db.query(
-      `SELECT 
+      `SELECT
         COUNT(*) as total_runs,
         AVG(CASE WHEN status = 'completed' THEN 1.0 ELSE 0.0 END) as success_rate,
         AVG(cost_usd) as average_cost,
         MAX(created_at) as last_activity
-      FROM workspace_runs 
-      WHERE workspace_id = ?`,
+      FROM workspace_runs
+      WHERE workspace_id = $1`,
       [workspaceId]
     );
 
