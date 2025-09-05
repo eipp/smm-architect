@@ -85,7 +85,7 @@ validate_infrastructure() {
     local validation_results=()
     
     # Check StatefulSets
-    local statefulsets=("smm-postgres" "smm-redis")
+    local statefulsets=("smm-redis")
     for ss in "${statefulsets[@]}"; do
         if kubectl get statefulset "$ss" -n "$NAMESPACE" &> /dev/null; then
             local ready=$(kubectl get statefulset "$ss" -n "$NAMESPACE" -o jsonpath='{.status.readyReplicas}')

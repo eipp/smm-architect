@@ -4,6 +4,8 @@
 
 This document provides comprehensive guidance for the SMM Architect QA & Validation framework implementation, covering all aspects from development testing through production deployment validation.
 
+> **Database Source of Truth**: All persistent application data is stored in an AWS RDS PostgreSQL instance. Kubernetes deployments consume the RDS endpoint exported from Pulumi, making RDS the single source of truth for the platform.
+
 ## Table of Contents
 
 1. [Implementation Summary](#implementation-summary)

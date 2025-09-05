@@ -44,9 +44,6 @@ echo "💾 Applying storage configurations..."
 kubectl apply -f 40-storage.yaml
 
 # Wait for StatefulSets to be ready
-echo "⏳ Waiting for PostgreSQL to be ready..."
-kubectl rollout status statefulset/smm-postgres -n $NAMESPACE --timeout=300s
-
 echo "⏳ Waiting for Redis to be ready..."
 kubectl rollout status statefulset/smm-redis -n $NAMESPACE --timeout=300s
 

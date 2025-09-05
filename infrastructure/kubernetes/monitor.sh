@@ -28,7 +28,6 @@ declare -A SERVICES=(
 )
 
 declare -A STATEFULSETS=(
-    ["smm-postgres"]="5432"
     ["smm-redis"]="6379"
 )
 

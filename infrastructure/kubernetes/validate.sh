@@ -31,7 +31,6 @@ SERVICES=(
     "smm-model-router-service"
     "smm-publisher-service"
     "smm-agents-service"
-    "smm-postgres"
     "smm-redis"
 )
 
@@ -46,7 +45,6 @@ DEPLOYMENTS=(
 
 # Define expected statefulsets
 STATEFULSETS=(
-    "smm-postgres"
     "smm-redis"
 )
 

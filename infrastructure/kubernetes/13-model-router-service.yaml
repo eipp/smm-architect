@@ -40,6 +40,28 @@ spec:
           value: "3002"
         - name: NODE_ENV
           value: "production"
+        - name: POSTGRES_DB
+          valueFrom:
+            configMapKeyRef:
+              name: smm-architect-config
+              key: POSTGRES_DB
+        - name: POSTGRES_USER
+          valueFrom:
+            configMapKeyRef:
+              name: smm-architect-config
+              key: POSTGRES_USER
+        - name: POSTGRES_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: smm-architect-config
+              key: POSTGRES_HOST
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: smm-architect-secrets
+              key: POSTGRES_PASSWORD
+        - name: DATABASE_URL
+          value: "postgresql://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@$(POSTGRES_HOST):5432/$(POSTGRES_DB)"
         envFrom:
         - configMapRef:
             name: smm-architect-config
