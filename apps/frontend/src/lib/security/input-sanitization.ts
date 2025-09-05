@@ -15,7 +15,9 @@ const DEFAULT_SANITIZE_OPTIONS = {
   ],
   ALLOW_DATA_ATTR: false,
   FORBID_TAGS: ['script', 'object', 'embed', 'form', 'input', 'textarea', 'select', 'button'],
-  FORBID_ATTR: ['on*', 'javascript:', 'data-*'],
+  // DOMPurify expects explicit attribute names; wildcards and protocol strings are unsupported
+  // so we enumerate common event handlers to forbid
+  FORBID_ATTR: ['onerror', 'onload', 'onclick', 'onmouseover', 'onfocus', 'onblur'],
   KEEP_CONTENT: true,
   RETURN_DOM: false,
   RETURN_DOM_FRAGMENT: false,
