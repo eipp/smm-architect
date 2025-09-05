@@ -1,9 +1,12 @@
 /**
  * Rate Limiting Middleware for SMM Architect
- * 
- * Provides rate limiting functionality to prevent abuse and brute force attacks
- * on authentication endpoints and other sensitive operations.
+ *
+ * Provides rate limiting functionality backed by Redis to prevent abuse
+ * and brute force attacks on authentication endpoints and other sensitive
+ * operations.
  */
+
+import Redis from 'ioredis';
 
 // Mock log implementation
 const log = {
@@ -13,14 +16,34 @@ const log = {
   warn: (message: string, data?: any) => console.warn('[WARN]', message, data)
 };
 
-// In-memory store for demo - in production use Redis
-interface RateLimitEntry {
-  count: number;
-  resetTime: number;
-  firstAttempt: number;
+export interface RateLimitStoreConfig {
+  redisUrl?: string;
+  prefix?: string;
 }
 
-const rateLimitStore = new Map<string, RateLimitEntry>();
+let redisClient: Redis;
+let storeConfig: Required<RateLimitStoreConfig>;
+
+/**
+ * Configure the rate limit store connection
+ */
+export function configureRateLimitStore(config: RateLimitStoreConfig = {}): void {
+  storeConfig = {
+    redisUrl: config.redisUrl || process.env.REDIS_URL || 'redis://localhost:6379',
+    prefix: config.prefix || process.env.RATE_LIMIT_PREFIX || 'rate-limit'
+  };
+
+  if (redisClient) {
+    redisClient.disconnect();
+  }
+
+  redisClient = new Redis(storeConfig.redisUrl, {
+    maxRetriesPerRequest: 3
+  });
+}
+
+// Initialize with default configuration
+configureRateLimitStore();
 
 /**
  * Rate limiting function
@@ -35,58 +58,64 @@ export async function rateLimit(
   maxAttempts: number,
   windowSeconds: number
 ): Promise<void> {
-  const key = `${category}:${identifier}`;
+  const key = `${storeConfig.prefix}:${category}:${identifier}`;
   const now = Date.now();
   const windowMs = windowSeconds * 1000;
-  
-  let entry = rateLimitStore.get(key);
-  
-  // If no entry exists or window has expired, create new entry
-  if (!entry || now >= entry.resetTime) {
-    entry = {
-      count: 1,
-      resetTime: now + windowMs,
-      firstAttempt: now
-    };
-    rateLimitStore.set(key, entry);
-    
-    log.debug("Rate limit - new window", { 
-      category, 
-      identifier: maskIdentifier(identifier), 
-      count: 1, 
-      maxAttempts 
-    });
-    
-    return;
-  }
-  
-  // Increment attempt count
-  entry.count++;
-  
-  // Check if limit exceeded
-  if (entry.count > maxAttempts) {
-    const timeUntilReset = Math.ceil((entry.resetTime - now) / 1000);
-    
-    log.warn("Rate limit exceeded", {
+
+  try {
+    const entry = await redisClient.hgetall(key);
+
+    if (Object.keys(entry).length === 0) {
+      await redisClient
+        .multi()
+        .hset(key, 'count', 1, 'firstAttempt', now.toString())
+        .pexpire(key, windowMs)
+        .exec();
+
+      log.debug('Rate limit - new window', {
+        category,
+        identifier: maskIdentifier(identifier),
+        count: 1,
+        maxAttempts
+      });
+
+      return;
+    }
+
+    const count = await redisClient.hincrby(key, 'count', 1);
+
+    if (count > maxAttempts) {
+      const ttl = await redisClient.pttl(key);
+      const timeUntilReset = Math.ceil(ttl / 1000);
+
+      log.warn('Rate limit exceeded', {
+        category,
+        identifier: maskIdentifier(identifier),
+        attempts: count,
+        maxAttempts,
+        resetInSeconds: timeUntilReset
+      });
+
+      throw new Error(
+        `Rate limit exceeded. Too many attempts. Try again in ${timeUntilReset} seconds.`
+      );
+    }
+
+    log.debug('Rate limit check', {
       category,
       identifier: maskIdentifier(identifier),
-      attempts: entry.count,
+      count,
       maxAttempts,
-      resetInSeconds: timeUntilReset
+      remaining: maxAttempts - count
     });
-    
-    throw new Error(
-      `Rate limit exceeded. Too many attempts. Try again in ${timeUntilReset} seconds.`
-    );
+  } catch (error) {
+    log.error('Rate limit error', {
+      category,
+      identifier: maskIdentifier(identifier),
+      error: error instanceof Error ? error.message : String(error)
+    });
+    throw error;
   }
-  
-  log.debug("Rate limit check", {
-    category,
-    identifier: maskIdentifier(identifier),
-    count: entry.count,
-    maxAttempts,
-    remaining: maxAttempts - entry.count
-  });
 }
 
 /**
@@ -101,11 +130,35 @@ export async function getRateLimitStatus(
   resetTime: number;
   blocked: boolean;
 }> {
-  const key = `${category}:${identifier}`;
-  const entry = rateLimitStore.get(key);
+  const key = `${storeConfig.prefix}:${category}:${identifier}`;
   const now = Date.now();
-  
-  if (!entry || now >= entry.resetTime) {
+
+  try {
+    const entry = await redisClient.hgetall(key);
+    if (!entry.count) {
+      return {
+        count: 0,
+        remaining: Infinity,
+        resetTime: now,
+        blocked: false
+      };
+    }
+
+    const count = parseInt(entry.count, 10);
+    const ttl = await redisClient.pttl(key);
+
+    return {
+      count,
+      remaining: Math.max(0, 5 - count), // Default max of 5
+      resetTime: now + ttl,
+      blocked: count >= 5
+    };
+  } catch (error) {
+    log.error('Rate limit status error', {
+      category,
+      identifier: maskIdentifier(identifier),
+      error: error instanceof Error ? error.message : String(error)
+    });
     return {
       count: 0,
       remaining: Infinity,
@@ -113,13 +166,6 @@ export async function getRateLimitStatus(
       blocked: false
     };
   }
-  
-  return {
-    count: entry.count,
-    remaining: Math.max(0, 5 - entry.count), // Default max of 5
-    resetTime: entry.resetTime,
-    blocked: entry.count >= 5
-  };
 }
 
 /**
@@ -130,65 +176,91 @@ export async function clearRateLimit(
   category: string,
   identifier: string
 ): Promise<void> {
-  const key = `${category}:${identifier}`;
-  rateLimitStore.delete(key);
-  
-  log.info("Rate limit cleared", {
-    category,
-    identifier: maskIdentifier(identifier)
-  });
+  const key = `${storeConfig.prefix}:${category}:${identifier}`;
+
+  try {
+    await redisClient.del(key);
+    log.info('Rate limit cleared', {
+      category,
+      identifier: maskIdentifier(identifier)
+    });
+  } catch (error) {
+    log.error('Failed to clear rate limit', {
+      category,
+      identifier: maskIdentifier(identifier),
+      error: error instanceof Error ? error.message : String(error)
+    });
+  }
 }
 
 /**
- * Cleanup expired entries (should be called periodically)
+ * Cleanup expired entries
+ * Redis manages expiration automatically, so this is a no-op.
  */
-export function cleanupExpiredEntries(): void {
-  const now = Date.now();
-  let cleaned = 0;
-  
-  for (const [key, entry] of rateLimitStore.entries()) {
-    if (now >= entry.resetTime) {
-      rateLimitStore.delete(key);
-      cleaned++;
-    }
-  }
-  
-  if (cleaned > 0) {
-    log.debug("Rate limit cleanup", { expiredEntries: cleaned });
-  }
+export async function cleanupExpiredEntries(): Promise<void> {
+  return Promise.resolve();
 }
 
 /**
  * Get rate limit statistics
  */
-export function getRateLimitStats(): {
+export async function getRateLimitStats(): Promise<{
   totalEntries: number;
   categories: Record<string, number>;
   oldestEntry: number | null;
-} {
+}> {
   const stats = {
-    totalEntries: rateLimitStore.size,
+    totalEntries: 0,
     categories: {} as Record<string, number>,
     oldestEntry: null as number | null
   };
-  
+
+  let cursor = '0';
   let oldestTime = Infinity;
-  
-  for (const [key, entry] of rateLimitStore.entries()) {
-    const category = key.split(':')[0];
-    if (category) {
-      stats.categories[category] = (stats.categories[category] || 0) + 1;
+
+  try {
+    do {
+      const [nextCursor, keys] = await redisClient.scan(
+        cursor,
+        'MATCH',
+        `${storeConfig.prefix}:*`,
+        'COUNT',
+        '100'
+      );
+
+      cursor = nextCursor;
+
+      if (keys.length) {
+        stats.totalEntries += keys.length;
+
+        const pipeline = redisClient.pipeline();
+        keys.forEach(key => pipeline.hget(key, 'firstAttempt'));
+        const results = await pipeline.exec();
+
+        keys.forEach((key, index) => {
+          const category = key.split(':')[1];
+          if (category) {
+            stats.categories[category] = (stats.categories[category] || 0) + 1;
+          }
+
+          const firstAttemptStr = results[index][1] as string | null;
+          const firstAttempt = firstAttemptStr ? parseInt(firstAttemptStr, 10) : NaN;
+          if (!isNaN(firstAttempt) && firstAttempt < oldestTime) {
+            oldestTime = firstAttempt;
+          }
+        });
+      }
+    } while (cursor !== '0');
+
+    if (oldestTime !== Infinity) {
+      stats.oldestEntry = oldestTime;
     }
-    
-    if (entry.firstAttempt < oldestTime) {
-      oldestTime = entry.firstAttempt;
-    }
+  } catch (error) {
+    log.error('Failed to get rate limit stats', {
+      error: error instanceof Error ? error.message : String(error)
+    });
   }
-  
-  if (oldestTime !== Infinity) {
-    stats.oldestEntry = oldestTime;
-  }
-  
+
   return stats;
 }
 
@@ -200,29 +272,27 @@ function maskIdentifier(identifier: string): string {
     // Email masking
     const [username, domain] = identifier.split('@');
     if (username && domain) {
-      const maskedUsername = username.length > 2 
+      const maskedUsername = username.length > 2
         ? username.substring(0, 2) + '*'.repeat(username.length - 2)
         : username;
       return `${maskedUsername}@${domain}`;
     }
   }
-  
+
   if (identifier.match(/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/)) {
     // IP address masking
     const parts = identifier.split('.');
     return `${parts[0]}.${parts[1]}.***.**`;
-  }
-  
+    }
+
   // Generic masking
   return identifier.length > 4
     ? identifier.substring(0, 4) + '*'.repeat(identifier.length - 4)
     : identifier;
 }
 
-// Cleanup expired entries every 5 minutes
-setInterval(cleanupExpiredEntries, 5 * 60 * 1000);
-
 export default {
+  configureRateLimitStore,
   rateLimit,
   getRateLimitStatus,
   clearRateLimit,

@@ -1075,6 +1075,9 @@ importers:
       encore.dev:
         specifier: ^1.0.0
         version: 1.49.1
+      ioredis:
+        specifier: ^5.3.2
+        version: 5.7.0
       node-vault:
         specifier: ^0.10.0
         version: 0.10.5
