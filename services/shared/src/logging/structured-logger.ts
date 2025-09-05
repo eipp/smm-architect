@@ -35,19 +35,22 @@ export interface LogEntry {
 // PII patterns to mask
 const PII_PATTERNS = [
   // Email addresses
-  { pattern: /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}/g, replacement: '[EMAIL]' },
+  { pattern: /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}/g, replacement: '[EMAIL_MASKED]' },
   // Phone numbers (US format)
-  { pattern: /\\(?\\d{3}\\)?[-\\s.]?\\d{3}[-\\s.]?\\d{4}/g, replacement: '[PHONE]' },
+  { pattern: /\\(?\\d{3}\\)?[-\\s.]?\\d{3}[-\\s.]?\\d{4}/g, replacement: '[PHONE_MASKED]' },
   // Social Security Numbers
-  { pattern: /\\d{3}-\\d{2}-\\d{4}/g, replacement: '[SSN]' },
+  { pattern: /\\d{3}-\\d{2}-\\d{4}/g, replacement: '[SSN_MASKED]' },
   // Credit card numbers (basic pattern)
-  { pattern: /\\d{4}[\\s-]?\\d{4}[\\s-]?\\d{4}[\\s-]?\\d{4}/g, replacement: '[CARD]' },
+  { pattern: /\\d{4}[\\s-]?\\d{4}[\\s-]?\\d{4}[\\s-]?\\d{4}/g, replacement: '[CREDIT_CARD_MASKED]' },
   // API keys and tokens (common patterns)
-  { pattern: /(?:api[_-]?key|token|secret)[\"']?\\s*[:=]\\s*[\"']?([a-zA-Z0-9_-]{20,})/gi, replacement: 'api_key=\"[REDACTED]\"' },
+  {
+    pattern: /((?:api[_-]?key|token|secret)['"]?\s*[:=]\s*['"]?)[a-zA-Z0-9_-]{20,}/gi,
+    replacement: '$1[SECRET_MASKED]'
+  },
   // JWT tokens
-  { pattern: /eyJ[a-zA-Z0-9_-]*\\.[a-zA-Z0-9_-]*\\.[a-zA-Z0-9_-]*/g, replacement: '[JWT_TOKEN]' },
+  { pattern: /eyJ[a-zA-Z0-9_-]*\\.[a-zA-Z0-9_-]*\\.[a-zA-Z0-9_-]*/g, replacement: '[JWT_TOKEN_MASKED]' },
   // Authorization headers
-  { pattern: /Bearer\\s+[a-zA-Z0-9_-]+/gi, replacement: 'Bearer [REDACTED]' }
+  { pattern: /Bearer\\s+[a-zA-Z0-9_-]+/gi, replacement: 'Bearer [SECRET_MASKED]' }
 ];
 
 // Sensitive fields to mask in objects
@@ -68,19 +71,39 @@ export class StructuredLogger {
   private enableSentry: boolean;
   private logLevel: string;
 
-  constructor(service: string, options: {
-    environment?: string;
-    version?: string;
-    enableConsole?: boolean;
-    enableSentry?: boolean;
-    logLevel?: string;
-  } = {}) {
-    this.service = service;
-    this.environment = options.environment || process.env.NODE_ENV || 'development';
-    this.version = options.version || process.env.npm_package_version || '1.0.0';
-    this.enableConsole = options.enableConsole ?? true;
-    this.enableSentry = options.enableSentry ?? false;
-    this.logLevel = options.logLevel || process.env.LOG_LEVEL || 'info';
+  constructor(
+    serviceOrOptions: string | {
+      serviceName: string;
+      environment?: string;
+      version?: string;
+      enableConsole?: boolean;
+      enableSentry?: boolean;
+      logLevel?: string;
+    },
+    options: {
+      environment?: string;
+      version?: string;
+      enableConsole?: boolean;
+      enableSentry?: boolean;
+      logLevel?: string;
+    } = {}
+  ) {
+    if (typeof serviceOrOptions === 'string') {
+      this.service = serviceOrOptions;
+      this.environment = options.environment || process.env.NODE_ENV || 'development';
+      this.version = options.version || process.env.npm_package_version || '1.0.0';
+      this.enableConsole = options.enableConsole ?? true;
+      this.enableSentry = options.enableSentry ?? false;
+      this.logLevel = options.logLevel || process.env.LOG_LEVEL || 'info';
+    } else {
+      const opts = serviceOrOptions;
+      this.service = opts.serviceName;
+      this.environment = opts.environment || process.env.NODE_ENV || 'development';
+      this.version = opts.version || process.env.npm_package_version || '1.0.0';
+      this.enableConsole = opts.enableConsole ?? true;
+      this.enableSentry = opts.enableSentry ?? false;
+      this.logLevel = opts.logLevel || process.env.LOG_LEVEL || 'info';
+    }
   }
 
   static setContext(context: LogContext): void {
@@ -117,6 +140,11 @@ export class StructuredLogger {
 
   fatal(message: string, error?: Error, data?: any): void {
     this.log('fatal', message, data, error);
+  }
+
+  // Lifecycle management
+  shutdown(): void {
+    // Placeholder for future resource cleanup (e.g., flushing buffers)
   }
 
   // Timing utilities
@@ -302,7 +330,7 @@ export class StructuredLogger {
       const sanitized: any = {};
       for (const [key, value] of Object.entries(data)) {
         if (this.isSensitiveField(key)) {
-          sanitized[key] = '[REDACTED]';
+          sanitized[key] = '[SECRET_MASKED]';
         } else {
           sanitized[key] = this.sanitizeData(value);
         }
@@ -388,14 +416,27 @@ export function requestLoggingMiddleware(logger: StructuredLogger) {
 }
 
 // Factory function for creating service-specific loggers
-export function createLogger(service: string, options?: {
-  environment?: string;
-  version?: string;
-  enableConsole?: boolean;
-  enableSentry?: boolean;
-  logLevel?: string;
-}): StructuredLogger {
-  return new StructuredLogger(service, options);
+export function createLogger(
+  serviceOrOptions: string | {
+    serviceName: string;
+    environment?: string;
+    version?: string;
+    enableConsole?: boolean;
+    enableSentry?: boolean;
+    logLevel?: string;
+  },
+  options: {
+    environment?: string;
+    version?: string;
+    enableConsole?: boolean;
+    enableSentry?: boolean;
+    logLevel?: string;
+  } = {}
+): StructuredLogger {
+  if (typeof serviceOrOptions === 'string') {
+    return new StructuredLogger(serviceOrOptions, options);
+  }
+  return new StructuredLogger(serviceOrOptions);
 }
 
 // Export a default logger instance

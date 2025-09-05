@@ -42,6 +42,14 @@ export declare class StructuredLogger {
         enableSentry?: boolean;
         logLevel?: string;
     });
+    constructor(options: {
+        serviceName: string;
+        environment?: string;
+        version?: string;
+        enableConsole?: boolean;
+        enableSentry?: boolean;
+        logLevel?: string;
+    });
     static setContext(context: LogContext): void;
     static getContext(): LogContext;
     static withContext<T>(context: LogContext, fn: () => T): T;
@@ -50,6 +58,7 @@ export declare class StructuredLogger {
     warn(message: string, data?: any, error?: Error): void;
     error(message: string, error?: Error, data?: any): void;
     fatal(message: string, error?: Error, data?: any): void;
+    shutdown(): void;
     time(operationId: string): () => void;
     audit(action: string, resource: string, data?: any): void;
     security(event: string, severity: 'low' | 'medium' | 'high' | 'critical', data?: any): void;
@@ -64,12 +73,22 @@ export declare class StructuredLogger {
     private hashSensitive;
 }
 export declare function requestLoggingMiddleware(logger: StructuredLogger): (req: any, res: any, next: any) => void;
-export declare function createLogger(service: string, options?: {
-    environment?: string;
-    version?: string;
-    enableConsole?: boolean;
-    enableSentry?: boolean;
-    logLevel?: string;
-}): StructuredLogger;
+export declare function createLogger(
+    serviceOrOptions: string | {
+        serviceName: string;
+        environment?: string;
+        version?: string;
+        enableConsole?: boolean;
+        enableSentry?: boolean;
+        logLevel?: string;
+    },
+    options?: {
+        environment?: string;
+        version?: string;
+        enableConsole?: boolean;
+        enableSentry?: boolean;
+        logLevel?: string;
+    }
+): StructuredLogger;
 export declare const logger: StructuredLogger;
 //# sourceMappingURL=structured-logger.d.ts.map
