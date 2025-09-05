@@ -1,6 +1,10 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 
+const JWT_ALGORITHM: jwt.Algorithm = 'HS256';
+const JWT_AUDIENCE = process.env.JWT_AUDIENCE || 'smm-architect-api';
+const JWT_ISSUER = process.env.JWT_ISSUER || 'smm-architect';
+
 export interface AuthenticatedRequest extends Request {
   user?: {
     userId: string;
@@ -49,7 +53,11 @@ export function authMiddleware(req: AuthenticatedRequest, res: Response, next: N
     }
 
     try {
-      const decoded = jwt.verify(token, jwtSecret) as JWTPayload;
+      const decoded = jwt.verify(token, jwtSecret, {
+        algorithms: [JWT_ALGORITHM],
+        audience: JWT_AUDIENCE,
+        issuer: JWT_ISSUER
+      }) as JWTPayload;
       
       req.user = {
         userId: decoded.userId,
@@ -180,7 +188,11 @@ export function optionalAuth(req: AuthenticatedRequest, res: Response, next: Nex
   }
 
   try {
-    const decoded = jwt.verify(token, jwtSecret) as JWTPayload;
+    const decoded = jwt.verify(token, jwtSecret, {
+      algorithms: [JWT_ALGORITHM],
+      audience: JWT_AUDIENCE,
+      issuer: JWT_ISSUER
+    }) as JWTPayload;
     
     req.user = {
       userId: decoded.userId,
@@ -247,7 +259,12 @@ export function generateToken(payload: Omit<JWTPayload, 'iat' | 'exp'>, expiresI
     throw new Error('JWT_SECRET environment variable not set');
   }
 
-  return jwt.sign(payload, jwtSecret, { expiresIn } as jwt.SignOptions);
+  return jwt.sign(payload, jwtSecret, {
+    algorithm: JWT_ALGORITHM,
+    expiresIn,
+    audience: JWT_AUDIENCE,
+    issuer: JWT_ISSUER
+  } as jwt.SignOptions);
 }
 
 /**
@@ -260,7 +277,11 @@ export function verifyToken(token: string): JWTPayload {
     throw new Error('JWT_SECRET environment variable not set');
   }
 
-  return jwt.verify(token, jwtSecret) as JWTPayload;
+  return jwt.verify(token, jwtSecret, {
+    algorithms: [JWT_ALGORITHM],
+    audience: JWT_AUDIENCE,
+    issuer: JWT_ISSUER
+  }) as JWTPayload;
 }
 
 /**
