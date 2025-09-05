@@ -101,9 +101,10 @@ export const sanitizeText = (text: string, maxLength?: number): string => {
 }
 
 /**
- * Sanitize URL to prevent javascript: and data: schemes
+ * Sanitize URL to prevent javascript: and data: schemes.
+ * Only http/https are permitted by default; pass 'mailto:' explicitly when email links are needed.
  */
-export const sanitizeUrl = (url: string, allowedProtocols: string[] = ['http:', 'https:', 'mailto:']): string => {
+export const sanitizeUrl = (url: string, allowedProtocols: string[] = ['http:', 'https:']): string => {
   if (!url || typeof url !== 'string') {
     return ''
   }
