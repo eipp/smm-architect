@@ -289,8 +289,12 @@ export const health = api(
  */
 export const listWorkspaces = api(
   { method: "GET", path: "/workspaces", auth: true },
-  async ({ tenantId }: { tenantId?: string }): Promise<{ workspaces: WorkspaceContract[] }> => {
+  async ({ tenantId }: { tenantId: string }): Promise<{ workspaces: WorkspaceContract[] }> => {
     try {
+      if (!tenantId) {
+        throw new Error("tenantId is required");
+      }
+
       log.info("Listing workspaces", { tenantId });
 
       const workspaces = await workspaceService.listWorkspaces(tenantId);
@@ -298,11 +302,11 @@ export const listWorkspaces = api(
       return { workspaces };
 
     } catch (error) {
-      log.error("Failed to list workspaces", { 
-        tenantId, 
-        error: error instanceof Error ? error.message : String(error) 
+      log.error("Failed to list workspaces", {
+        tenantId,
+        error: error instanceof Error ? error.message : String(error)
       });
-      captureException(error, { 
+      captureException(error, {
         endpoint: "listWorkspaces",
         tenantId: tenantId
       });

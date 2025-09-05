@@ -89,10 +89,11 @@ export class WorkspaceService {
     return true;
   }
 
-  async listWorkspaces(tenantId?: string): Promise<WorkspaceContract[]> {
-    const query = tenantId 
-      ? await this.db.query("SELECT contract_data FROM workspaces WHERE tenant_id = ?", [tenantId])
-      : await this.db.query("SELECT contract_data FROM workspaces", []);
+  async listWorkspaces(tenantId: string): Promise<WorkspaceContract[]> {
+    const query = await this.db.query(
+      "SELECT contract_data FROM workspaces WHERE tenant_id = ?",
+      [tenantId]
+    );
     return query.map((row: any) => JSON.parse(row.contract_data));
   }
 
