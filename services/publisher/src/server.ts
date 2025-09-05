@@ -4,12 +4,14 @@ import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import winston from 'winston';
 import Queue from 'bull';
+import crypto from 'crypto';
 import { createClient } from 'redis';
+import * as Sentry from '@sentry/node';
+import * as SentryProfiling from '@sentry/profiling-node';
+
 import { authMiddleware } from './middleware/auth';
 import { errorHandler, notFoundHandler, setupGlobalErrorHandlers } from './middleware/error-handler';
 import { publisherRoutes } from './routes';
-import * as Sentry from '@sentry/node';
-import * as SentryProfiling from '@sentry/profiling-node';
 
 // Initialize Sentry for error tracking
 if (process.env.SENTRY_DSN) {
@@ -57,22 +59,23 @@ const logger = winston.createLogger({
 const app = express();
 const PORT = process.env.PORT || 8081;
 
+const REDIS_HOST = process.env.REDIS_HOST || 'localhost';
+const REDIS_PORT = parseInt(process.env.REDIS_PORT || '6379', 10);
+
 // Health check dependencies
-let redisClient: any;
+const redisClient = createClient({
+  socket: {
+    host: REDIS_HOST,
+    port: REDIS_PORT,
+  },
+  password: process.env.REDIS_PASSWORD,
+});
 let publishQueue: Queue.Queue;
 let server: any;
 
 // Initialize Redis client
 async function initializeRedis() {
   try {
-    redisClient = createClient({
-      socket: {
-        host: process.env.REDIS_HOST || 'localhost',
-        port: parseInt(process.env.REDIS_PORT || '6379'),
-      },
-      password: process.env.REDIS_PASSWORD,
-    });
-
     redisClient.on('error', (err: Error) => {
       logger.error('Redis Client Error:', err);
     });
@@ -82,12 +85,12 @@ async function initializeRedis() {
     });
 
     await redisClient.connect();
-    
+
     // Initialize Bull queue for job processing
     publishQueue = new Queue('publish queue', {
       redis: {
-        host: process.env.REDIS_HOST || 'localhost',
-        port: parseInt(process.env.REDIS_PORT || '6379'),
+        host: REDIS_HOST,
+        port: REDIS_PORT,
         password: process.env.REDIS_PASSWORD,
       },
     });
@@ -106,12 +109,50 @@ async function initializeRedis() {
   }
 }
 
+class RedisRateLimitStore {
+  private client: ReturnType<typeof createClient>;
+  private windowMs: number;
+  private prefix: string;
+
+  constructor(client: ReturnType<typeof createClient>, windowMs: number, prefix = 'rl:') {
+    this.client = client;
+    this.windowMs = windowMs;
+    this.prefix = prefix;
+  }
+
+  async increment(key: string) {
+    const storeKey = `${this.prefix}${key}`;
+    const results = await this.client
+      .multi()
+      .incr(storeKey)
+      .pexpire(storeKey, this.windowMs)
+      .exec();
+
+    const totalHits = (results?.[0]?.[1] as number) || 0;
+    const resetTime = new Date(Date.now() + this.windowMs);
+    return { totalHits, resetTime };
+  }
+
+  async decrement(key: string) {
+    await this.client.decr(`${this.prefix}${key}`);
+  }
+
+  async resetKey(key: string) {
+    await this.client.del(`${this.prefix}${key}`);
+  }
+}
+
+app.use((req, res, next) => {
+  res.locals.styleNonce = crypto.randomBytes(16).toString('base64');
+  next();
+});
+
 // Security middleware
 app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      styleSrc: ["'self'", "'unsafe-inline'"],
+      styleSrc: ["'self'", (req, res) => `'nonce-${res.locals.styleNonce}'`],
       scriptSrc: ["'self'"],
       imgSrc: ["'self'", "data:", "https:"],
     },
@@ -132,8 +173,9 @@ app.use(cors({
 }));
 
 // Rate limiting
+const RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
 const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
+  windowMs: RATE_LIMIT_WINDOW_MS,
   max: 1000, // Limit each IP to 1000 requests per windowMs
   message: {
     success: false,
@@ -144,6 +186,7 @@ const limiter = rateLimit({
   },
   standardHeaders: true,
   legacyHeaders: false,
+  store: new RedisRateLimitStore(redisClient, RATE_LIMIT_WINDOW_MS),
 });
 app.use(limiter);
 
@@ -159,8 +202,9 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Request ID middleware
 app.use((req, res, next) => {
-  req.headers['x-request-id'] = req.headers['x-request-id'] || `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-  res.setHeader('X-Request-ID', req.headers['x-request-id']);
+  req.headers['x-request-id'] =
+    req.headers['x-request-id'] || `req_${crypto.randomUUID()}`;
+  res.setHeader('X-Request-ID', req.headers['x-request-id'] as string);
   next();
 });
 

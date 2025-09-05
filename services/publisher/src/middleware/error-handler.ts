@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import * as Sentry from '@sentry/node';
+import crypto from 'crypto';
 
 export class ApiError extends Error {
   public statusCode: number;
@@ -296,7 +297,7 @@ export function formatValidationError(errors: any[]): any {
  * Generate unique request ID
  */
 function generateRequestId(): string {
-  return `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  return `req_${crypto.randomUUID()}`;
 }
 
 /**
