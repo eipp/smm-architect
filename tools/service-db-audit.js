@@ -11,7 +11,7 @@
  *   node tools/service-db-audit.js --fix
  */
 
-const fs = require('fs');
+const fs = require('fs/promises');
 const path = require('path');
 const process = require('process');
 
@@ -67,12 +67,14 @@ class ServiceDatabaseAudit {
    */
   async auditAllServices() {
     const servicesPath = path.join(process.cwd(), SERVICES_DIR);
-    
-    if (!fs.existsSync(servicesPath)) {
+
+    try {
+      await fs.access(servicesPath);
+    } catch {
       throw new Error(`Services directory not found: ${servicesPath}`);
     }
 
-    const serviceDirs = fs.readdirSync(servicesPath, { withFileTypes: true })
+    const serviceDirs = (await fs.readdir(servicesPath, { withFileTypes: true }))
       .filter(dirent => dirent.isDirectory())
       .map(dirent => dirent.name);
 
@@ -109,7 +111,7 @@ class ServiceDatabaseAudit {
    * Recursively audit files in a directory
    */
   async auditDirectory(dirPath, serviceName) {
-    const items = fs.readdirSync(dirPath, { withFileTypes: true });
+    const items = await fs.readdir(dirPath, { withFileTypes: true });
 
     for (const item of items) {
       const itemPath = path.join(dirPath, item.name);
@@ -126,7 +128,7 @@ class ServiceDatabaseAudit {
    * Audit a specific file
    */
   async auditFile(filePath, serviceName) {
-    const content = fs.readFileSync(filePath, 'utf8');
+    const content = await fs.readFile(filePath, 'utf8');
     const relativeFilePath = path.relative(process.cwd(), filePath);
 
     // Skip test files and the shared database client itself
@@ -259,7 +261,7 @@ class ServiceDatabaseAudit {
     for (const [filePath, fileFixes] of Object.entries(fixesByFile)) {
       console.log(`  📝 Fixing ${fileFixes.length} issue(s) in ${filePath}`);
       
-      let content = fs.readFileSync(filePath, 'utf8');
+      let content = await fs.readFile(filePath, 'utf8');
       
       // Apply fixes in reverse order to maintain line numbers
       fileFixes.reverse().forEach(fix => {
@@ -269,7 +271,7 @@ class ServiceDatabaseAudit {
       });
       
       // Write fixed content back to file
-      fs.writeFileSync(filePath, content);
+      await fs.writeFile(filePath, content);
     }
 
     console.log('✅ Automatic fixes applied');
