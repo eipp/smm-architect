@@ -6,6 +6,7 @@ import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import winston from 'winston';
 import { withTenantContext } from '../../shared/database/client';
+import { setTenantId } from '../../../shared/request-context';
 
 // Mock Prisma client for tenant context
 interface MockPrismaClient {
@@ -271,6 +272,9 @@ export function setAutomaticTenantContext() {
         tenantId,
         // Additional tenant info could be loaded here
       };
+
+      // Propagate tenant ID through request context
+      setTenantId(tenantId);
       
       logger.debug('Tenant context set', {
         tenantId,
