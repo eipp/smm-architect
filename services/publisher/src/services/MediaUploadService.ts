@@ -1,10 +1,18 @@
 import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import ffmpeg from 'fluent-ffmpeg';
+import ffmpegInstaller from '@ffmpeg-installer/ffmpeg';
+import ffprobeInstaller from '@ffprobe-installer/ffprobe';
 import multer from 'multer';
 import sharp from 'sharp';
 import { v4 as uuidv4 } from 'uuid';
 import path from 'path';
+import fs from 'fs/promises';
+import os from 'os';
 import { MediaUpload } from '../types';
+
+ffmpeg.setFfmpegPath(ffmpegInstaller.path);
+ffmpeg.setFfprobePath(ffprobeInstaller.path);
 
 export interface UploadOptions {
   workspaceId: string;
@@ -199,24 +207,52 @@ export class MediaUploadService {
   /**
    * Get video metadata
    */
-  private async getVideoMetadata(buffer: Buffer): Promise<any> {
-    // This would typically use ffmpeg or similar
-    // For now, return basic metadata
-    return {
-      duration: 0, // Would be extracted from video
-      format: 'unknown',
-      resolution: 'unknown',
-    };
+  private async getVideoMetadata(buffer: Buffer): Promise<{ width?: number; height?: number; duration?: number; format?: string }> {
+    const tempFile = path.join(os.tmpdir(), `${uuidv4()}.mp4`);
+    await fs.writeFile(tempFile, buffer);
+
+    return new Promise((resolve, reject) => {
+      ffmpeg.ffprobe(tempFile, async (err, data) => {
+        await fs.unlink(tempFile).catch(() => undefined);
+        if (err) {
+          return reject(err);
+        }
+        const stream = data.streams.find(s => s.width && s.height) || data.streams[0];
+        resolve({
+          width: stream?.width,
+          height: stream?.height,
+          duration: data.format.duration,
+          format: data.format.format_name,
+        });
+      });
+    });
   }
 
   /**
    * Generate video thumbnail
    */
   private async generateVideoThumbnail(buffer: Buffer, fileId: string, workspaceId: string): Promise<string> {
-    // This would typically use ffmpeg to extract a frame
-    // For now, return a placeholder
-    const thumbnailKey = `workspaces/${workspaceId}/thumbnails/${fileId}.jpg`;
-    return this.cdnDomain ? `https://${this.cdnDomain}/${thumbnailKey}` : await this.getSignedUrl(thumbnailKey);
+    const tempVideo = path.join(os.tmpdir(), `${fileId}.mp4`);
+    const tempThumb = path.join(os.tmpdir(), `${fileId}.jpg`);
+    await fs.writeFile(tempVideo, buffer);
+
+    await new Promise((resolve, reject) => {
+      ffmpeg(tempVideo)
+        .on('end', resolve)
+        .on('error', reject)
+        .screenshots({
+          count: 1,
+          timemarks: ['0'],
+          filename: path.basename(tempThumb),
+          folder: path.dirname(tempThumb),
+        });
+    });
+
+    const thumbnailBuffer = await fs.readFile(tempThumb);
+    await fs.unlink(tempVideo).catch(() => undefined);
+    await fs.unlink(tempThumb).catch(() => undefined);
+
+    return this.uploadThumbnail(thumbnailBuffer, `thumbnails/${fileId}.jpg`, workspaceId);
   }
 
   /**
