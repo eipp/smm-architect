@@ -1,7 +1,7 @@
 # SMM Architect
 
 [![CI Status](https://github.com/yourorg/smm-architect/workflows/CI/badge.svg)](https://github.com/yourorg/smm-architect/actions)
-[![License](https://img.shields.io/badge/license-Proprietary-red.svg)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](CHANGELOG.md)
 [![Status](https://img.shields.io/badge/status-Production%20Ready-brightgreen.svg)](AGENTS.md)
 
@@ -453,7 +453,7 @@ See `examples/workspace-contract.icblabs.json` for a complete example workspace 
 
 ## 📄 License
 
-This project is proprietary software. See [LICENSE](LICENSE) for details.
+This project is licensed under the [MIT License](LICENSE).
 
 ## 🙋‍♀️ Support
 
