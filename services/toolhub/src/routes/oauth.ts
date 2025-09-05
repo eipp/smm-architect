@@ -250,16 +250,17 @@ router.get('/connections/:workspaceId',
       }
 
       // Database query for OAuth connections will be implemented with production database setup
-      // For now, return mock data
+      // Demo connection data below is for development/testing only.
+      // WARNING: Replace these placeholders with real data in production.
       const connections = [
         {
           connectionId: 'conn-linkedin-001',
           platform: 'linkedin',
           profile: {
-            id: '123456789',
-            name: 'John Doe',
-            username: 'johndoe',
-            profileUrl: 'https://linkedin.com/in/johndoe'
+            id: '000000000',
+            name: 'Example User',
+            username: 'exampleuser',
+            profileUrl: 'https://linkedin.com/in/exampleuser'
           },
           scopes: ['r_liteprofile', 'w_member_social'],
           connectedAt: '2024-01-15T10:30:00Z',

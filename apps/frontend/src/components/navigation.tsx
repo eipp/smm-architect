@@ -86,12 +86,13 @@ export function Navigation() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const pathname = usePathname()
   
-  // Mock user data - in real app this would come from auth context
+  // Mock user data for development/testing only.
+  // WARNING: Do not use these demo credentials in production.
   const user = {
-    name: "John Doe",
-    email: "john@company.com",
+    name: "Example User",
+    email: "user@example.invalid",
     role: "admin",
-    avatar: "/avatars/john-doe.jpg",
+    avatar: "/avatars/example-user.jpg",
   }
 
   const filteredNavItems = navigationItems.filter(
