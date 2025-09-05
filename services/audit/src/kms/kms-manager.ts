@@ -1,10 +1,7 @@
-import { KMSAdapter, SignatureResult, KeyCreationOptions, KeyMetadata } from './adapters/base';
-import { LocalKMSAdapter } from './adapters/local';
-import { AWSKMSAdapter } from './adapters/aws';
-import { VaultKMSAdapter } from './adapters/vault';
+import type { KMSAdapter, SignatureResult, KeyCreationOptions, KeyMetadata } from './adapters/base';
 
 export interface KMSConfig {
-  provider: 'local' | 'aws' | 'vault';
+  provider: 'local' | 'aws' | 'vault' | 'gcp';
   config?: Record<string, any>;
 }
 
@@ -94,18 +91,25 @@ export class KMSManager {
    */
   private createAdapter(config: KMSConfig): KMSAdapter {
     switch (config.provider) {
-      case 'local':
+      case 'local': {
+        const { LocalKMSAdapter } = require('./adapters/local');
         return new LocalKMSAdapter(config.config);
-      
-      case 'aws':
+      }
+      case 'aws': {
+        const { AWSKMSAdapter } = require('./adapters/aws');
         return new AWSKMSAdapter(config.config);
-      
-      case 'vault':
+      }
+      case 'gcp': {
+        const { GCPKMSAdapter } = require('./adapters/gcp');
+        return new GCPKMSAdapter(config.config);
+      }
+      case 'vault': {
         if (!config.config?.vaultUrl) {
           throw new Error('Vault KMS requires vaultUrl configuration');
         }
+        const { VaultKMSAdapter } = require('./adapters/vault');
         return new VaultKMSAdapter(config.config);
-      
+      }
       default:
         throw new Error(`Unsupported KMS provider: ${config.provider}`);
     }
@@ -115,7 +119,7 @@ export class KMSManager {
    * Factory method to create KMS manager from environment variables
    */
   static fromEnvironment(): KMSManager {
-    const provider = (process.env.KMS_PROVIDER || 'local') as 'local' | 'aws' | 'vault';
+    const provider = (process.env.KMS_PROVIDER || 'local') as 'local' | 'aws' | 'vault' | 'gcp';
     
     let config: Record<string, any> = {};
     
@@ -142,6 +146,15 @@ export class KMSManager {
         };
         break;
         
+      case 'gcp':
+        config = {
+          projectId: process.env.GCP_PROJECT_ID || process.env.GOOGLE_CLOUD_PROJECT,
+          locationId: process.env.GCP_LOCATION,
+          keyRingId: process.env.GCP_KMS_KEYRING,
+          keyFilename: process.env.GOOGLE_APPLICATION_CREDENTIALS
+        };
+        break;
+
       case 'local':
         config = {
           keyStorePath: process.env.LOCAL_KMS_KEY_PATH
