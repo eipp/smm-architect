@@ -12,6 +12,7 @@
     "lint": "turbo lint",
     "lint:fix": "turbo lint:fix",
     "type-check": "turbo type-check",
+    "start": "node start-server.js",
     "clean": "turbo clean && rimraf node_modules/.cache",
     "test:alerting": "jest tests/monitoring/alerting-system.test.ts",
     "test:contracts": "jest tests/contract/",
