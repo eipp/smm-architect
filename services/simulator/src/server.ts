@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import winston from 'winston';
+import axios from 'axios';
 import { v4 as uuidv4 } from 'uuid';
 import './config/sentry'; // Initialize Sentry
 import { MonteCarloEngine } from './services/monte-carlo-engine';
@@ -94,7 +95,25 @@ app.post('/simulate', async (req, res) => {
     const engine = new MonteCarloEngine(config);
     
     // Extract workspace context from request
-    const workspace = await getWorkspaceContext(request.workspaceId);
+    let workspace: WorkspaceContext;
+    try {
+      workspace = await getWorkspaceContext(request.workspaceId);
+    } catch (error) {
+      if (error instanceof WorkspaceFetchError) {
+        logger.error('Workspace fetch failed', {
+          simulationId,
+          workspaceId: request.workspaceId,
+          error: error.message
+        });
+        const code = error.status === 404 ? 'WORKSPACE_NOT_FOUND' : 'WORKSPACE_FETCH_FAILED';
+        return res.status(error.status).json({
+          error: code,
+          message: error.message,
+          simulationId
+        });
+      }
+      throw error;
+    }
     
     // Parse workflow
     const workflow = parseWorkflow(request.workflowJson);
@@ -198,50 +217,35 @@ function validateSimulationRequest(body: any): string | null {
 }
 
 /**
- * Get workspace context (mock implementation)
+ * Error thrown when workspace retrieval fails
+ */
+class WorkspaceFetchError extends Error {
+  status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.status = status;
+  }
+}
+
+/**
+ * Get workspace context from SMM Architect service
  */
 async function getWorkspaceContext(workspaceId: string): Promise<WorkspaceContext> {
-  // In real implementation, this would fetch from the SMM Architect service
-  // For now, return a mock workspace
-  return {
-    workspaceId,
-    goals: [
-      { key: 'lead_gen', target: 200, unit: 'leads_per_month' },
-      { key: 'brand_awareness', target: 100000, unit: 'impressions_per_month' }
-    ],
-    primaryChannels: ['linkedin', 'x'],
-    budget: {
-      currency: 'USD',
-      weeklyCap: 1000,
-      hardCap: 4000,
-      breakdown: {
-        paidAds: 600,
-        llmModelSpend: 200,
-        rendering: 150,
-        thirdPartyServices: 50
+  const baseUrl = process.env.SMM_ARCHITECT_URL || 'http://localhost:4000';
+  try {
+    const response = await axios.get<WorkspaceContext>(`${baseUrl}/workspaces/${workspaceId}`);
+    return response.data;
+  } catch (error: any) {
+    if (error.response) {
+      const status = error.response.status;
+      if (status === 404) {
+        throw new WorkspaceFetchError('Workspace not found', 404);
       }
-    },
-    approvalPolicy: {
-      autoApproveReadinessThreshold: 0.85,
-      canaryInitialPct: 0.05,
-      canaryWatchWindowHours: 48,
-      manualApprovalForPaid: true,
-      legalManualApproval: false
-    },
-    riskProfile: 'medium',
-    connectors: [
-      {
-        platform: 'linkedin',
-        status: 'connected',
-        lastConnectedAt: new Date().toISOString()
-      },
-      {
-        platform: 'x',
-        status: 'connected',
-        lastConnectedAt: new Date().toISOString()
-      }
-    ]
-  };
+      throw new WorkspaceFetchError('Workspace service error', status);
+    }
+    throw new WorkspaceFetchError('Workspace service unreachable', 502);
+  }
 }
 
 /**
