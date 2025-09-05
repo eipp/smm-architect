@@ -1,3 +1,5 @@
+import { Ratelimit } from '@upstash/ratelimit'
+import { Redis } from '@upstash/redis'
 import { NextRequest, NextResponse } from 'next/server'
 import { generateNonce } from './input-sanitization'
 
@@ -42,8 +44,8 @@ const DEFAULT_SECURITY_CONFIG: SecurityConfig = {
     reportUri: '/api/security/csp-report',
     directives: {
       'default-src': ["'self'"],
-      'script-src': ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
-      'style-src': ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
+      'script-src': ["'self'", "'strict-dynamic'"],
+      'style-src': ["'self'", 'https://fonts.googleapis.com'],
       'font-src': ["'self'", 'https://fonts.gstatic.com'],
       'img-src': ["'self'", 'data:', 'https:'],
       'connect-src': ["'self'"],
@@ -83,61 +85,6 @@ const DEFAULT_SECURITY_CONFIG: SecurityConfig = {
   }
 }
 
-/**
- * Rate limiting store for server-side rate limiting
- */
-class RateLimitStore {
-  private requests: Map<string, { count: number; resetTime: number }> = new Map()
-
-  isAllowed(key: string, maxRequests: number, windowMs: number): boolean {
-    const now = Date.now()
-    const existing = this.requests.get(key)
-
-    if (!existing || now > existing.resetTime) {
-      this.requests.set(key, { count: 1, resetTime: now + windowMs })
-      return true
-    }
-
-    if (existing.count >= maxRequests) {
-      return false
-    }
-
-    existing.count++
-    return true
-  }
-
-  getRemainingRequests(key: string, maxRequests: number): number {
-    const existing = this.requests.get(key)
-    if (!existing) return maxRequests
-    return Math.max(0, maxRequests - existing.count)
-  }
-
-  getResetTime(key: string): number {
-    const existing = this.requests.get(key)
-    return existing?.resetTime || Date.now()
-  }
-
-  reset(key: string): void {
-    this.requests.delete(key)
-  }
-
-  // Clean up expired entries periodically
-  cleanup(): void {
-    const now = Date.now()
-    for (const [key, value] of this.requests.entries()) {
-      if (now > value.resetTime) {
-        this.requests.delete(key)
-      }
-    }
-  }
-}
-
-const rateLimitStore = new RateLimitStore()
-
-// Clean up rate limit store every 5 minutes
-if (typeof setInterval !== 'undefined') {
-  setInterval(() => rateLimitStore.cleanup(), 5 * 60 * 1000)
-}
 
 /**
  * Generate Content Security Policy header value
@@ -214,41 +161,42 @@ export const createSecurityMiddleware = (config: Partial<SecurityConfig> = {}) =
     rateLimiting: { ...DEFAULT_SECURITY_CONFIG.rateLimiting, ...config.rateLimiting }
   }
 
+  const ratelimit =
+    process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN
+      ? new Ratelimit({
+          redis: Redis.fromEnv(),
+          limiter: Ratelimit.slidingWindow(
+            fullConfig.rateLimiting.maxRequests,
+            `${Math.floor(fullConfig.rateLimiting.windowMs / 1000)} s`
+          )
+        })
+      : null
+
   return async (request: NextRequest): Promise<NextResponse> => {
     const response = NextResponse.next()
     const clientIP = getClientIP(request)
     const url = new URL(request.url)
 
     // Rate limiting
-    if (fullConfig.rateLimiting.enabled) {
+    if (fullConfig.rateLimiting.enabled && ratelimit) {
       const rateLimitKey = `${clientIP}:${url.pathname}`
-      const allowed = rateLimitStore.isAllowed(
-        rateLimitKey,
-        fullConfig.rateLimiting.maxRequests,
-        fullConfig.rateLimiting.windowMs
-      )
+      const { success, limit, remaining, reset } = await ratelimit.limit(rateLimitKey)
 
-      if (!allowed) {
+      if (!success) {
         return new NextResponse('Too Many Requests', {
           status: 429,
           headers: {
-            'Retry-After': Math.ceil(
-              (rateLimitStore.getResetTime(rateLimitKey) - Date.now()) / 1000
-            ).toString(),
-            'X-RateLimit-Limit': fullConfig.rateLimiting.maxRequests.toString(),
+            'Retry-After': Math.ceil(reset - Date.now() / 1000).toString(),
+            'X-RateLimit-Limit': limit.toString(),
             'X-RateLimit-Remaining': '0',
-            'X-RateLimit-Reset': rateLimitStore.getResetTime(rateLimitKey).toString()
+            'X-RateLimit-Reset': reset.toString()
           }
         })
       }
 
-      // Add rate limit headers
-      response.headers.set('X-RateLimit-Limit', fullConfig.rateLimiting.maxRequests.toString())
-      response.headers.set(
-        'X-RateLimit-Remaining',
-        rateLimitStore.getRemainingRequests(rateLimitKey, fullConfig.rateLimiting.maxRequests).toString()
-      )
-      response.headers.set('X-RateLimit-Reset', rateLimitStore.getResetTime(rateLimitKey).toString())
+      response.headers.set('X-RateLimit-Limit', limit.toString())
+      response.headers.set('X-RateLimit-Remaining', remaining.toString())
+      response.headers.set('X-RateLimit-Reset', reset.toString())
     }
 
     // Generate nonce for CSP
