@@ -50,7 +50,17 @@ import {
 import { WorkspaceService } from "./services/workspace-service";
 import { SimulationService } from "./services/simulation-service";
 import { AuditService } from "./services/audit-service";
-import { validateWorkspaceContract } from "./utils/validation";
+import { validateWorkspaceContract, initValidation } from "./utils/validation";
+
+(async () => {
+  try {
+    await initValidation();
+  } catch (error) {
+    log.warn("Validation schema initialization failed", {
+      error: error instanceof Error ? error.message : String(error)
+    });
+  }
+})();
 
 // Database connection
 const db = new SQLDatabase("smm_architect", {
