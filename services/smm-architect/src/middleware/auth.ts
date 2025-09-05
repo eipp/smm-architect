@@ -3,7 +3,7 @@ interface Header {
   [key: string]: string | undefined;
 }
 import { Request, Response, NextFunction } from 'express';
-import jwt from 'jsonwebtoken';
+import jwt, { JwtPayload } from 'jsonwebtoken';
 import winston from 'winston';
 import { withTenantContext } from '../../shared/database/client';
 
@@ -146,22 +146,35 @@ export function extractTenantId(req: Request): string | null {
 export async function extractUserFromToken(token: string): Promise<AuthenticatedUser> {
   try {
     const secretKey = process.env.JWT_SECRET || await getJWTSecret();
-    const decoded = jwt.verify(token, secretKey) as any;
-    
+    const decoded = jwt.verify(token, secretKey, {
+      algorithms: ['HS256']
+    }) as JwtPayload;
+
+    // Validate token expiration
+    if (!decoded.exp) {
+      throw new AuthenticationError('Invalid token: missing expiration');
+    }
+    if (Date.now() >= decoded.exp * 1000) {
+      throw new AuthenticationError('Token has expired');
+    }
+
     // Validate required fields
     if (!decoded.userId || !decoded.tenantId) {
       throw new AuthenticationError('Invalid token: missing required claims');
     }
-    
+
     return {
-      userId: decoded.userId,
-      tenantId: decoded.tenantId,
-      email: decoded.email,
-      roles: decoded.roles || [],
-      permissions: decoded.permissions || [],
-      sessionId: decoded.sessionId
+      userId: decoded.userId as string,
+      tenantId: decoded.tenantId as string,
+      email: decoded.email as string,
+      roles: (decoded.roles as string[]) || [],
+      permissions: (decoded.permissions as string[]) || [],
+      sessionId: decoded.sessionId as string | undefined
     };
   } catch (error) {
+    if (error instanceof jwt.TokenExpiredError) {
+      throw new AuthenticationError('Token has expired');
+    }
     if (error instanceof jwt.JsonWebTokenError) {
       throw new AuthenticationError(`Invalid token: ${error.message}`);
     }

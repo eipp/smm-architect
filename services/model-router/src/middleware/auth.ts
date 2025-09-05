@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import jwt from 'jsonwebtoken';
+import jwt, { JwtPayload } from 'jsonwebtoken';
 
 export interface AuthenticatedRequest extends Request {
   user?: {
@@ -53,8 +53,20 @@ export function authMiddleware(req: AuthenticatedRequest, res: Response, next: N
     }
 
     try {
-      const decoded = jwt.verify(token, jwtSecret) as JWTPayload;
-      
+      const decoded = jwt.verify(token, jwtSecret, {
+        algorithms: ['HS256']
+      }) as JWTPayload;
+
+      if (!decoded.exp) {
+        return res.status(401).json({
+          success: false,
+          error: {
+            code: 'INVALID_TOKEN',
+            message: 'Token missing expiration'
+          }
+        });
+      }
+
       req.user = {
         userId: decoded.userId,
         workspaceId: decoded.workspaceId,
