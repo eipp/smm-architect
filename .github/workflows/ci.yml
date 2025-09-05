@@ -1170,6 +1170,17 @@ jobs:
           cd services/simulator
           npm run test:property-report
 
+  production-verification:
+    name: Production Readiness Verification
+    runs-on: ubuntu-latest
+    needs: [evil-tenant-security]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run production readiness script
+        run: tools/scripts/verify-production-ready.sh
+
   policy-validation:
     name: Policy Bundle Validation
     runs-on: ubuntu-latest

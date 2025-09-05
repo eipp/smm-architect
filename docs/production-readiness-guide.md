@@ -320,6 +320,16 @@ This script validates:
 9. Integration and external dependencies
 10. Final security scan
 
+### Final Production Verification
+
+After infrastructure provisioning, run the production verification script to confirm critical services like EKS, WAF, VPN, and RDS are configured correctly:
+
+```bash
+./tools/scripts/verify-production-ready.sh
+```
+
+The script reports individual check results and prints a summary status. A final message of **PRODUCTION READY** indicates all mandatory infrastructure and application checks passed.
+
 ### Deployment Approval Process
 
 #### Automated Checks (Gate 1)
