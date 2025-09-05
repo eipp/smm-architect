@@ -66,6 +66,8 @@ class AuditLogStreamer extends EventEmitter {
   private eventBuffer: AuditEvent[] = [];
   private flushTimer?: NodeJS.Timeout;
   private destinations: Map<string, SIEMDestination> = new Map();
+  private cloudWatchClients: Map<string, { client: any; sequenceToken?: string }> = new Map();
+  private gcpLoggingClients: Map<string, any> = new Map();
 
   constructor(config: SIEMConfig) {
     super();
@@ -366,18 +368,67 @@ class AuditLogStreamer extends EventEmitter {
    * Send events to AWS CloudWatch
    */
   private async sendToCloudWatch(events: AuditEvent[], destination: SIEMDestination): Promise<void> {
-    // This would require AWS SDK integration
-    // For now, log that it's not implemented
-    logger.warn('CloudWatch integration not yet implemented');
+    const {
+      region,
+      logGroupName,
+      logStreamName,
+      accessKeyId,
+      secretAccessKey
+    } = destination.config;
+
+    let clientEntry = this.cloudWatchClients.get(destination.name);
+
+    if (!clientEntry) {
+      const { CloudWatchLogsClient } = require('@aws-sdk/client-cloudwatch-logs');
+      const client = new CloudWatchLogsClient({
+        region,
+        credentials: accessKeyId && secretAccessKey ? {
+          accessKeyId,
+          secretAccessKey
+        } : undefined
+      });
+
+      clientEntry = { client };
+      this.cloudWatchClients.set(destination.name, clientEntry);
+    }
+
+    const { PutLogEventsCommand } = require('@aws-sdk/client-cloudwatch-logs');
+    const logEvents = events.map(event => ({
+      message: JSON.stringify(event),
+      timestamp: new Date(event.timestamp).getTime()
+    }));
+
+    const command = new PutLogEventsCommand({
+      logEvents,
+      logGroupName,
+      logStreamName,
+      sequenceToken: clientEntry.sequenceToken
+    });
+
+    const response = await clientEntry.client.send(command);
+    clientEntry.sequenceToken = response.nextSequenceToken;
+
+    logger.debug(`Sent ${events.length} events to CloudWatch: ${destination.name}`);
   }
 
   /**
    * Send events to GCP Cloud Logging
    */
   private async sendToGCPLogging(events: AuditEvent[], destination: SIEMDestination): Promise<void> {
-    // This would require Google Cloud SDK integration
-    // For now, log that it's not implemented
-    logger.warn('GCP Logging integration not yet implemented');
+    const { projectId, logName, credentials } = destination.config;
+
+    let loggingClient = this.gcpLoggingClients.get(destination.name);
+    if (!loggingClient) {
+      const { Logging } = require('@google-cloud/logging');
+      loggingClient = new Logging({ projectId, credentials });
+      this.gcpLoggingClients.set(destination.name, loggingClient);
+    }
+
+    const log = loggingClient.log(logName);
+    const entries = events.map(event => log.entry({ resource: { type: 'global' } }, event));
+    await log.write(entries);
+
+    logger.debug(`Sent ${events.length} events to GCP Logging: ${destination.name}`);
   }
 
   /**
@@ -484,6 +535,30 @@ export const auditStreamer = new AuditLogStreamer({
       },
       filters: {
         event_types: ['authentication_failure', 'privilege_escalation', 'security_violation']
+      }
+    },
+    // AWS CloudWatch destination
+    {
+      name: 'aws-cloudwatch',
+      type: 'aws_cloudwatch',
+      enabled: process.env.CLOUDWATCH_ENABLED === 'true',
+      config: {
+        region: process.env.CLOUDWATCH_REGION || 'us-east-1',
+        logGroupName: process.env.CLOUDWATCH_LOG_GROUP || 'smm-architect',
+        logStreamName: process.env.CLOUDWATCH_LOG_STREAM || 'audit',
+        accessKeyId: process.env.CLOUDWATCH_ACCESS_KEY,
+        secretAccessKey: process.env.CLOUDWATCH_SECRET_KEY
+      }
+    },
+    // GCP Cloud Logging destination
+    {
+      name: 'gcp-logging',
+      type: 'gcp_logging',
+      enabled: process.env.GCP_LOGGING_ENABLED === 'true',
+      config: {
+        projectId: process.env.GCP_LOGGING_PROJECT_ID,
+        logName: process.env.GCP_LOG_NAME || 'smm_audit',
+        credentials: process.env.GCP_LOGGING_CREDENTIALS ? JSON.parse(process.env.GCP_LOGGING_CREDENTIALS) : undefined
       }
     }
   ]
