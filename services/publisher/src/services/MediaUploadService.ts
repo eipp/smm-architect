@@ -2,9 +2,17 @@ import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } fro
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import multer from 'multer';
 import sharp from 'sharp';
+import ffmpeg from 'fluent-ffmpeg';
+import ffmpegPath from 'ffmpeg-static';
+import ffprobePath from 'ffprobe-static';
 import { v4 as uuidv4 } from 'uuid';
+import fs from 'fs';
+import os from 'os';
 import path from 'path';
 import { MediaUpload } from '../types';
+
+ffmpeg.setFfmpegPath(ffmpegPath as string);
+ffmpeg.setFfprobePath(ffprobePath.path);
 
 export interface UploadOptions {
   workspaceId: string;
@@ -200,23 +208,54 @@ export class MediaUploadService {
    * Get video metadata
    */
   private async getVideoMetadata(buffer: Buffer): Promise<any> {
-    // This would typically use ffmpeg or similar
-    // For now, return basic metadata
-    return {
-      duration: 0, // Would be extracted from video
-      format: 'unknown',
-      resolution: 'unknown',
-    };
+    const tempFile = path.join(os.tmpdir(), `${uuidv4()}.mp4`);
+    await fs.promises.writeFile(tempFile, buffer);
+
+    return new Promise((resolve, reject) => {
+      ffmpeg.ffprobe(tempFile, (err, data) => {
+        fs.promises.unlink(tempFile).catch(() => {});
+        if (err) {
+          return reject(err);
+        }
+        const videoStream = data.streams.find(s => s.width && s.height);
+        resolve({
+          duration: data.format.duration || 0,
+          format: data.format.format_name || 'unknown',
+          resolution: videoStream ? `${videoStream.width}x${videoStream.height}` : 'unknown',
+          width: videoStream?.width,
+          height: videoStream?.height,
+        });
+      });
+    });
   }
 
   /**
    * Generate video thumbnail
    */
   private async generateVideoThumbnail(buffer: Buffer, fileId: string, workspaceId: string): Promise<string> {
-    // This would typically use ffmpeg to extract a frame
-    // For now, return a placeholder
-    const thumbnailKey = `workspaces/${workspaceId}/thumbnails/${fileId}.jpg`;
-    return this.cdnDomain ? `https://${this.cdnDomain}/${thumbnailKey}` : await this.getSignedUrl(thumbnailKey);
+    const inputPath = path.join(os.tmpdir(), `${fileId}.mp4`);
+    const thumbnailPath = path.join(os.tmpdir(), `${fileId}.jpg`);
+    await fs.promises.writeFile(inputPath, buffer);
+
+    await new Promise<void>((resolve, reject) => {
+      ffmpeg(inputPath)
+        .on('end', resolve)
+        .on('error', reject)
+        .screenshots({
+          count: 1,
+          filename: path.basename(thumbnailPath),
+          folder: path.dirname(thumbnailPath),
+          size: '300x?'
+        });
+    });
+
+    const thumbnailBuffer = await fs.promises.readFile(thumbnailPath);
+    await Promise.all([
+      fs.promises.unlink(inputPath).catch(() => {}),
+      fs.promises.unlink(thumbnailPath).catch(() => {}),
+    ]);
+
+    return this.uploadThumbnail(thumbnailBuffer, `thumbnails/${fileId}.jpg`, workspaceId);
   }
 
   /**
