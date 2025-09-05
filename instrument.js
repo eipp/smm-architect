@@ -18,9 +18,14 @@ if (nodeProfilingIntegration) {
   integrations.push(nodeProfilingIntegration());
 }
 
-Sentry.init({
-  dsn: "https://02a82d6e1d09e631f5ef7083e197c841@o4509899378786304.ingest.de.sentry.io/4509899558879312",
-  integrations: integrations,
+const dsn = process.env.SENTRY_DSN;
+
+if (!dsn) {
+  console.warn("Sentry DSN not provided. Monitoring disabled.");
+} else {
+  Sentry.init({
+    dsn,
+    integrations: integrations,
   // Tracing
   tracesSampleRate: process.env.NODE_ENV === 'production' ? 0.1 : 1.0,
   // Set sampling rate for profiling - this is evaluated only once per SDK.init call
@@ -53,6 +58,7 @@ Sentry.init({
     
     return event;
   },
-});
+  });
+}
 
 module.exports = Sentry;
