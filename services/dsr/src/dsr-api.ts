@@ -218,7 +218,7 @@ app.post('/api/dsr/portability',
       });
 
       res.setHeader('Content-Type', 'application/zip');
-      res.setHeader('Content-Disposition', `attachment; filename="data-portability-${userId}.zip"`);
+      res.setHeader('Content-Disposition', `attachment; filename="data-portability-${encodeURIComponent(userId)}.zip"`);
 
       const archive = archiver('zip', { zlib: { level: 9 } });
 
