@@ -72,14 +72,15 @@ security-scan: sbom ## Run comprehensive security scan with vulnerability analys
 	@echo "$(YELLOW)Running security scan with vulnerability analysis...$(NC)"
 	./tools/scripts/generate-sbom.sh
 	@echo "$(YELLOW)Running dependency signature verification...$(NC)"
-	@if command -v npm >/dev/null 2>&1; then \
-		npm audit signatures --audit-level=moderate || echo "$(RED)Dependency signature verification failed$(NC)"; \
+	@set -e; if command -v npm >/dev/null 2>&1; then \
+		npm audit signatures --audit-level=moderate || { echo "$(RED)Dependency signature verification failed$(NC)"; exit 1; }; \
 	else \
 		echo "$(RED)npm not available for signature verification$(NC)"; \
+		exit 1; \
 	fi
 	@if [ -d "$(SBOM_OUTPUT)/vulnerabilities" ]; then \
 		echo "$(YELLOW)Vulnerability Summary:$(NC)"; \
-		find $(SBOM_OUTPUT)/vulnerabilities -name "*.json" -exec sh -c 'echo "File: $$1"; jq -r ".matches | length" "$$1" 2>/dev/null || echo "0"' _ {} \; | \
+	find $(SBOM_OUTPUT)/vulnerabilities -name "*.json" -exec sh -e -c 'echo "File: $$1"; jq -r ".matches | length" "$$1" 2>/dev/null || echo "0"' _ {} \; | \
 		awk 'BEGIN{total=0} /^[0-9]+$$/{total+=$$1} END{print "Total vulnerabilities found: " total}'; \
 	fi
 	@echo "$(GREEN)Security scan completed$(NC)"
