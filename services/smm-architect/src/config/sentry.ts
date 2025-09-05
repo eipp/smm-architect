@@ -14,7 +14,7 @@ const log = {
 
 // Sentry configuration
 const sentryConfig = {
-  dsn: process.env.SENTRY_DSN || "https://02a82d6e1d09e631f5ef7083e197c841@o4509899378786304.ingest.de.sentry.io/4509899558879312",
+  dsn: process.env.SENTRY_DSN,
   environment: process.env.NODE_ENV || "development",
   release: process.env.npm_package_version,
   tracesSampleRate: process.env.NODE_ENV === "production" ? 0.1 : 1.0,
@@ -24,6 +24,12 @@ const sentryConfig = {
   enableLogs: true,
   sendDefaultPii: false,
 };
+
+if (!sentryConfig.dsn) {
+  const message = "SENTRY_DSN environment variable is required";
+  log.error(message);
+  throw new Error(message);
+}
 
 // Service context
 const serviceContext = {
