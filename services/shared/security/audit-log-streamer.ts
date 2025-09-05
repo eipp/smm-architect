@@ -366,9 +366,134 @@ class AuditLogStreamer extends EventEmitter {
    * Send events to AWS CloudWatch
    */
   private async sendToCloudWatch(events: AuditEvent[], destination: SIEMDestination): Promise<void> {
-    // This would require AWS SDK integration
-    // For now, log that it's not implemented
-    logger.warn('CloudWatch integration not yet implemented');
+    const {
+      CloudWatchLogsClient,
+      CreateLogGroupCommand,
+      CreateLogStreamCommand,
+      DescribeLogStreamsCommand,
+      PutLogEventsCommand
+    } = require('@aws-sdk/client-cloudwatch-logs');
+
+    const {
+      region = 'us-east-1',
+      logGroupName,
+      logStreamName,
+      accessKeyId,
+      secretAccessKey
+    } = destination.config;
+
+    if (!logGroupName || !logStreamName) {
+      throw new Error('CloudWatch destination requires logGroupName and logStreamName');
+    }
+
+    const client = new CloudWatchLogsClient({
+      region,
+      credentials: accessKeyId && secretAccessKey ? { accessKeyId, secretAccessKey } : undefined
+    });
+
+    // Ensure log group exists
+    try {
+      await client.send(new CreateLogGroupCommand({ logGroupName }));
+    } catch (error: any) {
+      if (error.name !== 'ResourceAlreadyExistsException') {
+        throw error;
+      }
+    }
+
+    // Ensure log stream exists
+    try {
+      await client.send(new CreateLogStreamCommand({ logGroupName, logStreamName }));
+    } catch (error: any) {
+      if (error.name !== 'ResourceAlreadyExistsException') {
+        throw error;
+      }
+    }
+
+    const describeResp = await client.send(
+      new DescribeLogStreamsCommand({
+        logGroupName,
+        logStreamNamePrefix: logStreamName
+      })
+    );
+
+    const stream = describeResp.logStreams?.find((s: any) => s.logStreamName === logStreamName);
+    let sequenceToken = stream?.uploadSequenceToken;
+
+    const maxEvents = 10000;
+    const maxBytes = 1048576; // 1MB
+    const batches: { message: string; timestamp: number }[][] = [];
+    let currentBatch: { message: string; timestamp: number }[] = [];
+    let currentBytes = 0;
+
+    for (const event of events) {
+      const message = JSON.stringify(event);
+      const eventBytes = Buffer.byteLength(message, 'utf8') + 26;
+
+      if (
+        currentBatch.length >= maxEvents ||
+        currentBytes + eventBytes > maxBytes
+      ) {
+        batches.push(currentBatch);
+        currentBatch = [];
+        currentBytes = 0;
+      }
+
+      currentBatch.push({
+        message,
+        timestamp: new Date(event.timestamp).getTime()
+      });
+      currentBytes += eventBytes;
+    }
+
+    if (currentBatch.length > 0) {
+      batches.push(currentBatch);
+    }
+
+    for (const logEvents of batches) {
+      try {
+        const response = await client.send(
+          new PutLogEventsCommand({
+            logGroupName,
+            logStreamName,
+            logEvents,
+            sequenceToken
+          })
+        );
+        sequenceToken = response.nextSequenceToken;
+      } catch (error: any) {
+        if (
+          error.name === 'InvalidSequenceTokenException' ||
+          error.name === 'DataAlreadyAcceptedException'
+        ) {
+          const latest = await client.send(
+            new DescribeLogStreamsCommand({
+              logGroupName,
+              logStreamNamePrefix: logStreamName
+            })
+          );
+          const latestStream = latest.logStreams?.find(
+            (s: any) => s.logStreamName === logStreamName
+          );
+          sequenceToken = latestStream?.uploadSequenceToken;
+
+          const retryResp = await client.send(
+            new PutLogEventsCommand({
+              logGroupName,
+              logStreamName,
+              logEvents,
+              sequenceToken
+            })
+          );
+          sequenceToken = retryResp.nextSequenceToken;
+        } else {
+          throw error;
+        }
+      }
+    }
+
+    logger.debug(
+      `Sent ${events.length} events to CloudWatch: ${destination.name}`
+    );
   }
 
   /**
