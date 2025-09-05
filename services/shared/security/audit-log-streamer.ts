@@ -366,18 +366,58 @@ class AuditLogStreamer extends EventEmitter {
    * Send events to AWS CloudWatch
    */
   private async sendToCloudWatch(events: AuditEvent[], destination: SIEMDestination): Promise<void> {
-    // This would require AWS SDK integration
-    // For now, log that it's not implemented
-    logger.warn('CloudWatch integration not yet implemented');
+    const {
+      region,
+      logGroupName,
+      logStreamName,
+      accessKeyId,
+      secretAccessKey
+    } = destination.config;
+
+    const {
+      CloudWatchLogsClient,
+      PutLogEventsCommand
+    } = require('@aws-sdk/client-cloudwatch-logs');
+
+    const client = new CloudWatchLogsClient({
+      region,
+      credentials: accessKeyId && secretAccessKey
+        ? { accessKeyId, secretAccessKey }
+        : undefined
+    });
+
+    const logEvents = events.map(event => ({
+      message: JSON.stringify(event),
+      timestamp: new Date(event.timestamp).getTime()
+    }));
+
+    await client.send(new PutLogEventsCommand({
+      logGroupName,
+      logStreamName,
+      logEvents
+    }));
+
+    logger.debug(`Sent ${events.length} events to CloudWatch: ${destination.name}`);
   }
 
   /**
    * Send events to GCP Cloud Logging
    */
   private async sendToGCPLogging(events: AuditEvent[], destination: SIEMDestination): Promise<void> {
-    // This would require Google Cloud SDK integration
-    // For now, log that it's not implemented
-    logger.warn('GCP Logging integration not yet implemented');
+    const { projectId, logName, keyFilename, credentials } = destination.config;
+
+    const { Logging } = require('@google-cloud/logging');
+
+    const loggingClient = new Logging({ projectId, keyFilename, credentials });
+    const log = loggingClient.log(logName);
+
+    const entries = events.map(event =>
+      log.entry({ resource: { type: 'global' } }, event)
+    );
+
+    await log.write(entries);
+
+    logger.debug(`Sent ${events.length} events to GCP Logging: ${destination.name}`);
   }
 
   /**
@@ -484,6 +524,31 @@ export const auditStreamer = new AuditLogStreamer({
       },
       filters: {
         event_types: ['authentication_failure', 'privilege_escalation', 'security_violation']
+      }
+    },
+    // AWS CloudWatch Logs destination
+    {
+      name: 'aws-cloudwatch',
+      type: 'aws_cloudwatch',
+      enabled: process.env.CLOUDWATCH_ENABLED === 'true',
+      config: {
+        region: process.env.CLOUDWATCH_REGION || 'us-east-1',
+        logGroupName: process.env.CLOUDWATCH_LOG_GROUP || 'smm-audit-logs',
+        logStreamName: process.env.CLOUDWATCH_LOG_STREAM || 'audit-events',
+        accessKeyId: process.env.CLOUDWATCH_ACCESS_KEY_ID,
+        secretAccessKey: process.env.CLOUDWATCH_SECRET_ACCESS_KEY
+      }
+    },
+    // GCP Cloud Logging destination
+    {
+      name: 'gcp-logging',
+      type: 'gcp_logging',
+      enabled: process.env.GCP_LOGGING_ENABLED === 'true',
+      config: {
+        projectId: process.env.GCP_LOGGING_PROJECT_ID,
+        logName: process.env.GCP_LOGGING_LOG_NAME || 'smm_audit_logs',
+        keyFilename: process.env.GCP_LOGGING_KEY_FILE,
+        credentials: process.env.GCP_LOGGING_CREDENTIALS ? JSON.parse(process.env.GCP_LOGGING_CREDENTIALS) : undefined
       }
     }
   ]
