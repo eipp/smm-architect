@@ -32,6 +32,8 @@ const log = {
 };
 
 import crypto from 'crypto';
+import bcrypt from 'bcryptjs';
+import { withTenantContext } from '../../shared/database/client';
 import { rateLimit } from './middleware/rate-limit';
 
 // Simple auth service implementation
@@ -157,27 +159,29 @@ async function getUserProfile(userId: string, tenantId: string): Promise<User> {
 }
 
 async function generateRefreshToken(userId: string, tenantId: string): Promise<string> {
-  const secret = process.env.JWT_SECRET;
-  if (!secret) {
-    throw new Error('JWT_SECRET environment variable must be configured for refresh token generation');
-  }
-  
-  // Use the same validation as the auth service
-  authService.validateJWTSecret(secret);
-  
-  const tokenData = JSON.stringify({ 
-    userId, 
-    tenantId, 
-    type: 'refresh', 
-    exp: Date.now() + 30 * 24 * 60 * 60 * 1000,
-    iat: Date.now(),
-    version: process.env.JWT_VERSION || '1'
+  const token = `${crypto.randomBytes(48).toString('hex')}.${tenantId}`;
+  const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+
+  await withTenantContext(tenantId, async (client) => {
+    await client.userSession.create({
+      data: {
+        userId,
+        sessionId: token,
+        expiresAt
+      }
+    });
   });
-  return crypto.createHmac('sha256', secret).update(tokenData).digest('hex');
+
+  return token;
 }
 
 async function updateLastLogin(userId: string, tenantId: string): Promise<void> {
-  // Mock - in production this would update the database
+  await withTenantContext(tenantId, async (client) => {
+    await client.user.update({
+      where: { id: userId },
+      data: { lastLoginAt: new Date() }
+    });
+  });
   log.info('Last login updated', { userId, tenantId });
 }
 
@@ -239,6 +243,7 @@ export interface RefreshResponse {
   token: string;
   user: User;
   expiresAt: number;
+  refreshToken?: string;
 }
 
 export interface RegisterRequest {
@@ -374,10 +379,13 @@ export const refresh = api(
 
       // Validate refresh token (simplified for demo)
       const tokenData = await validateRefreshToken(req.refreshToken);
-      
+
       if (!tokenData) {
         throw new Error("Invalid refresh token");
       }
+
+      await invalidateRefreshTokens(tokenData.userId, tokenData.tenantId);
+      const newRefreshToken = await generateRefreshToken(tokenData.userId, tokenData.tenantId);
 
       // Get updated user profile
       const user = await getUserProfile(tokenData.userId, tokenData.tenantId);
@@ -397,7 +405,8 @@ export const refresh = api(
       return {
         token,
         user,
-        expiresAt
+        expiresAt,
+        refreshToken: newRefreshToken
       };
 
     } catch (error) {
@@ -556,23 +565,30 @@ export const register = api(
 );
 
 // Helper functions
-async function withTenantContext<T>(tenantId: string, operation: (client: any) => Promise<T>): Promise<T> {
-  // Mock tenant context - in production this would set up proper database context
-  const mockClient = { tenantId };
-  return await operation(mockClient);
-}
-
 async function validateRefreshToken(refreshToken: string): Promise<{ userId: string; tenantId: string } | null> {
-  // Validate refresh token against secure storage
-  // For demo purposes, return mock data
-  return {
-    userId: 'demo_user',
-    tenantId: 'demo_tenant'
-  };
+  const parts = refreshToken.split('.');
+  const tenantId = parts.pop();
+  if (!tenantId) {
+    return null;
+  }
+
+  return await withTenantContext(tenantId, async (client) => {
+    const session = await client.userSession.findUnique({
+      where: { sessionId: refreshToken }
+    });
+
+    if (!session || session.expiresAt < new Date()) {
+      return null;
+    }
+
+    return { userId: session.userId, tenantId };
+  });
 }
 
 async function invalidateRefreshTokens(userId: string, tenantId: string): Promise<void> {
-  // Remove all refresh tokens for this user
+  await withTenantContext(tenantId, async (client) => {
+    await client.userSession.deleteMany({ where: { userId } });
+  });
   log.debug("Invalidated refresh tokens", { userId, tenantId });
 }
 
@@ -583,9 +599,12 @@ async function isRegistrationAllowed(tenantId: string, inviteCode?: string): Pro
 }
 
 async function checkUserExists(email: string, tenantId: string): Promise<boolean> {
-  // Mock implementation - check if user exists in database
-  // For demo, assume user doesn't exist
-  return false;
+  return await withTenantContext(tenantId, async (client) => {
+    const user = await client.user.findUnique({
+      where: { email }
+    });
+    return !!user;
+  });
 }
 
 async function createUserAccount(userData: {
@@ -594,11 +613,17 @@ async function createUserAccount(userData: {
   name: string;
   tenantId: string;
 }): Promise<{ id: string }> {
-  // Mock implementation - create user in database
-  // For demo, return mock user ID
-  return {
-    id: `user_${crypto.randomUUID()}`
-  };
+  const passwordHash = await bcrypt.hash(userData.password, 10);
+  return await withTenantContext(userData.tenantId, async (client) => {
+    const user = await client.user.create({
+      data: {
+        email: userData.email,
+        name: userData.name,
+        passwordHash
+      }
+    });
+    return { id: user.id };
+  });
 }
 
 function isValidPassword(password: string): boolean {
