@@ -31,6 +31,10 @@ export const useSanitization = () => {
 
 /**
  * Hook for secure form handling
+ *
+ * Server-side validation mirrors these rules using `sanitizeFormData` and
+ * related utilities (see `app/api/workspaces/validation.ts`) to prevent
+ * client-side bypass.
  */
 export const useSecureForm = <T extends Record<string, any>>(
   initialValues: T,

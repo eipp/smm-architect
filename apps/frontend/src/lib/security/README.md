@@ -245,6 +245,26 @@ export const POST = requirePermission(['users:create'], async (request, session)
 })
 ```
 
+### Server-side Form Validation
+
+Client-side hooks like `useSecureForm` sanitize and validate input, but all
+payloads are re-validated on the server using the same utilities to prevent
+tampering.
+
+```typescript
+// app/api/workspaces/route.ts
+import { validateWorkspaceData } from './validation'
+
+export async function POST(request: NextRequest) {
+  const body = await request.json()
+  const { data, errors } = validateWorkspaceData(body)
+  if (Object.keys(errors).length > 0) {
+    return NextResponse.json({ errors }, { status: 400 })
+  }
+  // use sanitized `data` to create the workspace
+}
+```
+
 ## Security Components
 
 ### Role-Based Access Control
