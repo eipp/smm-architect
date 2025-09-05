@@ -9,6 +9,7 @@ on:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
+  NODE_VERSION: '18'
 
 jobs:
   # Pipeline stages: build test deploy
@@ -17,7 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        node-version: [18.x, 20.x]
+        node-version: [${{ env.NODE_VERSION }}]
     
     steps:
     - uses: actions/checkout@v4
