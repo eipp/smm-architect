@@ -410,9 +410,11 @@ cd services/toolhub && pnpm test:benchmark
 | `NODE_ENV` | Environment (development/production) | `development` |
 | `LOG_LEVEL` | Logging level (debug/info/warn/error) | `info` |
 | `VAULT_ADDR` | Vault server address | `http://localhost:8200` |
-| `VAULT_TOKEN` | Vault authentication token | - |
-| `DATABASE_URL` | PostgreSQL connection string | - |
-| `PINECONE_API_KEY` | Vector database API key | - |
+| `VAULT_TOKEN_FILE` | Path to file containing Vault authentication token | - |
+| `DATABASE_URL_FILE` | Path to file containing PostgreSQL connection string | - |
+| `PINECONE_API_KEY_FILE` | Path to file containing vector database API key | - |
+
+Sensitive values are supplied via Docker secrets using the `*_FILE` convention.
 
 ### Workspace Configuration
 
