@@ -145,7 +145,7 @@ export function extractTenantId(req: Request): string | null {
  */
 export async function extractUserFromToken(token: string): Promise<AuthenticatedUser> {
   try {
-    const secretKey = process.env.JWT_SECRET || await getJWTSecret();
+    const secretKey = await getJWTSecret();
     const decoded = jwt.verify(token, secretKey) as any;
     
     // Validate required fields
@@ -173,7 +173,11 @@ export async function extractUserFromToken(token: string): Promise<Authenticated
  * Get JWT secret from environment
  */
 async function getJWTSecret(): Promise<string> {
-  return process.env.JWT_SECRET || 'fallback-secret-key';
+  const secret = process.env.JWT_SECRET;
+  if (!secret) {
+    throw new AuthenticationError('JWT_SECRET environment variable is not set');
+  }
+  return secret;
 }
 
 /**
