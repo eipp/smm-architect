@@ -256,8 +256,9 @@ trivy image $IMAGE_NAME
 - [ ] All containers from trusted registries
 - [ ] No critical security vulnerabilities
 - [ ] Secrets properly managed in Vault
-- [ ] API rate limiting configured
-- [ ] Authentication and authorization tested
+ - [ ] API rate limiting configured (`AUTH_RATE_LIMIT_WINDOW_MS`, `AUTH_RATE_LIMIT_MAX`)
+ - [ ] Authentication and authorization tested
+ - [ ] Persistent user store path configured (`USER_STORE_PATH`)
 
 ### Monitoring and Observability
 
