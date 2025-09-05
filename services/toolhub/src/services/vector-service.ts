@@ -54,11 +54,20 @@ export class VectorService {
   constructor() {
     this.openaiApiKey = process.env.OPENAI_API_KEY || '';
     this.pineconeApiKey = process.env.PINECONE_API_KEY || '';
-    this.pineconeEnvironment = process.env.PINECONE_ENVIRONMENT || 'us-east1-gcp';
-    this.pineconeIndex = process.env.PINECONE_INDEX || 'smm-architect';
-    
-    if (!this.openaiApiKey || !this.pineconeApiKey) {
-      console.warn('Vector service: Missing API keys, using mock mode');
+    this.pineconeEnvironment = process.env.PINECONE_ENVIRONMENT || '';
+    this.pineconeIndex = process.env.PINECONE_INDEX || '';
+
+    if (!this.openaiApiKey) {
+      throw new Error('OPENAI_API_KEY is required');
+    }
+    if (!this.pineconeApiKey) {
+      throw new Error('PINECONE_API_KEY is required');
+    }
+    if (!this.pineconeEnvironment) {
+      throw new Error('PINECONE_ENVIRONMENT is required');
+    }
+    if (!this.pineconeIndex) {
+      throw new Error('PINECONE_INDEX is required');
     }
   }
 
@@ -66,11 +75,6 @@ export class VectorService {
    * Generate embeddings using OpenAI's text-embedding-ada-002
    */
   async generateEmbedding(text: string): Promise<number[]> {
-    if (!this.openaiApiKey) {
-      // Return mock embedding for development
-      return Array.from({ length: 1536 }, () => Math.random() * 2 - 1);
-    }
-
     try {
       const response = await axios.post(
         'https://api.openai.com/v1/embeddings',
@@ -98,11 +102,6 @@ export class VectorService {
    * Upsert vectors to Pinecone
    */
   async upsertVectors(documents: VectorDocument[]): Promise<void> {
-    if (!this.pineconeApiKey) {
-      console.log('Mock: Upserting vectors', documents.map(d => d.id));
-      return;
-    }
-
     try {
       const vectors = documents.map(doc => ({
         id: doc.id,
@@ -150,24 +149,6 @@ export class VectorService {
   async searchSimilar(query: SearchQuery): Promise<SearchResult[]> {
     // Generate embedding for query
     const queryEmbedding = await this.generateEmbedding(query.query);
-
-    if (!this.pineconeApiKey) {
-      // Return mock results for development
-      return [
-        {
-          id: uuidv4(),
-          content: `Mock result for query: ${query.query}`,
-          metadata: {
-            contentType: 'webpage',
-            title: 'Mock Document',
-            sourceUrl: 'https://example.com'
-          },
-          score: 0.95,
-          sourceId: uuidv4()
-        }
-      ];
-    }
-
     try {
       // Build filter expression
       const filter: any = {
@@ -241,11 +222,6 @@ export class VectorService {
    * Delete vectors by IDs
    */
   async deleteVectors(vectorIds: string[]): Promise<void> {
-    if (!this.pineconeApiKey) {
-      console.log('Mock: Deleting vectors', vectorIds);
-      return;
-    }
-
     try {
       await axios.post(
         `https://${this.pineconeIndex}-${this.pineconeEnvironment}.svc.${this.pineconeEnvironment}.pinecone.io/vectors/delete`,
@@ -277,18 +253,6 @@ export class VectorService {
     contentTypes: { [key: string]: number };
     lastUpdated: string;
   }> {
-    if (!this.pineconeApiKey) {
-      return {
-        totalVectors: 42,
-        contentTypes: {
-          'webpage': 25,
-          'social_media': 12,
-          'document': 5
-        },
-        lastUpdated: new Date().toISOString()
-      };
-    }
-
     try {
       // Use describe_index_stats to get vector count
       const response = await axios.post(

@@ -40,6 +40,10 @@ process.env.VAULT_URL = 'http://localhost:8200';
 process.env.SIMULATOR_SERVICE_URL = 'http://localhost:8082';
 process.env.RENDER_SERVICE_URL = 'http://localhost:8083';
 process.env.BASE_URL = 'http://localhost:8080';
+process.env.OPENAI_API_KEY = 'test-openai-key';
+process.env.PINECONE_API_KEY = 'test-pinecone-key';
+process.env.PINECONE_ENVIRONMENT = 'test-env';
+process.env.PINECONE_INDEX = 'test-index';
 
 // Mock console methods for cleaner test output
 global.console = {
