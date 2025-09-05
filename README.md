@@ -412,6 +412,9 @@ cd services/toolhub && pnpm test:benchmark
 | `VAULT_ADDR` | Vault server address | `http://localhost:8200` |
 | `VAULT_TOKEN` | Vault authentication token | - |
 | `DATABASE_URL` | PostgreSQL connection string | - |
+| `DB_PASSWORD` | Database password for PostgreSQL services | - |
+| `REDIS_PASSWORD` | Redis authentication password | - |
+| `GRAFANA_ADMIN_PASSWORD` | Grafana admin password | - |
 | `PINECONE_API_KEY` | Vector database API key | - |
 
 ### Workspace Configuration
