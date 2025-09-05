@@ -1,0 +1,4 @@
+{
+  "extends": "../build-config/typescript/tsconfig.backend.json",
+  "include": ["src/**/*.ts", "tests/**/*.ts"]
+}
