@@ -19,13 +19,15 @@
 
 ### 🚨 Critical Incident Response Team
 
+> **Warning:** Contact information below uses placeholders. Replace with real details in production.
+
 | Role | Contact | Phone | Primary Responsibilities |
 |------|---------|-------|-------------------------|
-| **Incident Commander** | ops-lead@company.com | +1-555-0001 | Overall incident coordination |
-| **Security Lead** | security@company.com | +1-555-0002 | Security incidents, data breaches |
-| **DevOps Engineer** | devops@company.com | +1-555-0003 | Infrastructure, deployments |
-| **Database Admin** | dba@company.com | +1-555-0004 | Database issues, performance |
-| **Product Owner** | product@company.com | +1-555-0005 | Business impact assessment |
+| **Incident Commander** | ops@example.com | +1-555-0001 | Overall incident coordination |
+| **Security Lead** | security@example.com | +1-555-0002 | Security incidents, data breaches |
+| **DevOps Engineer** | devops@example.com | +1-555-0003 | Infrastructure, deployments |
+| **Database Admin** | dba@example.com | +1-555-0004 | Database issues, performance |
+| **Product Owner** | product@example.com | +1-555-0005 | Business impact assessment |
 
 ### 📋 Escalation Matrix
 
@@ -584,7 +586,7 @@ For immediate assistance during incidents:
 
 - **Slack**: #smm-architect-incidents
 - **PagerDuty**: SMM Architect Service
-- **Email**: incidents@company.com
+- **Email**: incidents@example.com
 - **Escalation**: +1-555-URGENT
 
 **Remember**: 

@@ -427,10 +427,12 @@ describe('End-to-End Security Testing', () => {
 
   describe('Cryptographic Security Tests', () => {
     it('should use secure encryption for sensitive data', async () => {
+      // Demo values for encryption test only.
+      // WARNING: Never use these placeholders in production systems.
       const sensitiveData = {
-        apiKey: 'sk-1234567890abcdef',
+        apiKey: 'sk-demo-000000000000',
         password: 'user-password-123',
-        personalInfo: 'john.doe@example.com'
+        personalInfo: 'demo.user@example.invalid'
       };
 
       const encryptionTest = await securitySuite.testEncryption(sensitiveData);

@@ -45,7 +45,7 @@ const meta = {
 export default meta
 type Story = StoryObj<typeof meta>
 
-// Sample data
+// Sample data (demo values - do not use in production)
 const basicSteps: TimelineStep[] = [
   {
     id: 'step1',
@@ -95,7 +95,7 @@ const workflowSteps: TimelineStep[] = [
     description: 'Document draft has been created',
     status: 'completed',
     timestamp: new Date('2024-01-01T09:00:00Z'),
-    metadata: { author: 'John Doe', version: '1.0' }
+    metadata: { author: 'Example Author', version: '1.0' }
   },
   {
     id: 'review',
@@ -104,7 +104,7 @@ const workflowSteps: TimelineStep[] = [
     status: 'completed',
     timestamp: new Date('2024-01-01T09:30:00Z'),
     duration: '2 hours',
-    metadata: { reviewers: ['Alice', 'Bob'], comments: 3 }
+    metadata: { reviewers: ['Reviewer A', 'Reviewer B'], comments: 3 }
   },
   {
     id: 'approval',

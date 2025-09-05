@@ -2,6 +2,8 @@
 
 ## Overview
 
+> **Warning:** Example values in this document are placeholders for demonstration. Replace all demo data before using in production.
+
 The **WorkspaceContract** is the authoritative, signed, declarative specification that defines workspace behavior, goals, and constraints within the SMM Architect platform. It serves as the single source of truth for all workspace-related policies, configurations, and operational parameters.
 
 ## Purpose
@@ -47,9 +49,10 @@ stateDiagram-v2
 
 ```json
 {
+  // Example values only; replace with real workspace IDs and emails.
   "workspaceId": "ws-{tenant}-{uuid8}",
   "tenantId": "tenant-organization-id",
-  "createdBy": "user:alice@company.com",
+  "createdBy": "user:alice@example.com",
   "createdAt": "2025-08-24T10:00:00Z",
   "contractVersion": "v1.2.3",
   "lifecycle": "active"
@@ -65,9 +68,10 @@ stateDiagram-v2
 
 ```json
 {
+  // Example signature metadata. Replace with real signer details.
   "signedBy": {
-    "principal": "user:alice@company.com",
-    "signedAt": "2025-08-24T10:30:00Z", 
+    "principal": "user:alice@example.com",
+    "signedAt": "2025-08-24T10:30:00Z",
     "signatureId": "sig-icb-001-a7f9d2e1"
   },
   "effectiveFrom": "2025-08-24T11:00:00Z",
@@ -108,6 +112,7 @@ Supported goal types:
 
 ```json
 {
+  // Example connector configuration; replace with production values.
   "primaryChannels": ["linkedin", "x", "instagram"],
   "connectors": [
     {
@@ -118,7 +123,7 @@ Supported goal types:
       "status": "connected",
       "lastConnectedAt": "2025-08-24T09:45:00Z",
       "scopes": ["w_member_social", "r_basicprofile"],
-      "ownerContact": "social@company.com"
+      "ownerContact": "social@example.com"
     }
   ]
 }
@@ -182,11 +187,12 @@ Supported goal types:
 
 ```json
 {
+  // Example consent record; replace with real authorization data.
   "consentRecords": [
     {
       "consentId": "consent-voice-001",
       "type": "voice_likeness",
-      "grantedBy": "user:spokesperson@company.com",
+      "grantedBy": "user:spokesperson@example.com",
       "grantedAt": "2025-08-24T10:15:00Z",
       "expiresAt": "2026-08-24T10:15:00Z",
       "documentRef": "s3://consents/voice-likeness-001.pdf",

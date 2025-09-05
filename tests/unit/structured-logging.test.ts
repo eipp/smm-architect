@@ -125,9 +125,10 @@ describe('StructuredLogger', () => {
 
   describe('PII Masking', () => {
     it('should mask email addresses', () => {
+      // Demo emails for testing; never use in production logs.
       const dataWithEmail = {
         userEmail: 'user@example.com',
-        contactInfo: 'Contact us at support@company.com'
+        contactInfo: 'Contact us at support@example.com'
       };
 
       logger.info('Processing user data', dataWithEmail);
@@ -135,7 +136,7 @@ describe('StructuredLogger', () => {
       const logCall = mockConsole.info.mock.calls[0][0];
       expect(logCall).toContain('[EMAIL_MASKED]');
       expect(logCall).not.toContain('user@example.com');
-      expect(logCall).not.toContain('support@company.com');
+      expect(logCall).not.toContain('support@example.com');
     });
 
     it('should mask phone numbers', () => {
