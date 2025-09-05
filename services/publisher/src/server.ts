@@ -5,6 +5,7 @@ import rateLimit from 'express-rate-limit';
 import winston from 'winston';
 import Queue from 'bull';
 import { createClient } from 'redis';
+import { readFileSync } from 'fs';
 import { authMiddleware } from './middleware/auth';
 import { errorHandler, notFoundHandler, setupGlobalErrorHandlers } from './middleware/error-handler';
 import { publisherRoutes } from './routes';
@@ -62,15 +63,30 @@ let redisClient: any;
 let publishQueue: Queue.Queue;
 let server: any;
 
+function getRedisPassword(): string | undefined {
+  if (process.env.REDIS_PASSWORD) {
+    return process.env.REDIS_PASSWORD;
+  }
+  if (process.env.REDIS_PASSWORD_FILE) {
+    try {
+      return readFileSync(process.env.REDIS_PASSWORD_FILE, 'utf8').trim();
+    } catch (error) {
+      logger.error('Failed to read Redis password file', error);
+    }
+  }
+  return undefined;
+}
+
 // Initialize Redis client
 async function initializeRedis() {
   try {
+    const redisPassword = getRedisPassword();
     redisClient = createClient({
       socket: {
         host: process.env.REDIS_HOST || 'localhost',
         port: parseInt(process.env.REDIS_PORT || '6379'),
       },
-      password: process.env.REDIS_PASSWORD,
+      password: redisPassword,
     });
 
     redisClient.on('error', (err: Error) => {
@@ -88,7 +104,7 @@ async function initializeRedis() {
       redis: {
         host: process.env.REDIS_HOST || 'localhost',
         port: parseInt(process.env.REDIS_PORT || '6379'),
-        password: process.env.REDIS_PASSWORD,
+        password: redisPassword,
       },
     });
 
