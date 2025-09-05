@@ -1,0 +1,16 @@
+name: Dev Container Smoke Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build dev container
+        run: docker build -t smm-architect-dev -f tools/devcontainer/Dockerfile .
+      - name: Run pnpm install
+        run: docker run --rm -v ${{ github.workspace }}:/workspace -w /workspace smm-architect-dev pnpm install --ignore-scripts
