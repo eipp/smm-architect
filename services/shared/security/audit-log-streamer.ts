@@ -384,9 +384,49 @@ class AuditLogStreamer extends EventEmitter {
    * Retry failed events
    */
   private async retryFailedEvents(events: AuditEvent[], destination: SIEMDestination): Promise<void> {
-    // Implement retry logic with exponential backoff
-    // For now, just log the failure
-    logger.warn(`Retrying failed events for ${destination.name} - ${events.length} events`);
+    const maxAttempts = this.config.retry_attempts;
+    let attempt = 0;
+    let delay = this.config.retry_delay_ms;
+
+    // Ensure events match destination filters
+    const filteredEvents = this.filterEventsForDestination(events, destination);
+    if (filteredEvents.length === 0) {
+      return;
+    }
+
+    while (attempt < maxAttempts) {
+      attempt++;
+      try {
+        await this.sendToDestination(filteredEvents, destination);
+
+        // Re-queue events for future processing once delivery succeeds
+        this.eventBuffer.push(...filteredEvents);
+
+        logger.info(`Retry succeeded for ${destination.name} after ${attempt} attempt(s)`);
+        return;
+      } catch (error) {
+        if (attempt >= maxAttempts) {
+          logger.error(`Failed to deliver audit events to ${destination.name} after ${attempt} attempts`, {
+            error: error instanceof Error ? error.message : String(error)
+          });
+
+          // Surface failure to listeners
+          this.emit('delivery_failed', {
+            destination: destination.name,
+            events: filteredEvents,
+            error
+          });
+          return;
+        }
+
+        logger.warn(`Retry ${attempt} failed for ${destination.name}, retrying in ${delay}ms`, {
+          error: error instanceof Error ? error.message : String(error)
+        });
+
+        await new Promise(resolve => setTimeout(resolve, delay));
+        delay *= 2; // Exponential backoff
+      }
+    }
   }
 
   /**
