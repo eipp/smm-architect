@@ -1084,6 +1084,9 @@ importers:
       winston:
         specifier: ^3.11.0
         version: 3.17.0
+      jsonwebtoken:
+        specifier: ^9.0.2
+        version: 9.0.2
     devDependencies:
       '@types/jest':
         specifier: ^29.5.0
@@ -1115,6 +1118,9 @@ importers:
       typescript:
         specifier: ^5.2.0
         version: 5.9.2
+      '@types/jsonwebtoken':
+        specifier: ^9.0.2
+        version: 9.0.10
 
   services/toolhub:
     dependencies:

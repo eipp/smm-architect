@@ -32,10 +32,11 @@ const log = {
 };
 
 import crypto from 'crypto';
+import jwt from 'jsonwebtoken';
 import { rateLimit } from './middleware/rate-limit';
 
 // Simple auth service implementation
-class SimpleAuthService {
+export class SimpleAuthService {
   private initialized = false;
 
   async initialize(): Promise<void> {
@@ -54,18 +55,39 @@ class SimpleAuthService {
     return { success: false, error: 'Invalid credentials' };
   }
 
-  async generateToken(payload: any): Promise<string> {
-    // Enforce secure JWT secret configuration with comprehensive validation
+  async generateToken(payload: any, expiresIn: string = '24h'): Promise<string> {
     const secret = process.env.JWT_SECRET;
     if (!secret) {
       throw new Error('JWT_SECRET environment variable must be configured - no fallback allowed');
     }
-    
-    // Comprehensive JWT secret validation
+
     this.validateJWTSecret(secret);
-    
-    const tokenData = JSON.stringify({ ...payload, exp: Date.now() + 24 * 60 * 60 * 1000 });
-    return crypto.createHmac('sha256', secret).update(tokenData).digest('hex');
+
+    return jwt.sign(payload, secret, {
+      algorithm: 'HS256',
+      expiresIn
+    });
+  }
+
+  async verifyToken(token: string): Promise<any> {
+    const secret = process.env.JWT_SECRET;
+    if (!secret) {
+      throw new Error('JWT_SECRET environment variable must be configured - no fallback allowed');
+    }
+
+    this.validateJWTSecret(secret);
+
+    try {
+      return jwt.verify(token, secret);
+    } catch (error) {
+      if (error instanceof jwt.TokenExpiredError) {
+        throw new Error('Token expired');
+      }
+      if (error instanceof jwt.JsonWebTokenError) {
+        throw new Error('Invalid token');
+      }
+      throw error;
+    }
   }
 
   /**
@@ -129,7 +151,7 @@ class SimpleAuthService {
 }
 
 // Initialize authentication service
-const authService = new SimpleAuthService();
+export const authService = new SimpleAuthService();
 
 // Helper functions
 function isValidEmail(email: string): boolean {
@@ -156,24 +178,25 @@ async function getUserProfile(userId: string, tenantId: string): Promise<User> {
   };
 }
 
-async function generateRefreshToken(userId: string, tenantId: string): Promise<string> {
+async function generateRefreshToken(userId: string, tenantId: string, expiresIn: string = '30d'): Promise<string> {
   const secret = process.env.JWT_SECRET;
   if (!secret) {
     throw new Error('JWT_SECRET environment variable must be configured for refresh token generation');
   }
-  
-  // Use the same validation as the auth service
+
   authService.validateJWTSecret(secret);
-  
-  const tokenData = JSON.stringify({ 
-    userId, 
-    tenantId, 
-    type: 'refresh', 
-    exp: Date.now() + 30 * 24 * 60 * 60 * 1000,
-    iat: Date.now(),
-    version: process.env.JWT_VERSION || '1'
+
+  const payload = {
+    userId,
+    tenantId,
+    type: 'refresh'
+  };
+
+  return jwt.sign(payload, secret, {
+    algorithm: 'HS256',
+    expiresIn,
+    issuer: 'smm-architect'
   });
-  return crypto.createHmac('sha256', secret).update(tokenData).digest('hex');
 }
 
 async function updateLastLogin(userId: string, tenantId: string): Promise<void> {
@@ -563,12 +586,27 @@ async function withTenantContext<T>(tenantId: string, operation: (client: any) =
 }
 
 async function validateRefreshToken(refreshToken: string): Promise<{ userId: string; tenantId: string } | null> {
-  // Validate refresh token against secure storage
-  // For demo purposes, return mock data
-  return {
-    userId: 'demo_user',
-    tenantId: 'demo_tenant'
-  };
+  const secret = process.env.JWT_SECRET;
+  if (!secret) {
+    throw new Error('JWT_SECRET environment variable must be configured');
+  }
+
+  try {
+    const decoded = jwt.verify(refreshToken, secret) as any;
+    if (decoded.type !== 'refresh') {
+      return null;
+    }
+    return { userId: decoded.userId, tenantId: decoded.tenantId };
+  } catch (error) {
+    if (error instanceof jwt.TokenExpiredError) {
+      log.warn('Refresh token expired');
+    } else {
+      log.warn('Refresh token verification failed', {
+        error: error instanceof Error ? error.message : error
+      });
+    }
+    return null;
+  }
 }
 
 async function invalidateRefreshTokens(userId: string, tenantId: string): Promise<void> {
