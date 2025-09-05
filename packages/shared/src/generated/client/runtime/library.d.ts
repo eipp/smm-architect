@@ -863,7 +863,7 @@ export declare namespace DMMF {
         delete = "delete",
         deleteMany = "deleteMany",
         groupBy = "groupBy",
-        count = "count",// TODO: count does not actually exist, why?
+        count = "count",
         aggregate = "aggregate",
         findRaw = "findRaw",
         aggregateRaw = "aggregateRaw"
@@ -1023,9 +1023,6 @@ export declare type DynamicResultExtensionNeeds<TypeMap extends TypeMapDef, M ex
     [N in keyof TypeMap['model'][M]['payload']['scalars']]?: boolean;
 };
 
-/**
- * Placeholder value for "no text".
- */
 export declare const empty: Sql;
 
 export declare type EmptyToUnknown<T> = T;
@@ -2593,9 +2590,7 @@ declare type QueryMiddlewareParams = {
     model?: string;
     /** The action that is being handled */
     action: Action;
-    /** TODO what is this */
     dataPath: string[];
-    /** TODO what is this */
     runInTransaction: boolean;
     args?: UserArgs_2;
 };
