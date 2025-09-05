@@ -24,12 +24,16 @@ async function withAISpan(modelName, operation, callback) {
       
       return result;
     } catch (error) {
-      // Track error metrics
+      // Track error metrics with sanitized message
+      const sanitizedMessage = 'AI request failed';
       span.setAttribute('ai.status', 'error');
-      span.setAttribute('ai.error', error instanceof Error ? error.message : String(error));
-      
-      // Re-throw the error for proper error handling
-      throw error;
+      span.setAttribute('ai.error', sanitizedMessage);
+
+      // Log detailed error internally without exposing sensitive info
+      Sentry.captureException(error);
+
+      // Re-throw sanitized error for user-facing handling
+      throw new Error(sanitizedMessage);
     }
   });
 }
@@ -60,11 +64,12 @@ async function withAgentSpan(agentName, modelName, task, callback) {
       
       return result;
     } catch (error) {
-      // Track error metrics
+      // Track error metrics with sanitized message
+      const sanitizedMessage = 'Agent execution failed';
       span.setAttribute('ai.status', 'error');
-      span.setAttribute('ai.error', error instanceof Error ? error.message : String(error));
-      
-      // Capture the error for this specific agent
+      span.setAttribute('ai.error', sanitizedMessage);
+
+      // Capture the original error with context for internal diagnostics
       Sentry.captureException(error, {
         tags: {
           agent: agentName,
@@ -72,8 +77,9 @@ async function withAgentSpan(agentName, modelName, task, callback) {
           task: task
         }
       });
-      
-      throw error;
+
+      // Re-throw sanitized error
+      throw new Error(sanitizedMessage);
     }
   });
 }
