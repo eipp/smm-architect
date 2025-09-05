@@ -401,6 +401,11 @@ cd services/toolhub && pnpm test:benchmark
 - Data retention policies
 - Right to deletion support
 
+### License Compliance
+- SBOM generation includes license metadata for every dependency
+- CI workflows verify that all licenses are declared and acceptable
+- See [docs/licensing-compliance.md](docs/licensing-compliance.md) for details
+
 ## 🔧 Configuration
 
 ### Environment Variables

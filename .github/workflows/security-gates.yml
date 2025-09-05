@@ -105,7 +105,7 @@ jobs:
           npm audit --audit-level=high
           
           # Generate SBOM and vulnerability report
-          ./scripts/generate-sbom.sh
+          tools/scripts/generate-sbom.sh
           
           # Check for critical vulnerabilities in SBOM reports
           if find sbom/vulnerabilities/ -name "*.json" -exec jq -e '.matches[] | select(.vulnerability.severity == "Critical" or .vulnerability.severity == "High")' {} \; 2>/dev/null; then
@@ -292,29 +292,12 @@ jobs:
       - name: Generate and verify SBOM
         run: |
           echo "🔍 Generating comprehensive SBOM..."
-          ./scripts/generate-sbom.sh
-          
+          tools/scripts/generate-sbom.sh
+
           echo "✅ SBOM generation completed"
 
       - name: License compliance check
-        run: |
-          echo "📜 Checking license compliance..."
-          
-          # Extract licenses from SBOM
-          find sbom/services/ -name "*.json" -exec jq -r '.components[]?.licenses[]?.license.name // empty' {} \; | sort -u > detected-licenses.txt
-          
-          # Check for problematic licenses
-          PROBLEMATIC_LICENSES=("GPL-3.0" "AGPL-3.0" "SSPL-1.0" "BUSL-1.1")
-          
-          for license in "${PROBLEMATIC_LICENSES[@]}"; do
-            if grep -q "$license" detected-licenses.txt; then
-              echo "❌ Problematic license detected: $license"
-              echo "Review license compatibility before production deployment"
-              exit 1
-            fi
-          done
-          
-          echo "✅ License compliance check passed"
+        run: tools/scripts/verify-license-compliance.sh
 
       - name: Upload SBOM artifacts
         uses: actions/upload-artifact@v4

@@ -89,10 +89,13 @@ jobs:
 
     - name: Run comprehensive SBOM generation
       run: |
-        chmod +x scripts/generate-sbom.sh
-        ./scripts/generate-sbom.sh
+        chmod +x tools/scripts/generate-sbom.sh
+        tools/scripts/generate-sbom.sh
       env:
         SBOM_STORAGE_BUCKET: ${{ secrets.SBOM_STORAGE_BUCKET }}
+
+    - name: Verify license compliance
+      run: tools/scripts/verify-license-compliance.sh
 
     - name: Vulnerability scanning with Grype
       run: |

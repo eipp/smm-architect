@@ -54,6 +54,12 @@ check_prerequisites() {
         log_error "jq is required but not installed. Please install jq."
         exit 1
     fi
+
+    # Check if npm is installed (for license retrieval)
+    if ! command -v npm &> /dev/null; then
+        log_error "npm is required for license detection. Please install Node.js and npm."
+        exit 1
+    fi
     
     log_success "Prerequisites check completed"
 }
@@ -65,8 +71,26 @@ setup_output_directory() {
     mkdir -p "${SBOM_OUTPUT_DIR}"/{services,infrastructure,frontend,combined}
     mkdir -p "${SBOM_OUTPUT_DIR}/reports"
     mkdir -p "${SBOM_OUTPUT_DIR}/vulnerabilities"
-    
+
     log_success "SBOM directory structure created at ${SBOM_OUTPUT_DIR}"
+}
+
+# Populate missing license information using npm registry
+enrich_license_data() {
+    local sbom_file="$1"
+    local tmp_file
+    jq -r '.components[] | select(.licenses == null or (.licenses | length == 0)) | "\(.name)|\(.version)"' "$sbom_file" |
+        while IFS='|' read -r name version; do
+            [[ -z "$name" ]] && continue
+            local license
+            license=$(npm view "${name}@${version}" license 2>/dev/null || echo "")
+            if [[ -n "$license" && "$license" != "UNKNOWN" && "$license" != "Unknown" ]]; then
+                tmp_file=$(mktemp)
+                jq --arg name "$name" --arg lic "$license" \
+                   '.components |= map(if .name==$name then .licenses=[{"license":{"name":$lic}}] else . end)' \
+                   "$sbom_file" > "$tmp_file" && mv "$tmp_file" "$sbom_file"
+            fi
+        done
 }
 
 # Generate SBOM for a specific service
@@ -101,7 +125,10 @@ generate_service_sbom() {
        "$output_file" > "$temp_file"
     
     mv "$temp_file" "$output_file"
-    
+
+    # Populate missing license data
+    enrich_license_data "$output_file"
+
     # Generate vulnerability report for this service
     generate_vulnerability_report "$service_name" "$output_file"
     
@@ -178,6 +205,7 @@ generate_infrastructure_sboms() {
                 log_info "Generating SBOM for Docker image: $image"
                 
                 if syft packages "$image" --output cyclonedx-json --file "$output_file" --quiet 2>/dev/null; then
+                    enrich_license_data "$output_file"
                     generate_vulnerability_report "$image_name" "$output_file"
                     log_success "SBOM generated for image: $image"
                 else
@@ -263,7 +291,10 @@ EOF
             component_count=$((component_count + $(echo "$infra_components" | jq 'length')))
         fi
     done
-    
+
+    # Populate license data in combined SBOM
+    enrich_license_data "$combined_file"
+
     # Generate summary report
     cat > "$summary_file" << EOF
 {
@@ -295,8 +326,8 @@ EOF
     echo "Component Name,Version,Type,Licenses,Vulnerabilities,Source" > "$csv_file"
     
     # Extract component data to CSV
-    jq -r '.components[] | 
-           [.name, .version, .type, (.licenses[]?.license.name // "Unknown"), "TBD", .supplier.name] | 
+    jq -r '.components[] |
+           [.name, .version, .type, (.licenses[]?.license.name // "Unknown"), "TBD", .supplier.name] |
            @csv' "$combined_file" >> "$csv_file" 2>/dev/null || true
     
     log_success "Combined SBOM report generated: $(basename "$combined_file")"
