@@ -1,6 +1,6 @@
-import Ajv from "ajv";
+import Ajv, { ValidateFunction } from "ajv";
 import addFormats from "ajv-formats";
-import fs from "fs";
+import { promises as fs } from "fs";
 import path from "path";
 import { WorkspaceContract } from "../types";
 
@@ -8,18 +8,29 @@ import { WorkspaceContract } from "../types";
 const ajv = new Ajv({ allErrors: true });
 addFormats(ajv);
 
-// Load workspace contract schema
-const schemaPath = path.join(__dirname, "../../../schemas/workspace-contract.json");
-let workspaceSchema: any;
+// Load workspace contract schema asynchronously at startup
+const schemaPath = path.join(
+  __dirname,
+  "../../../schemas/workspace-contract.json"
+);
+let validateContract: ValidateFunction | null = null;
+let initPromise: Promise<void> | null = null;
 
-try {
-  workspaceSchema = JSON.parse(fs.readFileSync(schemaPath, "utf8"));
-} catch (error) {
-  console.warn("Could not load workspace schema, using basic validation");
-  workspaceSchema = null;
+export async function initValidation(): Promise<void> {
+  if (!initPromise) {
+    initPromise = (async () => {
+      try {
+        const schemaData = await fs.readFile(schemaPath, "utf8");
+        const workspaceSchema = JSON.parse(schemaData);
+        validateContract = ajv.compile(workspaceSchema);
+      } catch (error) {
+        console.warn("Could not load workspace schema, using basic validation");
+        validateContract = null;
+      }
+    })();
+  }
+  return initPromise;
 }
-
-const validateContract = workspaceSchema ? ajv.compile(workspaceSchema) : null;
 
 export interface ValidationResult {
   valid: boolean;
@@ -27,6 +38,7 @@ export interface ValidationResult {
 }
 
 export async function validateWorkspaceContract(contract: WorkspaceContract): Promise<ValidationResult> {
+  await initValidation();
   const errors: string[] = [];
 
   // Basic validation if schema is not available
