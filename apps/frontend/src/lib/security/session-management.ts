@@ -34,8 +34,18 @@ export interface SessionConfig {
   requireTwoFactor: boolean
 }
 
+const getSessionSecret = (): string => {
+  const secret = process.env.SESSION_SECRET
+
+  if (!secret) {
+    throw new Error('SESSION_SECRET environment variable is required')
+  }
+
+  return secret
+}
+
 const DEFAULT_SESSION_CONFIG: SessionConfig = {
-  secret: process.env.SESSION_SECRET || 'default-secret-change-in-production',
+  secret: getSessionSecret(),
   cookieName: '__session',
   maxAge: 24 * 60 * 60, // 24 hours
   secure: process.env.NODE_ENV === 'production',
