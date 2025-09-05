@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { validateWorkspaceData } from '../validation'
 
 // Mock workspace details with steps
 const mockWorkspaceDetails = {
@@ -89,29 +90,33 @@ export async function PATCH(
 ) {
   // Simulate network delay
   await new Promise(resolve => setTimeout(resolve, Math.random() * 500 + 200))
-  
+
   try {
     const workspaceId = params.id
     const workspace = mockWorkspaceDetails[workspaceId]
-    
+
     if (!workspace) {
       return NextResponse.json(
         { error: 'Workspace not found' },
         { status: 404 }
       )
     }
-    
+
     const body = await request.json()
-    
-    // Update workspace
+    const { data, errors } = validateWorkspaceData(body, { partial: true })
+
+    if (Object.keys(errors).length > 0) {
+      return NextResponse.json({ errors }, { status: 400 })
+    }
+
     const updatedWorkspace = {
       ...workspace,
-      ...body,
+      ...data,
       updatedAt: new Date().toISOString(),
     }
-    
+
     mockWorkspaceDetails[workspaceId] = updatedWorkspace
-    
+
     return NextResponse.json(updatedWorkspace)
   } catch (error) {
     return NextResponse.json(

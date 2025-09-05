@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { validateWorkspaceData } from './validation'
 
 // Mock data
 const mockWorkspaces = [
@@ -95,27 +96,20 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   // Simulate network delay
   await new Promise(resolve => setTimeout(resolve, Math.random() * 1000 + 500))
-  
+
   try {
     const body = await request.json()
-    
-    // Validate required fields
-    if (!body.name || !body.description) {
-      return NextResponse.json(
-        { error: 'Name and description are required' },
-        { status: 400 }
-      )
+    const { data, errors } = validateWorkspaceData(body)
+
+    if (Object.keys(errors).length > 0) {
+      return NextResponse.json({ errors }, { status: 400 })
     }
-    
-    // Create new workspace
+
     const newWorkspace = {
       id: `ws-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
-      name: body.name,
-      description: body.description,
+      ...data,
       status: 'planning',
       lastActivity: new Date().toISOString(),
-      budget: body.budget || { used: 0, total: 1000, currency: 'USD' },
-      channels: body.channels || [],
       metrics: {
         postsScheduled: 0,
         engagement: 0,
@@ -124,10 +118,10 @@ export async function POST(request: NextRequest) {
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     }
-    
+
     // Add to mock data (in real app, this would save to database)
     mockWorkspaces.unshift(newWorkspace)
-    
+
     return NextResponse.json(newWorkspace, { status: 201 })
   } catch (error) {
     return NextResponse.json(
