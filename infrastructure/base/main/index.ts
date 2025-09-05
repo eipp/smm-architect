@@ -178,6 +178,184 @@ const db = new aws.rds.Instance("smm-postgres", {
     tags,
 });
 
+// --- Kubernetes Infrastructure ---
+
+// Security groups for EKS control plane and nodes
+const eksClusterSecurityGroup = new aws.ec2.SecurityGroup("smm-eks-cluster-sg", {
+    vpcId: vpc.id,
+    description: "Security group for EKS control plane",
+    egress: [{
+        protocol: "-1",
+        fromPort: 0,
+        toPort: 0,
+        cidrBlocks: ["0.0.0.0/0"],
+    }],
+    tags: { ...tags, Name: `${workspaceId}-eks-cluster-sg` },
+});
+
+const eksNodeSecurityGroup = new aws.ec2.SecurityGroup("smm-eks-node-sg", {
+    vpcId: vpc.id,
+    description: "Security group for EKS worker nodes",
+    ingress: [{
+        protocol: "-1",
+        fromPort: 0,
+        toPort: 0,
+        securityGroups: [eksClusterSecurityGroup.id],
+    }],
+    egress: [{
+        protocol: "-1",
+        fromPort: 0,
+        toPort: 0,
+        cidrBlocks: ["0.0.0.0/0"],
+    }],
+    tags: { ...tags, Name: `${workspaceId}-eks-node-sg` },
+});
+
+// IAM roles for EKS
+const eksClusterRole = new aws.iam.Role("smm-eks-cluster-role", {
+    assumeRolePolicy: aws.iam.getPolicyDocument({
+        statements: [{
+            actions: ["sts:AssumeRole"],
+            principals: [{ type: "Service", identifiers: ["eks.amazonaws.com"] }],
+        }],
+    }).then((doc: aws.iam.GetPolicyDocumentResult) => doc.json),
+    tags: { ...tags, Name: `${workspaceId}-eks-cluster-role` },
+});
+
+new aws.iam.RolePolicyAttachment("smm-eks-cluster-policy", {
+    role: eksClusterRole.name,
+    policyArn: "arn:aws:iam::aws:policy/AmazonEKSClusterPolicy",
+});
+
+new aws.iam.RolePolicyAttachment("smm-eks-service-policy", {
+    role: eksClusterRole.name,
+    policyArn: "arn:aws:iam::aws:policy/AmazonEKSServicePolicy",
+});
+
+const eksNodeRole = new aws.iam.Role("smm-eks-node-role", {
+    assumeRolePolicy: aws.iam.getPolicyDocument({
+        statements: [{
+            actions: ["sts:AssumeRole"],
+            principals: [{ type: "Service", identifiers: ["ec2.amazonaws.com"] }],
+        }],
+    }).then((doc: aws.iam.GetPolicyDocumentResult) => doc.json),
+    tags: { ...tags, Name: `${workspaceId}-eks-node-role` },
+});
+
+new aws.iam.RolePolicyAttachment("smm-eks-worker-policy", {
+    role: eksNodeRole.name,
+    policyArn: "arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy",
+});
+
+new aws.iam.RolePolicyAttachment("smm-eks-cni-policy", {
+    role: eksNodeRole.name,
+    policyArn: "arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy",
+});
+
+new aws.iam.RolePolicyAttachment("smm-eks-ecr-ro", {
+    role: eksNodeRole.name,
+    policyArn: "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly",
+});
+
+// EKS Cluster
+const eksCluster = new aws.eks.Cluster("smm-eks", {
+    name: `${workspaceId}-eks`,
+    roleArn: eksClusterRole.arn,
+    vpcConfig: {
+        subnetIds: [privateSubnet1.id, privateSubnet2.id],
+        securityGroupIds: [eksClusterSecurityGroup.id],
+    },
+    tags: { ...tags, Name: `${workspaceId}-eks` },
+});
+
+// Managed node group sized via resource tier configuration
+const eksNodeGroup = new aws.eks.NodeGroup("smm-eks-ng", {
+    clusterName: eksCluster.name,
+    nodeRoleArn: eksNodeRole.arn,
+    subnetIds: [privateSubnet1.id, privateSubnet2.id],
+    scalingConfig: {
+        desiredSize: tierConfig.desiredCapacity,
+        maxSize: tierConfig.maxSize,
+        minSize: tierConfig.minSize,
+    },
+    instanceTypes: [tierConfig.instanceType],
+    tags: { ...tags, Name: `${workspaceId}-eks-ng` },
+});
+
+// --- Web Application Firewall ---
+const ingressSecurityGroup = new aws.ec2.SecurityGroup("smm-ingress-sg", {
+    vpcId: vpc.id,
+    description: "Security group for ingress ALB",
+    ingress: [
+        { protocol: "tcp", fromPort: 80, toPort: 80, cidrBlocks: ["0.0.0.0/0"] },
+        { protocol: "tcp", fromPort: 443, toPort: 443, cidrBlocks: ["0.0.0.0/0"] },
+    ],
+    egress: [{ protocol: "-1", fromPort: 0, toPort: 0, cidrBlocks: ["0.0.0.0/0"] }],
+    tags: { ...tags, Name: `${workspaceId}-ingress-sg` },
+});
+
+const ingressAlb = new aws.lb.LoadBalancer("smm-ingress-alb", {
+    loadBalancerType: "application",
+    securityGroups: [ingressSecurityGroup.id],
+    subnets: [publicSubnet1.id, publicSubnet2.id],
+    tags: { ...tags, Name: `${workspaceId}-ingress-alb` },
+});
+
+const ingressTargetGroup = new aws.lb.TargetGroup("smm-ingress-tg", {
+    port: 80,
+    protocol: "HTTP",
+    vpcId: vpc.id,
+    targetType: "ip",
+    tags: { ...tags, Name: `${workspaceId}-ingress-tg` },
+});
+
+new aws.lb.Listener("smm-ingress-listener", {
+    loadBalancerArn: ingressAlb.arn,
+    port: 80,
+    protocol: "HTTP",
+    defaultActions: [{ type: "forward", targetGroupArn: ingressTargetGroup.arn }],
+});
+
+const webAcl = new aws.waf.WebAcl("smm-waf", {
+    defaultAction: { type: "ALLOW" },
+    metricName: pulumi.interpolate`smmWAF${suffix.hex}`,
+    rules: [],
+});
+
+new aws.wafregional.WebAclAssociation("smm-waf-assoc", {
+    resourceArn: ingressAlb.arn,
+    webAclId: webAcl.id,
+});
+
+// --- Client VPN ---
+const vpnServerCertificateArn = config.get("vpn:serverCertificateArn") || "";
+const vpnRootCertificateArn = config.get("vpn:rootCertificateArn") || vpnServerCertificateArn;
+
+const vpnSecurityGroup = new aws.ec2.SecurityGroup("smm-vpn-sg", {
+    vpcId: vpc.id,
+    description: "Security group for Client VPN",
+    ingress: [{ protocol: "-1", fromPort: 0, toPort: 0, cidrBlocks: ["10.0.0.0/16"] }],
+    egress: [{ protocol: "-1", fromPort: 0, toPort: 0, cidrBlocks: ["0.0.0.0/0"] }],
+    tags: { ...tags, Name: `${workspaceId}-vpn-sg` },
+});
+
+const clientVpn = new aws.ec2clientvpn.Endpoint("smm-client-vpn", {
+    clientCidrBlock: "10.100.0.0/16",
+    serverCertificateArn: vpnServerCertificateArn,
+    authenticationOptions: [{
+        type: "certificate-authentication",
+        rootCertificateChainArn: vpnRootCertificateArn,
+    }],
+    connectionLogOptions: { enabled: false },
+    securityGroupIds: [vpnSecurityGroup.id],
+    tags: { ...tags, Name: `${workspaceId}-client-vpn` },
+});
+
+new aws.ec2clientvpn.NetworkAssociation("smm-client-vpn-assoc", {
+    clientVpnEndpointId: clientVpn.id,
+    subnetId: privateSubnet1.id,
+});
+
 // Create ECR repositories for Docker images
 const ecrRepos = [
     "smm-architect",
@@ -223,6 +401,12 @@ export const ecrRepositories = ecrRepos.map(repo => ({
     name: repo.name,
     url: repo.repositoryUrl,
 }));
+export const eksClusterName = eksCluster.name;
+export const eksClusterEndpoint = eksCluster.endpoint;
+export const eksNodeGroupName = eksNodeGroup.nodeGroupName;
+export const webAclId = webAcl.id;
+export const clientVpnEndpointId = clientVpn.id;
+export const clientVpnEndpointDnsName = clientVpn.dnsName;
 
 // Infrastructure Status
 export const infrastructureStatus = {
@@ -237,7 +421,10 @@ export const infrastructureStatus = {
         subnets: "Created (2 public, 2 private)",
         database: "Created (PostgreSQL)",
         storage: "Created (S3)",
-        containerRegistry: "Created (ECR)"
+        containerRegistry: "Created (ECR)",
+        kubernetes: "Created (EKS)",
+        waf: "Created (Web ACL)",
+        vpn: "Created (Client VPN)"
     }
 };
 
