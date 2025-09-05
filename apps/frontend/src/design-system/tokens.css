@@ -181,3 +181,22 @@
   --modal-max-width: 640px;
   --modal-padding: 24px;
 }
+
+[data-theme='dark'] {
+  --color-neutral-50: hsl(210 15% 8%);
+  --color-neutral-100: hsl(210 15% 12%);
+  --color-neutral-200: hsl(210 15% 22%);
+  --color-neutral-300: hsl(210 15% 32%);
+  --color-neutral-400: hsl(210 20% 40%);
+  --color-neutral-500: hsl(210 20% 50%);
+  --color-neutral-600: hsl(210 25% 60%);
+  --color-neutral-700: hsl(210 30% 70%);
+  --color-neutral-800: hsl(210 30% 82%);
+  --color-neutral-900: hsl(210 40% 90%);
+  --color-neutral-950: hsl(210 40% 96%);
+  --color-canvas-background: hsl(210 40% 4%);
+  --color-workspace-background: hsl(210 40% 10%);
+  --color-surface-elevated: hsl(210 25% 15%);
+  --color-border-subtle: hsl(210 25% 25%);
+  --color-border-strong: hsl(210 20% 40%);
+}
