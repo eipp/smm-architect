@@ -116,17 +116,17 @@ export const createWorkspace = api(
  */
 export const getWorkspaceStatus = api(
   { method: "GET", path: "/workspaces/:id/status", auth: true },
-  async ({ id }: { id: string }): Promise<WorkspaceStatusResponse> => {
+  async ({ id, tenantId }: { id: string; tenantId: string }): Promise<WorkspaceStatusResponse> => {
     try {
-      log.info("Getting workspace status", { workspaceId: id });
+      log.info("Getting workspace status", { workspaceId: id, tenantId });
 
-      const workspace = await workspaceService.getWorkspace(id);
+      const workspace = await workspaceService.getWorkspace(id, tenantId);
       if (!workspace) {
         throw new Error("Workspace not found");
       }
 
-      const health = await workspaceService.getWorkspaceHealth(id);
-      const metrics = await workspaceService.getWorkspaceMetrics(id);
+      const health = await workspaceService.getWorkspaceHealth(id, tenantId);
+      const metrics = await workspaceService.getWorkspaceMetrics(id, tenantId);
 
       return {
         workspace,
@@ -153,14 +153,15 @@ export const getWorkspaceStatus = api(
  */
 export const approvePromotion = api(
   { method: "POST", path: "/workspaces/:id/approve", auth: true },
-  async ({ id, ...req }: { id: string } & ApprovalRequest): Promise<ApprovalResponse> => {
+  async ({ id, tenantId, ...req }: { id: string; tenantId: string } & ApprovalRequest): Promise<ApprovalResponse> => {
     try {
-      log.info("Processing approval request", { 
-        workspaceId: id, 
-        action: req.action 
+      log.info("Processing approval request", {
+        workspaceId: id,
+        tenantId,
+        action: req.action
       });
 
-      const workspace = await workspaceService.getWorkspace(id);
+      const workspace = await workspaceService.getWorkspace(id, tenantId);
       if (!workspace) {
         throw new Error("Workspace not found");
       }
@@ -171,7 +172,7 @@ export const approvePromotion = api(
       }
 
       // Process the approval
-      const result = await workspaceService.processApproval(id, req);
+      const result = await workspaceService.processApproval(id, tenantId, req);
 
       log.info("Approval processed", { 
         workspaceId: id, 
@@ -200,11 +201,11 @@ export const approvePromotion = api(
  */
 export const simulateCampaign = api(
   { method: "POST", path: "/workspaces/:id/simulate", auth: true },
-  async ({ id, ...req }: { id: string } & SimulationRequest): Promise<SimulationResponse> => {
+  async ({ id, tenantId, ...req }: { id: string; tenantId: string } & SimulationRequest): Promise<SimulationResponse> => {
     try {
-      log.info("Starting campaign simulation", { workspaceId: id });
+      log.info("Starting campaign simulation", { workspaceId: id, tenantId });
 
-      const workspace = await workspaceService.getWorkspace(id);
+      const workspace = await workspaceService.getWorkspace(id, tenantId);
       if (!workspace) {
         throw new Error("Workspace not found");
       }
@@ -239,11 +240,11 @@ export const simulateCampaign = api(
  */
 export const getAuditBundle = api(
   { method: "GET", path: "/workspaces/:id/audit", auth: true },
-  async ({ id }: { id: string }): Promise<AuditBundleResponse> => {
+  async ({ id, tenantId }: { id: string; tenantId: string }): Promise<AuditBundleResponse> => {
     try {
-      log.info("Retrieving audit bundle", { workspaceId: id });
+      log.info("Retrieving audit bundle", { workspaceId: id, tenantId });
 
-      const workspace = await workspaceService.getWorkspace(id);
+      const workspace = await workspaceService.getWorkspace(id, tenantId);
       if (!workspace) {
         throw new Error("Workspace not found");
       }
@@ -289,7 +290,7 @@ export const health = api(
  */
 export const listWorkspaces = api(
   { method: "GET", path: "/workspaces", auth: true },
-  async ({ tenantId }: { tenantId?: string }): Promise<{ workspaces: WorkspaceContract[] }> => {
+  async ({ tenantId }: { tenantId: string }): Promise<{ workspaces: WorkspaceContract[] }> => {
     try {
       log.info("Listing workspaces", { tenantId });
 
@@ -316,11 +317,11 @@ export const listWorkspaces = api(
  */
 export const updateWorkspace = api(
   { method: "PUT", path: "/workspaces/:id", auth: true },
-  async ({ id, contract }: { id: string; contract: Partial<WorkspaceContract> }): Promise<{ updated: boolean }> => {
+  async ({ id, tenantId, contract }: { id: string; tenantId: string; contract: Partial<WorkspaceContract> }): Promise<{ updated: boolean }> => {
     try {
-      log.info("Updating workspace", { workspaceId: id });
+      log.info("Updating workspace", { workspaceId: id, tenantId });
 
-      const result = await workspaceService.updateWorkspace(id, contract);
+      const result = await workspaceService.updateWorkspace(id, tenantId, contract);
 
       log.info("Workspace updated", { workspaceId: id, updated: result });
 
@@ -345,11 +346,11 @@ export const updateWorkspace = api(
  */
 export const deleteWorkspace = api(
   { method: "DELETE", path: "/workspaces/:id", auth: true },
-  async ({ id }: { id: string }): Promise<{ deleted: boolean }> => {
+  async ({ id, tenantId }: { id: string; tenantId: string }): Promise<{ deleted: boolean }> => {
     try {
-      log.info("Decommissioning workspace", { workspaceId: id });
+      log.info("Decommissioning workspace", { workspaceId: id, tenantId });
 
-      const result = await workspaceService.decommissionWorkspace(id);
+      const result = await workspaceService.decommissionWorkspace(id, tenantId);
 
       log.info("Workspace decommissioned", { workspaceId: id });
 
