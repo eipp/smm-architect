@@ -24,18 +24,18 @@ help: ## Show this help message
 
 install: ## Install all dependencies
 	@echo "$(YELLOW)Installing dependencies...$(NC)"
-	npm install
+	pnpm install
 	@echo "$(GREEN)Dependencies installed successfully$(NC)"
 
 build: ## Build all services
 	@echo "$(YELLOW)Building all services...$(NC)"
-	cd services/smm-architect && npm run build
-	cd apps/frontend && npm run build
+	cd services/smm-architect && pnpm build
+	cd apps/frontend && pnpm build
 	@echo "$(GREEN)Build completed successfully$(NC)"
 
 test: ## Run all tests
 	@echo "$(YELLOW)Running tests...$(NC)"
-	npm test
+	pnpm test
 	@echo "$(GREEN)Tests completed$(NC)"
 
 test-security: ## Run security tests including tenant isolation
@@ -43,7 +43,7 @@ test-security: ## Run security tests including tenant isolation
 	@echo "🔍 Validating RLS policies in migrations..."
 	node tools/migration-rls-linter.js services/smm-architect/migrations/
 	@echo "🔴 Running evil tenant security tests..."
-	npm run test:security
+	pnpm test:security
 	@echo "$(GREEN)Security tests completed$(NC)"
 
 clean: ## Clean build artifacts and temporary files
@@ -127,14 +127,14 @@ docker-sbom: ## Generate SBOM for Docker images
 # Development Workflow Targets
 dev-setup: install ## Complete development environment setup
 	@echo "$(YELLOW)Setting up development environment...$(NC)"
-	npm install
+	pnpm install
 	chmod +x tools/scripts/*.sh
 	@echo "$(GREEN)Development environment setup completed$(NC)"
 
 dev-check: test test-security sbom ## Run all development checks (tests, security, SBOM)
 	@echo "$(YELLOW)Running complete development checks...$(NC)"
-	npm test
-	npm run test:security
+	pnpm test
+	pnpm test:security
 	$(MAKE) sbom-quick
 	@echo "$(GREEN)All development checks passed$(NC)"
 
