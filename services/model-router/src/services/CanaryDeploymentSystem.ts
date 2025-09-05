@@ -3,6 +3,7 @@ import { ModelMetadata, ModelRequest, ModelResponse } from '../types';
 import { ModelRegistry } from './ModelRegistry';
 import { ModelEvaluationFramework } from './ModelEvaluationFramework';
 import { Logger } from '../utils/logger';
+import { ModelMetricsProvider, PrometheusModelMetricsProvider } from '../monitoring/model-metrics-provider';
 
 export interface CanaryDeployment {
   id: string;
@@ -91,16 +92,22 @@ export class CanaryDeploymentSystem extends EventEmitter {
   private registry: ModelRegistry;
   private evaluationFramework: ModelEvaluationFramework;
   private logger: Logger;
+  private metricsProvider: ModelMetricsProvider;
   private deployments: Map<string, CanaryDeployment> = new Map();
   private metrics: Map<string, CanaryMetrics[]> = new Map();
   private routingDecisions: Map<string, any> = new Map();
   private monitoringInterval?: NodeJS.Timeout;
 
-  constructor(registry: ModelRegistry, evaluationFramework: ModelEvaluationFramework) {
+  constructor(
+    registry: ModelRegistry,
+    evaluationFramework: ModelEvaluationFramework,
+    metricsProvider: ModelMetricsProvider = new PrometheusModelMetricsProvider()
+  ) {
     super();
     this.registry = registry;
     this.evaluationFramework = evaluationFramework;
     this.logger = new Logger('CanaryDeployment');
+    this.metricsProvider = metricsProvider;
     this.startMonitoring();
   }
 
@@ -595,20 +602,11 @@ export class CanaryDeploymentSystem extends EventEmitter {
   }
 
   private async getModelMetrics(
-    modelId: string, 
-    since: Date, 
+    modelId: string,
+    since: Date,
     isCanary: boolean
   ): Promise<any> {
-    // Mock implementation - would query actual metrics store
-    return {
-      requests: Math.floor(Math.random() * 1000) + 100,
-      successRate: 95 + Math.random() * 5,
-      errorRate: Math.random() * 5,
-      avgLatency: 500 + Math.random() * 500,
-      p95Latency: 800 + Math.random() * 700,
-      qualityScore: 0.8 + Math.random() * 0.2,
-      avgCost: 0.001 + Math.random() * 0.001
-    };
+    return this.metricsProvider.getMetrics(modelId, since, isCanary);
   }
 
   private determineRecommendation(
