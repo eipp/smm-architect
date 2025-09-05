@@ -56,10 +56,10 @@ export class WorkspaceService {
     return workspace;
   }
 
-  async getWorkspace(workspaceId: string): Promise<WorkspaceContract | null> {
+  async getWorkspace(workspaceId: string, tenantId: string): Promise<WorkspaceContract | null> {
     const result = await this.db.query(
-      "SELECT contract_data FROM workspaces WHERE workspace_id = ?",
-      [workspaceId]
+      "SELECT contract_data FROM workspaces WHERE workspace_id = ? AND tenant_id = ?",
+      [workspaceId, tenantId]
     );
 
     if (result.length === 0) {
@@ -69,8 +69,12 @@ export class WorkspaceService {
     return JSON.parse(result[0].contract_data);
   }
 
-  async updateWorkspace(workspaceId: string, updates: Partial<WorkspaceContract>): Promise<boolean> {
-    const existing = await this.getWorkspace(workspaceId);
+  async updateWorkspace(
+    workspaceId: string,
+    tenantId: string,
+    updates: Partial<WorkspaceContract>
+  ): Promise<boolean> {
+    const existing = await this.getWorkspace(workspaceId, tenantId);
     if (!existing) {
       throw new Error("Workspace not found");
     }
@@ -78,32 +82,33 @@ export class WorkspaceService {
     const updated = { ...existing, ...updates };
     
     await this.db.exec(
-      `UPDATE workspaces 
-      SET 
+      `UPDATE workspaces
+      SET
         contract_data = ?,
         updated_at = ?
-      WHERE workspace_id = ?`,
-      [JSON.stringify(updated), new Date().toISOString(), workspaceId]
+      WHERE workspace_id = ? AND tenant_id = ?`,
+      [JSON.stringify(updated), new Date().toISOString(), workspaceId, tenantId]
     );
 
     return true;
   }
 
-  async listWorkspaces(tenantId?: string): Promise<WorkspaceContract[]> {
-    const query = tenantId 
-      ? await this.db.query("SELECT contract_data FROM workspaces WHERE tenant_id = ?", [tenantId])
-      : await this.db.query("SELECT contract_data FROM workspaces", []);
+  async listWorkspaces(tenantId: string): Promise<WorkspaceContract[]> {
+    const query = await this.db.query(
+      "SELECT contract_data FROM workspaces WHERE tenant_id = ?",
+      [tenantId]
+    );
     return query.map((row: any) => JSON.parse(row.contract_data));
   }
 
-  async decommissionWorkspace(workspaceId: string): Promise<boolean> {
-    const workspace = await this.getWorkspace(workspaceId);
+  async decommissionWorkspace(workspaceId: string, tenantId: string): Promise<boolean> {
+    const workspace = await this.getWorkspace(workspaceId, tenantId);
     if (!workspace) {
       throw new Error("Workspace not found");
     }
 
     // Update lifecycle to decommissioned
-    await this.updateWorkspace(workspaceId, {
+    await this.updateWorkspace(workspaceId, tenantId, {
       lifecycle: 'decommissioned',
       emergencyFlags: {
         pauseAll: true,
@@ -116,8 +121,8 @@ export class WorkspaceService {
     return true;
   }
 
-  async getWorkspaceHealth(workspaceId: string): Promise<any> {
-    const workspace = await this.getWorkspace(workspaceId);
+  async getWorkspaceHealth(workspaceId: string, tenantId: string): Promise<any> {
+    const workspace = await this.getWorkspace(workspaceId, tenantId);
     if (!workspace) {
       throw new Error("Workspace not found");
     }
@@ -143,17 +148,18 @@ export class WorkspaceService {
     };
   }
 
-  async getWorkspaceMetrics(workspaceId: string): Promise<any> {
-    // Get metrics from database
+  async getWorkspaceMetrics(workspaceId: string, tenantId: string): Promise<any> {
+    // Get metrics from database with tenant isolation
     const result = await this.db.query(
-      `SELECT 
+      `SELECT
         COUNT(*) as total_runs,
         AVG(CASE WHEN status = 'completed' THEN 1.0 ELSE 0.0 END) as success_rate,
         AVG(cost_usd) as average_cost,
-        MAX(created_at) as last_activity
-      FROM workspace_runs 
-      WHERE workspace_id = ?`,
-      [workspaceId]
+        MAX(workspace_runs.created_at) as last_activity
+      FROM workspace_runs
+      JOIN workspaces ON workspaces.workspace_id = workspace_runs.workspace_id
+      WHERE workspace_runs.workspace_id = ? AND workspaces.tenant_id = ?`,
+      [workspaceId, tenantId]
     );
 
     if (result.length === 0) {
@@ -174,8 +180,12 @@ export class WorkspaceService {
     };
   }
 
-  async processApproval(workspaceId: string, approval: ApprovalRequest): Promise<ApprovalResponse> {
-    const workspace = await this.getWorkspace(workspaceId);
+  async processApproval(
+    workspaceId: string,
+    tenantId: string,
+    approval: ApprovalRequest
+  ): Promise<ApprovalResponse> {
+    const workspace = await this.getWorkspace(workspaceId, tenantId);
     if (!workspace) {
       throw new Error("Workspace not found");
     }
@@ -186,7 +196,7 @@ export class WorkspaceService {
       // Start canary deployment
       const canaryPct = approval.overrides?.customCanaryPct || workspace.approvalPolicy.canaryInitialPct;
       
-      await this.updateWorkspace(workspaceId, {
+      await this.updateWorkspace(workspaceId, tenantId, {
         currentCanary: {
           pct: canaryPct,
           startedAt: new Date().toISOString(),
@@ -208,7 +218,7 @@ export class WorkspaceService {
       };
     } else {
       // Handle rejection or change requests
-      await this.updateWorkspace(workspaceId, {
+      await this.updateWorkspace(workspaceId, tenantId, {
         emergencyFlags: {
           pauseAll: true,
           pausedAt: new Date().toISOString(),
