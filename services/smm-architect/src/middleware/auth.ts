@@ -5,7 +5,7 @@ interface Header {
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import winston from 'winston';
-import { withTenantContext } from '../../shared/database/client';
+import { withTenantContext } from '../../../shared/database/client';
 
 // Mock Prisma client for tenant context
 interface MockPrismaClient {
@@ -119,7 +119,13 @@ export function extractTenantId(req: Request): string | null {
   // 2. From X-Tenant-ID header
   const headerTenantId = req.headers['x-tenant-id'] as string;
   if (headerTenantId) {
-    return headerTenantId;
+    const sanitizedHeaderTenantId = headerTenantId.trim();
+    if (!isValidTenantId(sanitizedHeaderTenantId)) {
+      throw new TenantContextError(
+        `Invalid tenant ID format in X-Tenant-ID header: ${sanitizedHeaderTenantId}`
+      );
+    }
+    return sanitizedHeaderTenantId;
   }
   
   // 3. From URL path parameter
@@ -133,6 +139,11 @@ export function extractTenantId(req: Request): string | null {
     const subdomain = host.split('.')[0];
     // Exclude common subdomains
     if (subdomain && !['www', 'api', 'app', 'admin'].includes(subdomain)) {
+      if (!isValidTenantId(subdomain)) {
+        throw new TenantContextError(
+          `Invalid tenant ID format in subdomain: ${subdomain}`
+        );
+      }
       return subdomain;
     }
   }

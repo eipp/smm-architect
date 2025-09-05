@@ -1,10 +1,16 @@
+jest.mock('jsonwebtoken', () => ({
+  verify: jest.fn(),
+  sign: jest.fn()
+}), { virtual: true });
+
 import { Request, Response } from 'express';
 import {
   setAutomaticTenantContext,
   extractTenantId,
   withTenantContextForJob,
   verifyTenantContext,
-  AuthenticatedUser
+  AuthenticatedUser,
+  TenantContextError
 } from '../../services/smm-architect/src/middleware/auth';
 import { 
   setTenantContext, 
@@ -38,9 +44,11 @@ const mockPrismaClient = {
 
 // Mock the getPrismaClient function
 jest.mock('../../services/shared/database/client', () => ({
-  ...jest.requireActual('../../services/shared/database/client'),
-  getPrismaClient: () => mockPrismaClient
-}));
+  getPrismaClient: () => mockPrismaClient,
+  withTenantContext: async (_tenantId: string, fn: () => Promise<any>) => fn(),
+  setTenantContext: jest.fn(),
+  getCurrentTenantContext: jest.fn()
+}), { virtual: true });
 
 describe('Evil Tenant Security Tests', () => {
   const tenantA = 'tenant-alice';
@@ -108,6 +116,24 @@ describe('Evil Tenant Security Tests', () => {
 
       const extractedTenantId = extractTenantId(req);
       expect(extractedTenantId).toBeNull();
+    });
+
+    it('should reject invalid tenant ID from header', () => {
+      const req = {
+        headers: { 'x-tenant-id': 'invalid..tenant..id' },
+        params: {}
+      } as any as Request;
+
+      expect(() => extractTenantId(req)).toThrow(TenantContextError);
+    });
+
+    it('should reject invalid tenant ID from subdomain', () => {
+      const req = {
+        headers: { host: 'invalid_sub.smm-architect.com' },
+        params: {}
+      } as any as Request;
+
+      expect(() => extractTenantId(req)).toThrow(TenantContextError);
     });
   });
 
