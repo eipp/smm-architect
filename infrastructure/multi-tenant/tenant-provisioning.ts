@@ -145,6 +145,19 @@ export class TenantProvisioner {
     }, { provider: this.vaultProvider });
 
     // Database credentials
+    const dbPassword = pulumi.secret(
+      vault.generic.getSecretOutput(
+        { path: `tenant-${config.tenantId}/database` },
+        { provider: this.vaultProvider }
+      ).data.apply(secretData => {
+        const password = secretData?.data?.password;
+        if (!password) {
+          throw new Error(`Database password missing in Vault for tenant ${config.tenantId}`);
+        }
+        return password;
+      })
+    );
+
     const dbSecret = new k8s.core.v1.Secret(`tenant-${config.tenantId}-db`, {
       metadata: {
         name: `tenant-${config.tenantId}-database`,
@@ -160,8 +173,8 @@ export class TenantProvisioner {
         port: '5432',
         database: `smm_tenant_${config.tenantId}`,
         username: `tenant_${config.tenantId}_user`,
-        // Password will be rotated by external-secrets operator
-        password: pulumi.secret('placeholder-rotated-by-vault')
+        // Password fetched from Vault; deployment fails if missing
+        password: dbPassword
       }
     }, { provider: this.provider });
 
