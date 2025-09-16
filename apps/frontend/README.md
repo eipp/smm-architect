@@ -34,3 +34,25 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+
+## Theme and Dark Mode
+
+The frontend now supports runtime theme switching using design tokens. Themes are
+defined in `src/design-system/tokens.ts` and applied via a `ThemeProvider`
+context. To toggle between light and dark modes:
+
+```tsx
+import { useTheme } from '@/contexts/theme-context'
+
+const ThemeSwitcher = () => {
+  const { theme, setTheme } = useTheme()
+  return (
+    <button onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}>
+      Toggle theme
+    </button>
+  )
+}
+```
+
+Design tokens are exposed as CSS variables, allowing components and Tailwind
+classes to respond instantly when the theme changes.

@@ -185,16 +185,16 @@ export const createResponsiveType = (config: {
 
 // Text color utilities based on design tokens
 export const textColors = {
-  primary: tokens.color.neutral[900],
-  secondary: tokens.color.neutral[600],
-  muted: tokens.color.neutral[500],
-  accent: tokens.color.primary[600],
-  success: tokens.color.success[600],
-  warning: tokens.color.warning[600],
-  error: tokens.color.error[600],
-  inverse: tokens.color.neutral[50],
-  brand: tokens.color.primary[500],
-  agent: tokens.color.accent[500],
+  primary: 'hsl(var(--color-neutral-900))',
+  secondary: 'hsl(var(--color-neutral-600))',
+  muted: 'hsl(var(--color-neutral-500))',
+  accent: 'hsl(var(--color-primary-600))',
+  success: 'hsl(var(--color-success-600))',
+  warning: 'hsl(var(--color-warning-600))',
+  error: 'hsl(var(--color-error-600))',
+  inverse: 'hsl(var(--color-neutral-50))',
+  brand: 'hsl(var(--color-primary-500))',
+  agent: 'hsl(var(--color-accent-500))',
 };
 
 // Font weight utilities

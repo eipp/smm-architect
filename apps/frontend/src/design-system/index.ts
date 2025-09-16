@@ -1,6 +1,6 @@
 // Design System Exports
-export { default as tokens, motionConfig } from './tokens';
-export type { DesignTokens, MotionConfig } from './tokens';
+export { tokens, themes, motionConfig, getTokens } from './tokens';
+export type { DesignTokens, MotionConfig, ThemeName } from './tokens';
 
 export { 
   getMotionConfig, 
@@ -11,9 +11,9 @@ export {
 } from './motion';
 
 // Utility functions for design system
-export const getColor = (path: string) => {
+export const getColor = (path: string, theme: ThemeName = 'light') => {
   const keys = path.split('.');
-  let value: any = tokens.color;
+  let value: any = themes[theme].color;
   
   for (const key of keys) {
     value = value?.[key];
@@ -106,7 +106,9 @@ export const prefersDarkMode = () => {
 // Export everything as default for convenience
 export default {
   tokens,
+  themes,
   motionConfig,
+  getTokens,
   getMotionConfig,
   motionVariants,
   springs,
