@@ -7,6 +7,7 @@ import { AgentInterface, AgentCapability, AgentMetadata } from '../src/interface
 import { ComplianceViolation, ComplianceResult, RegulationResult, DisclaimerResult } from '../src/types/LegalTypes';
 import { Logger } from 'winston';
 import { EventEmitter } from 'events';
+import type { PrismaClient } from '../../shared/database/generated/client';
 
 export interface LegalConfig {
   enabledRegions: string[];
@@ -102,11 +103,24 @@ export class LegalAgent implements AgentInterface {
   private complianceRules: Map<string, ComplianceRule> = new Map();
   private regulationDb: RegulationDatabase = {} as RegulationDatabase;
   private initialized: boolean = false;
+  private db: PrismaClient;
 
-  constructor(config: LegalConfig, logger: Logger) {
+  constructor(config: LegalConfig, logger: Logger, dbClient?: PrismaClient) {
     this.config = config;
     this.logger = logger;
     this.eventEmitter = new EventEmitter();
+    if (dbClient) {
+      this.db = dbClient;
+    } else {
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const { default: getPrismaClient } = require('../../shared/database/client');
+        this.db = getPrismaClient();
+      } catch {
+        this.logger.warn('Database client not available; using empty mock');
+        this.db = { complianceCheck: { findMany: async () => [] } } as unknown as PrismaClient;
+      }
+    }
     this.initializeRegulationDatabase();
   }
 
@@ -341,26 +355,71 @@ export class LegalAgent implements AgentInterface {
     commonViolations: Array<{ rule: string; count: number }>;
     regionBreakdown: Record<string, number>;
   }> {
-    // Implementation would query database for workspace compliance data
-    // This is a simplified mock implementation
-    return {
-      overallScore: 85,
-      totalChecks: 150,
-      compliantContent: 128,
-      nonCompliantContent: 12,
-      pendingReview: 10,
-      commonViolations: [
-        { rule: 'GDPR Data Processing Disclosure', count: 8 },
-        { rule: 'Promotional Content Disclosure', count: 5 },
-        { rule: 'Accessibility Alt Text', count: 3 }
-      ],
-      regionBreakdown: {
-        'US': 95,
-        'EU': 78,
-        'UK': 82,
-        'CA': 89
+    try {
+      const checks = await this.db.complianceCheck.findMany({
+        where: { workspaceId },
+        select: {
+          status: true,
+          score: true,
+          region: true,
+          violations: { select: { ruleId: true } }
+        }
+      });
+
+      const totalChecks = checks.length;
+      const compliantContent = checks.filter(c => c.status === 'compliant').length;
+      const nonCompliantContent = checks.filter(c => c.status === 'non_compliant').length;
+      const pendingReview = checks.filter(c => c.status === 'needs_review').length;
+
+      const violationCounts: Record<string, number> = {};
+      const regionScores: Record<string, { total: number; count: number }> = {};
+      let scoreSum = 0;
+
+      for (const check of checks) {
+        scoreSum += check.score;
+
+        const region = check.region || 'unknown';
+        if (!regionScores[region]) {
+          regionScores[region] = { total: 0, count: 0 };
+        }
+        regionScores[region].total += check.score;
+        regionScores[region].count += 1;
+
+        if (Array.isArray(check.violations)) {
+          for (const violation of check.violations) {
+            violationCounts[violation.ruleId] = (violationCounts[violation.ruleId] || 0) + 1;
+          }
+        }
       }
-    };
+
+      const overallScore = totalChecks > 0 ? Math.round(scoreSum / totalChecks) : 0;
+
+      const commonViolations = Object.entries(violationCounts)
+        .map(([rule, count]) => ({ rule, count }))
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 5);
+
+      const regionBreakdown: Record<string, number> = {};
+      for (const [region, { total, count }] of Object.entries(regionScores)) {
+        regionBreakdown[region] = Math.round(total / count);
+      }
+
+      return {
+        overallScore,
+        totalChecks,
+        compliantContent,
+        nonCompliantContent,
+        pendingReview,
+        commonViolations,
+        regionBreakdown
+      };
+    } catch (error) {
+      this.logger.error('Failed to get compliance summary', {
+        workspaceId,
+        error: error instanceof Error ? error.message : error
+      });
+      throw new Error('Could not retrieve compliance summary');
+    }
   }
 
   // Private helper methods
