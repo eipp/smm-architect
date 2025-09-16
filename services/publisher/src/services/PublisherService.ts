@@ -1,10 +1,12 @@
 import { v4 as uuidv4 } from 'uuid';
 import Queue from 'bull';
 import axios from 'axios';
+import { Pool } from 'pg';
 import { 
   PublishRequest, 
-  PublishResult, 
-  ScheduledPost, 
+  PublishResult,
+  PlatformResult,
+  ScheduledPost,
   PublishJob,
   Platform,
   OAuthConnection,
@@ -17,8 +19,14 @@ import {
 export class PublisherService {
   private publishQueue: Queue.Queue;
   private platforms: Map<string, Platform> = new Map();
+  private db: Pool;
 
   constructor() {
+    // Initialize database connection
+    this.db = new Pool({
+      connectionString: process.env.DATABASE_URL,
+    });
+
     // Initialize Bull queue for job processing
     this.publishQueue = new Queue('publish queue', {
       redis: {
@@ -603,38 +611,180 @@ export class PublisherService {
    * Get OAuth connections for workspace and platforms
    */
   private async getOAuthConnections(workspaceId: string, platforms: string[]): Promise<OAuthConnection[]> {
-    // This would query the database for OAuth connections
-    // For now, return mock data
-    return platforms.map(platform => ({
-      id: `conn-${platform}-${workspaceId}`,
-      workspaceId,
-      platform,
-      accessToken: `mock_token_${platform}`,
-      scope: ['read', 'write'],
-      profile: {
-        id: `user_${platform}`,
-        name: `User ${platform}`,
-        username: `user_${platform}`,
-      },
-      status: 'active' as const,
-      connectedAt: new Date(),
-    }));
+    const client = await this.db.connect();
+    try {
+      await client.query('SET app.current_tenant_id = $1', [workspaceId]);
+      const result = await client.query(
+        `SELECT connector_id, workspace_id, platform, credentials_ref, account_id, display_name, status, last_connected_at
+         FROM connectors
+         WHERE workspace_id = $1 AND platform = ANY($2::text[]) AND status = 'connected'`,
+        [workspaceId, platforms]
+      );
+      return result.rows.map(row => ({
+        id: row.connector_id,
+        workspaceId: row.workspace_id,
+        platform: row.platform,
+        accessToken: row.credentials_ref,
+        scope: [],
+        profile: {
+          id: row.account_id,
+          name: row.display_name,
+          username: row.display_name,
+        },
+        status: 'active' as const,
+        connectedAt: row.last_connected_at || new Date(),
+      }));
+    } finally {
+      client.release();
+    }
   }
 
   /**
    * Store scheduled post in database
    */
   private async storeScheduledPost(post: ScheduledPost): Promise<void> {
-    // This would store in the database
-    console.log('Storing scheduled post:', post);
+    const client = await this.db.connect();
+    try {
+      await client.query('SET app.current_tenant_id = $1', [post.workspaceId]);
+      await client.query(
+        `INSERT INTO scheduled_posts (
+          id, workspace_id, content, platforms, scheduled_at, timezone, status, recurring, created_at, created_by, attempts
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+        [
+          post.id,
+          post.workspaceId,
+          JSON.stringify(post.content),
+          JSON.stringify(post.platforms),
+          post.scheduledAt,
+          post.timezone,
+          post.status,
+          post.recurring ? JSON.stringify(post.recurring) : null,
+          post.createdAt,
+          post.createdBy,
+          post.attempts,
+        ]
+      );
+    } finally {
+      client.release();
+    }
   }
 
   /**
    * Update scheduled post status
    */
   private async updateScheduledPostStatus(postId: string, status: ScheduledPost['status'], error?: string): Promise<void> {
-    // This would update the database
-    console.log(`Updating post ${postId} status to ${status}`, error ? { error } : {});
+    const client = await this.db.connect();
+    try {
+      await client.query(
+        `UPDATE scheduled_posts SET status = $2, error = $3, last_attempt = NOW() WHERE id = $1`,
+        [postId, status, error || null]
+      );
+    } finally {
+      client.release();
+    }
+  }
+
+  /**
+   * Get publishing status and platform engagement
+   */
+  async getPublishStatus(publishId: string): Promise<PublishResult | null> {
+    const client = await this.db.connect();
+    try {
+      const result = await client.query(
+        `SELECT id, workspace_id, status, platforms, created_at, published_at, scheduled_at, error
+         FROM publish_results WHERE id = $1`,
+        [publishId]
+      );
+
+      if (result.rows.length === 0) {
+        return null;
+      }
+
+      const row = result.rows[0];
+      const platforms: PlatformResult[] = row.platforms || [];
+
+      for (const platform of platforms) {
+        try {
+          const response = await axios.get(platform.url as string);
+          if (response.data?.engagement) {
+            platform.engagement = response.data.engagement;
+          }
+        } catch {
+          // Ignore API errors for individual platforms
+        }
+      }
+
+      return {
+        id: row.id,
+        workspaceId: row.workspace_id,
+        status: row.status,
+        platforms,
+        createdAt: row.created_at,
+        publishedAt: row.published_at,
+        scheduledAt: row.scheduled_at,
+        error: row.error || undefined,
+      };
+    } finally {
+      client.release();
+    }
+  }
+
+  /**
+   * Get scheduled posts from database
+   */
+  async getScheduledPosts(
+    workspaceId: string,
+    filter: { status?: string; limit: number; offset: number }
+  ): Promise<{ posts: ScheduledPost[]; total: number; hasMore: boolean }> {
+    const client = await this.db.connect();
+    try {
+      await client.query('SET app.current_tenant_id = $1', [workspaceId]);
+
+      const params: any[] = [workspaceId];
+      let where = 'workspace_id = $1';
+      if (filter.status) {
+        params.push(filter.status);
+        where += ` AND status = $${params.length}`;
+      }
+
+      const limitIndex = params.length + 1;
+      const offsetIndex = params.length + 2;
+
+      const rows = await client.query(
+        `SELECT * FROM scheduled_posts WHERE ${where} ORDER BY scheduled_at LIMIT $${limitIndex} OFFSET $${offsetIndex}`,
+        [...params, filter.limit, filter.offset]
+      );
+
+      const count = await client.query(
+        `SELECT COUNT(*) FROM scheduled_posts WHERE ${where}`,
+        params
+      );
+
+      const total = parseInt(count.rows[0].count, 10);
+      const posts: ScheduledPost[] = rows.rows.map(r => ({
+        id: r.id,
+        workspaceId: r.workspace_id,
+        content: r.content,
+        platforms: r.platforms,
+        scheduledAt: r.scheduled_at,
+        timezone: r.timezone,
+        status: r.status,
+        recurring: r.recurring || undefined,
+        createdAt: r.created_at,
+        createdBy: r.created_by,
+        attempts: r.attempts,
+        lastAttempt: r.last_attempt || undefined,
+        error: r.error || undefined,
+      }));
+
+      return {
+        posts,
+        total,
+        hasMore: filter.offset + filter.limit < total,
+      };
+    } finally {
+      client.release();
+    }
   }
 
   /**
