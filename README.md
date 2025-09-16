@@ -301,7 +301,7 @@ curl -X POST http://localhost:4000/workspaces/ws-example-001/simulate \
 
 - **[Local Development](docs/development.md)** - Setting up development environment
 - **[Production Deployment](docs/deployment.md)** - Kubernetes and cloud deployment
-- **[Vault Configuration](docs/vault-setup.md)** - Secrets management setup
+ - **[Vault Credential Workflows](docs/vault-credential-workflows.md)** - Secrets management setup and token rotation
 
 ## 🧪 Testing
 
