@@ -1,4 +1,5 @@
 import { EventEmitter } from 'events';
+import axios from 'axios';
 import { Logger } from '../utils/logger';
 
 export interface CircuitBreakerConfig {
@@ -259,6 +260,7 @@ export class HealthBasedEndpointSelector {
   private healthCheckInterval?: NodeJS.Timeout;
   private readonly maxLatencyHistory = 10;
   private readonly healthCheckIntervalMs = 30000; // 30 seconds
+  private readonly healthCheckTimeoutMs = 2000; // 2 seconds
 
   constructor() {
     this.logger = new Logger('HealthBasedEndpointSelector');
@@ -367,23 +369,22 @@ export class HealthBasedEndpointSelector {
   private async performHealthCheck(endpoint: string): Promise<void> {
     try {
       const startTime = Date.now();
-      
-      // Perform actual health check (implementation depends on endpoint type)
-      // This is a placeholder - in real implementation, would make HTTP call to health endpoint
-      await this.sleep(50 + Math.random() * 100); // Simulate health check
-      
+      const healthUrl = endpoint.endsWith('/health') ? endpoint : `${endpoint.replace(/\/$/, '')}/health`;
+
+      const response = await axios.get(healthUrl, {
+        timeout: this.healthCheckTimeoutMs,
+        validateStatus: () => true
+      });
+
       const latency = Date.now() - startTime;
-      const success = Math.random() > 0.05; // 95% success rate simulation
-      
+      const success = response.status >= 200 && response.status < 300;
+
       await this.recordResult(endpoint, latency, success);
     } catch (error) {
+      const latency = Date.now() - startTime;
       this.logger.error(`Health check failed for endpoint ${endpoint}`, error);
-      await this.recordResult(endpoint, 5000, false); // Record as slow failure
+      await this.recordResult(endpoint, latency, false);
     }
-  }
-
-  private sleep(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
   }
 
   destroy(): void {
