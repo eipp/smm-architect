@@ -74,6 +74,7 @@ export interface MediaUpload {
     height?: number;
     duration?: number;
     format?: string;
+    resolution?: string;
   };
   uploadedAt: Date;
   uploadedBy: string;
