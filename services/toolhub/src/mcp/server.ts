@@ -3,6 +3,7 @@ import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { CallToolRequestSchema, ListToolsRequestSchema, Resource, Tool } from '@modelcontextprotocol/sdk/types.js';
 import winston from 'winston';
+import sentryConfig from '../config/sentry.js';
 
 // Configure logger
 const logger = winston.createLogger({
@@ -17,6 +18,43 @@ const logger = winston.createLogger({
     new winston.transports.File({ filename: 'logs/mcp-server.log' })
   ]
 });
+
+const SENSITIVE_FIELDS = ['authorization', 'apikey', 'api_key', 'password', 'token', 'secret'];
+
+function scrubSensitiveData(data: unknown): void {
+  if (!data || typeof data !== 'object') {
+    return;
+  }
+  for (const key of Object.keys(data as Record<string, any>)) {
+    const value = (data as Record<string, any>)[key];
+    if (SENSITIVE_FIELDS.includes(key.toLowerCase())) {
+      (data as Record<string, any>)[key] = '[Filtered]';
+    } else if (typeof value === 'object') {
+      scrubSensitiveData(value);
+    }
+  }
+}
+
+if (sentryConfig.enabled && sentryConfig.dsn) {
+  Sentry.init({
+    ...sentryConfig,
+    beforeSend(event) {
+      scrubSensitiveData(event.request?.headers);
+      scrubSensitiveData(event.request?.data);
+      scrubSensitiveData(event.extra);
+      scrubSensitiveData(event.user);
+      scrubSensitiveData(event.contexts);
+
+      if (event.breadcrumbs) {
+        for (const breadcrumb of event.breadcrumbs) {
+          scrubSensitiveData(breadcrumb.data);
+        }
+      }
+
+      return event;
+    },
+  });
+}
 
 /**
  * Enhanced MCP Server with Sentry monitoring for SMM Architect ToolHub
