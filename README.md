@@ -1,19 +1,16 @@
 # SMM Architect
 
-[![CI Status](https://github.com/yourorg/smm-architect/workflows/CI/badge.svg)](https://github.com/yourorg/smm-architect/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](CHANGELOG.md)
-[![Status](https://img.shields.io/badge/status-Production%20Ready-brightgreen.svg)](AGENTS.md)
 
 > **Enterprise-grade autonomous social media marketing platform** with MCP-based agent orchestration, n8n workflow automation, and comprehensive compliance frameworks.
 
-## 🎆 Production Ready
+## Release evidence
 
-SMM Architect is a **complete enterprise platform** ready for production deployment with:
+The repository contains platform components and deployment templates. Review the [repository workflow](.github/workflows/ci.yml) and check its result for the revision under review. Production readiness requires an authorized deployment and an operator’s accepted result on a representative workflow. The features below describe the implementation.
 
-- ✅ **12 Production Microservices** with comprehensive APIs and monitoring
+- ✅ **12 microservices** with comprehensive APIs and monitoring
 - ✅ **Advanced Agent System** using Agentuity with MCP 2.0 protocol
-- ✅ **n8n Workflow Orchestration** with 7 production workflow templates
+- ✅ **n8n Workflow Orchestration** with 7 workflow templates
 - ✅ **Enterprise Database** with PostgreSQL RLS for multi-tenant isolation
 - ✅ **Complete Security Framework** with audit trails and GDPR/CCPA compliance
 
@@ -122,14 +119,14 @@ graph TB
 
 ## 📋 Features
 
-### ✅ **Production Ready Platform**
+### ✅ **Platform components**
 - [x] **Workspace Contract Schema** - Complete lifecycle management with versioning, signing, connectors
 - [x] **BrandTwin Intelligence** - Advanced provenance tracking, embedding links, metadata
 - [x] **Decision Cards** - Comprehensive action tracking, cost breakdown, impact estimation
 - [x] **Policy Engine** - Production OPA rules with consent, connectors, budget enforcement
 - [x] **Agent Framework** - Complete Agentuity agent system with MCP 2.0 protocol
 
-### ⚡ **Enterprise Services (All Production Ready)**
+### ⚡ **Enterprise service components**
 - [x] **SMM Architect Service** - Encore.ts microservice with comprehensive APIs and RLS
 - [x] **ToolHub Service** - Complete MCP server with content ingestion, vector search, Sentry monitoring
 - [x] **Model Router Service** - Advanced AI routing with canary deployments, cost optimization
@@ -140,13 +137,13 @@ graph TB
 - [x] **DSR Service** - GDPR/CCPA compliance with automated Data Subject Rights handling
 - [x] **Policy Service** - Comprehensive OPA rule engine with complete test coverage
 
-### 🔧 **Infrastructure & DevOps (Production Ready)**
+### 🔧 **Infrastructure and release tooling**
 - [x] **Database Architecture** - PostgreSQL with RLS, migrations, Prisma ORM, connection pooling
 - [x] **Pulumi Templates** - Complete Infrastructure as Code for AWS deployment
 - [x] **Vault Integration** - HashiCorp Vault for secrets management and dynamic credentials
 - [x] **Container Support** - Docker containers with Kubernetes deployment manifests
 - [x] **Monitoring Stack** - Prometheus metrics, Grafana dashboards, Sentry error tracking
-- [x] **n8n Workflow System** - 7 production workflow templates for campaign orchestration
+- [x] **n8n Workflow System** - 7 workflow templates for campaign orchestration
 
 ## 🚦 Quick Start
 
@@ -162,7 +159,7 @@ graph TB
 
 1. **Clone and Install Dependencies**
    ```bash
-   git clone https://github.com/yourorg/smm-architect.git
+   git clone https://github.com/eipp/smm-architect.git
    cd smm-architect
    
    # Install pnpm globally
@@ -460,8 +457,8 @@ This project is licensed under the [MIT License](LICENSE).
 ## 🙋‍♀️ Support
 
 - **Documentation**: [docs/](docs/)
-- **Issues**: [GitHub Issues](https://github.com/yourorg/smm-architect/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/yourorg/smm-architect/discussions)
+- **Issues**: [GitHub Issues](https://github.com/eipp/smm-architect/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/eipp/smm-architect/discussions)
 - **Email**: dev@smmarchitect.com
 
 ## 🗺️ Roadmap
